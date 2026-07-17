@@ -13,7 +13,7 @@
 | R7 | Windows Interop/パイプの制約 | WSL hostを起動できない | WSL2実機でspawn、token handshake、EOF、異常終了を確認 |
 | R8 | Docker Linux imageのWebKitGTK 6.0 package availability | Linux開発環境を再現できない | compose buildと`pkg-config`を実行。失敗時は画像タグ/apt sourceをADR更新して変更理由を記録 |
 | R9 | Windows用Docker開発imageのSDK/ヘッダー取得 | Windows M1をDockerだけでbuildできない | Windows daemon上でcontainerized Nim + SDK headerのスパイク。ローカルNim導入はしない |
-| R10 | `Result`/asyncdispatch APIのNim 2.x差 | 公開APIのコンパイル不能 | Docker固定Nim版で最小native APIをコンパイルしてから署名を確定 |
+| R10 | `Result`/asyncdispatch APIのNim 2.x差 | 公開APIのコンパイル不能 | `std/results`がNim 2.2.10にないことを確認済み。外部依存を増やさず独自`NativeResult`/`NativeResultOf[T]`をARCでスパイク済み。asyncdispatchは別途確認 |
 | R11 | WebKit process swap後にbackendが無効な内部状態を保持 | Linux不安定 | Web process pointerを公開/保持せず、WebViewのみに操作を閉じる |
 
 ## 依存方針

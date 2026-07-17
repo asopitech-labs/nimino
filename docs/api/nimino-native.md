@@ -24,7 +24,16 @@ type
     platformCode*: int32
     detail*: string             # token/cookie/URLの認証情報を含めない
 
-  NativeResult*[T] = Result[T, NativeError]
+  NativeResult* = object
+    isOk*: bool
+    error*: NativeError
+
+  NativeResultOf*[T] = object
+    case isOk*: bool
+    of true:
+      value*: T
+    of false:
+      error*: NativeError
 
   WindowOptions* = object
     title*: string
@@ -47,36 +56,36 @@ type
     nativeNotification, customProtocol, webPermissionEvents
 ```
 
-`Result`の正確なimportとエラーを伝播するergonomicsは、固定したNimコンテナでM1のコンパイルスパイクを通して決めます。ただし、失敗可能な操作が上記5分類を失う設計にはしません。
+Nim 2.2.10コンテナには`std/results`がないことをM1スパイクで確認したため、外部パッケージを増やさずNiminoがこの最小結果型を所有します。`success`/`failure`および`successOf`/`failureOf`はprivate実装を隠す公開constructorです。失敗可能な操作は上記5分類を失いません。
 
 ## 操作案
 
 ```nim
 proc newNativeApp*(): NativeApp
 proc supports*(app: NativeApp, capability: Capability): bool
-proc run*(app: NativeApp): NativeResult[void]
-proc quit*(app: NativeApp): NativeResult[void]
-proc close*(app: NativeApp): NativeResult[void]
-proc postToUi*(app: NativeApp, callback: proc() {.gcsafe.}): NativeResult[void]
+proc run*(app: NativeApp): NativeResult
+proc quit*(app: NativeApp): NativeResult
+proc close*(app: NativeApp): NativeResult
+proc postToUi*(app: NativeApp, callback: proc() {.gcsafe.}): NativeResult
 
-proc newWindow*(app: NativeApp, options: WindowOptions): NativeResult[NativeWindow]
-proc close*(window: NativeWindow): NativeResult[void]
-proc setTitle*(window: NativeWindow, title: string): NativeResult[void]
-proc show*(window: NativeWindow): NativeResult[void]
-proc hide*(window: NativeWindow): NativeResult[void]
-proc minimize*(window: NativeWindow): NativeResult[void]
-proc maximize*(window: NativeWindow): NativeResult[void]
+proc newWindow*(app: NativeApp, options: WindowOptions): NativeResultOf[NativeWindow]
+proc close*(window: NativeWindow): NativeResult
+proc setTitle*(window: NativeWindow, title: string): NativeResult
+proc show*(window: NativeWindow): NativeResult
+proc hide*(window: NativeWindow): NativeResult
+proc minimize*(window: NativeWindow): NativeResult
+proc maximize*(window: NativeWindow): NativeResult
 proc state*(window: NativeWindow): NativeState
 proc onResize*(window: NativeWindow, callback: proc(bounds: Rect) {.gcsafe.})
 proc onCloseRequest*(window: NativeWindow, callback: proc(): bool {.gcsafe.})
 
 proc newWebView*(window: NativeWindow, bounds: Option[Rect] = none(Rect)):
-  NativeResult[NativeWebView]
-proc close*(view: NativeWebView): NativeResult[void]
-proc loadUrl*(view: NativeWebView, url: string): NativeResult[void]
+  NativeResultOf[NativeWebView]
+proc close*(view: NativeWebView): NativeResult
+proc loadUrl*(view: NativeWebView, url: string): NativeResult
 proc loadHtml*(view: NativeWebView, html: string, baseUrl = "about:blank"):
-  NativeResult[void]
-proc evalJavaScript*(view: NativeWebView, script: string): Future[NativeResult[string]]
+  NativeResult
+proc evalJavaScript*(view: NativeWebView, script: string): Future[NativeResultOf[string]]
 proc onMessage*(view: NativeWebView, callback: proc(message: string) {.gcsafe.})
 proc onNavigationStarting*(view: NativeWebView,
   callback: proc(request: NavigationRequest): bool {.gcsafe.})
@@ -97,10 +106,10 @@ proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.}
 import nimino_native
 
 let app = newNativeApp()
-let window = app.newWindow(WindowOptions(title: "Nimino", width: 1200, height: 800)).get()
-let view = window.newWebView().get()
+let window = app.newWindow(WindowOptions(title: "Nimino", width: 1200, height: 800)).value
+let view = window.newWebView().value
 discard view.loadUrl("https://example.com")
 discard app.run()
 ```
 
-`.get()`を伴わない便利構文を導入する場合も、失敗を黙殺するAPIにはしません。WindowとWebViewを同一型に統合しないため、将来は同じWindowへ複数のViewを追加できます。
+`.value`を伴わない便利構文を導入する場合も、失敗を黙殺するAPIにはしません。WindowとWebViewを同一型に統合しないため、将来は同じWindowへ複数のViewを追加できます。
