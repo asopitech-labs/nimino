@@ -5,6 +5,7 @@ import ./[authentication, versioning]
 type
   ProtocolErrorKind* = enum
     invalidFrame
+    unexpectedEof
     frameTooLarge
     invalidMessage
     unsupportedVersion

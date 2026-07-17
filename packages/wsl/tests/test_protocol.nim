@@ -1,4 +1,4 @@
-import std/strutils
+import std/[streams, strutils]
 
 import nimino_wsl
 
@@ -58,3 +58,19 @@ block summariesNeverExposeTokens:
   let summary = helloMessage().logSummary
   doAssert ValidToken notin summary
   doAssert "<redacted>" == ValidToken.redactedToken
+
+block streamTransportRoundTrip:
+  let stream = newStringStream()
+  let written = stream.writeMessageTo(helloMessage())
+  doAssert written.isOk
+  stream.setPosition(0)
+  let read = stream.readMessageFrom()
+  doAssert read.isOk
+  doAssert read.value.kind == hello
+  doAssert read.value.authenticationToken == ValidToken
+
+block truncatedStreamIsRejected:
+  let stream = newStringStream("\0\0")
+  let read = stream.readFrameFrom()
+  doAssert not read.isOk
+  doAssert read.failure.kind == unexpectedEof
