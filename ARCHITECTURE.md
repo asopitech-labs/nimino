@@ -1,6 +1,6 @@
 # Nimino Architecture
 
-**状態: M0完了、M1実装とM2（JavaScript評価・文字列message・ナビゲーション開始/完了・基本エラー通知・新規Window拒否）を部分実装中（2026-07-17）**
+**状態: M0完了、M1実装、M2（JavaScript評価・文字列message・ナビゲーション開始/完了・基本エラー通知・新規Window拒否）とM3 RPC基盤を部分実装中（2026-07-17）**
 
 Niminoは、NimアプリケーションがOS固有のWindow、WebView、またはWSL通信を直接意識せずにWeb UIを構築できるようにするモノレポです。レンダリングエンジンや汎用WebViewラッパーは実装・導入しません。
 
@@ -89,7 +89,7 @@ NativeApp (明示 close)
 
 ## リポジトリ配置
 
-M1/M2では`native`と`wsl`を実装済みです。`core`と`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
+M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはGUI非依存のRPC registryだけを追加しており、App/Window facade、WebView bootstrap、WSL adapterは未実装です。`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
 
 ```text
 packages/

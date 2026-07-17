@@ -17,6 +17,7 @@
 | R11 | WebKit process swap後にbackendが無効な内部状態を保持 | Linux不安定 | Web process pointerを公開/保持せず、WebViewのみに操作を閉じる |
 | R12 | WSL client上の任意ナビゲーションpolicyを、Windows UI callback時に評価するとUI待機・nested loop・IPC deadlockを招く | coreのURL制御をWSLで透過提供できない | [ADR-0005提案](../adr/0005-wsl-navigation-policy.md)の双方向decision protocolまたはhost適用可能な宣言的ruleのスパイク。任意callbackを既定許可へ偽装しない |
 | R13 | headless Xvfbでは実ユーザー操作を伴う`window.open`/`target=_blank`を安定して発火できない | new-windowの実行確認を誤判定する | WebView2 Runtimeを備えたWindows/Linux GUI CIで、実クリック→通知→暗黙Windowなしを確認する。スクリプト起動popupの失敗はAPI失敗と扱わない |
+| R14 | RPC Futureの完了/timeout回収をUI loopへ安全に統合できない | timeoutが発火しない、またはUIを塞ぐ | core registryの`tick()`をWindows timerとLinux GLib sourceからUI threadで呼ぶスパイク。Nim asyncdispatchの独自loopは作らず、WSL hostも同一所有threadに限定する |
 
 ## 依存方針
 

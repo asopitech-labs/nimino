@@ -1,6 +1,6 @@
 # `nimino-core` 最小公開API案
 
-**状態: M0 API案。M3以降の対象であり、未実装です。**
+**状態: M3部分実装。GUI非依存の明示許可リストJSON RPC registryは実装・単体テスト済みですが、`App`/`Window` facade、WebView bootstrap、WSL adapter、型抽出register macroは未実装です。**
 
 `nimino-core`は通常の利用者向けの高水準APIです。`nimino-native`を内包してもFFI型を公開せず、`nimino-pack`へはこの公開面だけを提供します。
 
@@ -42,6 +42,26 @@ window.rpc.register("files.save") do (request: SaveRequest) -> Future[SaveResult
 登録APIは明示的なメソッド名を持つ許可リストです。任意のNim関数、OS API、または`ref object`を自動公開しません。各Windowは独立したRPC registryとrequest ID空間を持ち、request/response、notification、timeout、cancel、JSON errorを扱います。
 
 `register`の型抽出マクロ、JSON codec、TypeScript定義生成の可否はM3の設計スパイクです。これはnative層へ追加しません。
+
+## 実装済みRPC基盤
+
+```nim
+import nimino_core
+
+let rpc = newRpcRegistry(proc(wire: string) =
+  # WebViewへのresponse送信はApp/Window統合で担当する
+  discard
+)
+
+discard rpc.registerSync("settings.load", proc(params: JsonNode): RpcResult =
+  rpcSuccess(%*{"theme": "dark"})
+)
+
+discard rpc.handleMessage(requestWire)
+rpc.tick()
+```
+
+wire形式は`nimino = "rpc"`、`kind = request | notification | cancel`、文字列ID、明示的method、JSON params、timeoutMsである。responseは同じIDに`ok/result`または構造化`error`を返す。未登録methodは拒否し、cancel/timeout後の遅延Futureはresponseを二重送信しない。`tick()`は完了Futureとtimeoutを回収するが、現時点ではApp UI loopへ未接続であり、呼出側が実行する必要がある。
 
 ## M4以降の面
 
