@@ -1,6 +1,6 @@
 # Nimino Architecture
 
-**状態: M0完了、M1の共通基盤・WSL protocol codec/client transport・Linux最小backendを実装中（2026-07-17）**
+**状態: M0完了、M1実装とM2（JavaScript評価・文字列message）を部分実装中（2026-07-17）**
 
 Niminoは、NimアプリケーションがOS固有のWindow、WebView、またはWSL通信を直接意識せずにWeb UIを構築できるようにするモノレポです。レンダリングエンジンや汎用WebViewラッパーは実装・導入しません。
 
@@ -31,9 +31,9 @@ URL / manifest -- nimino-pack -- nimino-core public API -- nimino-native
 
 | ターゲット | Window/WebView | M0の決定 | M1状態 |
 | --- | --- | --- | --- |
-| Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | 未実装 |
-| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1最小経路をXvfbで検証済み |
-| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | protocol codecとclient transportを実装済み。host未実装 |
+| Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2をx64クロスコンパイル済み。Loader/Runtime不足のため実GUI未検証 |
+| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1とM2評価/messageをXvfb実行済み |
+| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client smoke済み。M2 request/event adapter実装済み、Runtime依存操作は未検証 |
 | macOS | Cocoa + WKWebView | 将来のprivate backendのみ。共通APIへ固有要件を入れない | 対象外 |
 
 ## 公開面とエラー
@@ -88,7 +88,7 @@ NativeApp (明示 close)
 
 ## リポジトリ配置
 
-M1以降の意図した配置は次です。現時点では設計文書とDocker開発環境のみを置きます。
+M1/M2では`native`と`wsl`を実装済みです。`core`と`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
 
 ```text
 packages/

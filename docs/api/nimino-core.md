@@ -4,7 +4,7 @@
 
 `nimino-core`は通常の利用者向けの高水準APIです。`nimino-native`を内包してもFFI型を公開せず、`nimino-pack`へはこの公開面だけを提供します。
 
-## M1で必要な最小面
+## M3で実装する最小面
 
 ```nim
 type
@@ -27,7 +27,7 @@ proc loadUrl*(window: Window, url: string): CoreResult[void]
 proc run*(app: App): CoreResult[void]
 ```
 
-M1のWSL hostはcore未実装のため、これを公開・実装済みであるとは扱いません。M3以降、host adapterをこの面へ移します。
+現在のWSL hostはcore未実装のため、このAPIを公開・実装済みであるとは扱いません。M3以降、host adapterをこの面へ移します。
 
 ## M3以降のRPC面
 
