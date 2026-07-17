@@ -3,7 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test linux-smoke core-linux-rpc-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-client-smoke check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test linux-smoke core-linux-rpc-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-client-smoke wsl-core-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -69,6 +69,12 @@ wsl-client-smoke: image ## WSL clientからWindows hostを起動しWindow/WebVie
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslClientArtifact
 	./.tmp/nimino-wsl-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)"
+
+wsl-core-smoke: image ## 通常のcore APIからWSL Windows hostを選択してWindow/WebView/shutdownを実機確認する
+
+	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
+	$(COMPOSE) run --rm $(SERVICE) nimble buildWslCoreClientArtifact
+	./.tmp/nimino-wsl-core-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)"
 
 check: test ## testの別名
 

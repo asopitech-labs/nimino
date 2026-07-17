@@ -1,6 +1,6 @@
 # Nimino Architecture
 
-**状態: M0完了、M1実装、M2（JavaScript評価・文字列message・ナビゲーション開始/完了・基本エラー通知・新規Window拒否）とM3 Windows/Linux core facade・RPCを部分実装中（2026-07-17）**
+**状態: M0完了、M1実装、M2（JavaScript評価・文字列message・ナビゲーション開始/完了・基本エラー通知・新規Window拒否）とM3 Windows/Linux facade・RPC、WSL core adapterを部分実装中（2026-07-17）**
 
 Niminoは、NimアプリケーションがOS固有のWindow、WebView、またはWSL通信を直接意識せずにWeb UIを構築できるようにするモノレポです。レンダリングエンジンや汎用WebViewラッパーは実装・導入しません。
 
@@ -25,7 +25,7 @@ Application
 URL / manifest -- nimino-pack -- nimino-core public API -- nimino-native
 ```
 
-`nimino-wsl-host.exe`はWindowsのGUI資源を所有します。WSL側はGUIバックエンドではなく、ホストのプロキシです。M1ではホストが`nimino-native`を直接利用し、`nimino-core`実装後に同じ操作をcore adapterへ移します。
+`nimino-wsl-host.exe`はWindowsのGUI資源を所有します。WSL側はGUIバックエンドではなく、ホストのプロキシです。M1/M3ではhostが`nimino-native`を直接利用し、coreは公開`nimino-wsl` clientを選んで同じApp/Window面を中継します。host内部をcoreへ移すかは、M4以降のprofile/policy機能が必要になった時点で再評価します。
 
 ## 対象プラットフォーム
 
@@ -33,7 +33,7 @@ URL / manifest -- nimino-pack -- nimino-core public API -- nimino-native
 | --- | --- | --- | --- |
 | Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2とM3 core facadeをx64クロスコンパイル済み。Loader/Runtime不足のため実GUI未検証 |
 | Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1/M2評価/message/navigation開始/完了/errorとM3 RPC同期往復をXvfb実行済み |
-| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client smoke済み。M2 request/event adapter実装済み。M3 core adapterは未実装で、WSLのLinux GUI backend選択を拒否する |
+| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client/core setup smoke済み。M3 core adapterは`-d:niminoWsl`でLinux GUI FFIを除外し、hostを自動選択する。実WebView2 Runtimeは未確認 |
 | macOS | Cocoa + WKWebView | 将来のprivate backendのみ。共通APIへ固有要件を入れない | 対象外 |
 
 ## 公開面とエラー
@@ -89,7 +89,7 @@ NativeApp (明示 close)
 
 ## リポジトリ配置
 
-M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registryを追加しています。WSL adapter、型抽出macro、プロファイルは未実装です。`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
+M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registry、WSL client adapterを追加しています。WSL adapterはM1 setupとfake host RPC relayを確認済みですが、実WebView2 Runtime上の読込/評価、async timeout、型抽出macro、プロファイルは未実装です。`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
 
 ```text
 packages/

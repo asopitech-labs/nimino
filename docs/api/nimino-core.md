@@ -1,6 +1,6 @@
 # `nimino-core` 最小公開API案
 
-**状態: M3部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrapを実装した。Linuxでは実WebViewのrequest/response/notification往復を確認済みで、Windowsはx64クロスコンパイル済み（Runtime実行は未確認）。WSL adapter、型抽出register macro、JSON codec、プロファイルは未実装。WSLでLinux GUI backendを選んでWSLg表示することは明示的に拒否する。**
+**状態: M3部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrapを実装した。Linuxでは実WebViewのrequest/response/notification往復を確認済みで、Windowsはx64クロスコンパイル済み（Runtime実行は未確認）。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、Linux GUI FFIをリンクしない。実WebView2 Runtime上の読込/評価、型抽出register macro、JSON codec、プロファイルは未実装。**
 
 `nimino-core`は通常の利用者向けの高水準APIです。`nimino-native`を内包してもFFI型を公開せず、`nimino-pack`へはこの公開面だけを提供します。
 
@@ -32,7 +32,7 @@ proc quit*(app: App): CoreResult
 proc run*(app: App): CoreResult
 ```
 
-`CoreError`はnative FFI型を公開せず、`invalidArgument`、`invalidState`、`platformUnavailable`、`nativeFailure`を返す。Windows/Linux facadeはnative App/Window/WebViewを内部所有する。WSL hostはまだcoreを利用していないため、このAPIのWSL透過性は未達である。
+`CoreError`はnative FFI型を公開せず、`invalidArgument`、`invalidState`、`platformUnavailable`、`nativeFailure`を返す。Windows/Linux facadeはnative App/Window/WebViewを内部所有する。WSL buildではcoreが`nimino-wsl`の公開client APIだけを使い、Windows hostがnative App/Window/WebViewを所有する。hostは配布物で隣接またはPATHへ置く。`NIMINO_WSL_HOST_EXE`は開発・CIの明示上書きであり、通常利用者にplatform指定を要求するものではない。
 
 ## M3以降のRPC面
 
@@ -65,7 +65,7 @@ discard app.run()
 
 Web側には`window.nimino.invoke(method, params, { timeoutMs })`および`window.nimino.notify(method, params)`を提供する。wire形式は`nimino = "rpc"`、`kind = request | notification | cancel`、文字列ID、明示的method、JSON params、timeoutMsである。responseは同じIDに`ok/result`または構造化`error`を返す。未登録methodは拒否し、cancel/timeout後の遅延Futureはresponseを二重送信しない。
 
-registryの`tick()`はWindows timerとLinux GLib timeout sourceからUI threadで呼ばれる。Linuxの実smokeは`invoke → 許可済みhandler → response → notify`を確認している。async handlerの実WebView完了・timeout、Window close中の遅延Future、Windows Runtime、WSL host/clientのこの経路は未確認である。
+registryの`tick()`はWindows timerとLinux GLib timeout sourceからUI threadで呼ばれる。Linuxの実smokeは`invoke → 許可済みhandler → response → notify`を確認している。WSLではcoreがhostの`native.webview.message` eventを同じWindow registryへ渡し、responseを`native.webview.evalJavaScript` requestとして中継することを認証済みfake hostで確認している。async handlerの実WebView完了・timeout、Window close中の遅延Future、Windows Runtime、WSLの実WebView2経路は未確認である。
 
 `loadHtml`はbridgeを文書の先頭へ挿入する。URL読込では読込完了後にbridgeを入れるため、リモートURLの最初期scriptからの`invoke`はdocument-start script注入スパイクが完了するまで保証しない。この制約を隠して本番向けURL包装には利用しない。
 

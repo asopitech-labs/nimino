@@ -17,7 +17,8 @@
 | R11 | WebKit process swap後にbackendが無効な内部状態を保持 | Linux不安定 | Web process pointerを公開/保持せず、WebViewのみに操作を閉じる |
 | R12 | WSL client上の任意ナビゲーションpolicyを、Windows UI callback時に評価するとUI待機・nested loop・IPC deadlockを招く | coreのURL制御をWSLで透過提供できない | [ADR-0005提案](../adr/0005-wsl-navigation-policy.md)の双方向decision protocolまたはhost適用可能な宣言的ruleのスパイク。任意callbackを既定許可へ偽装しない |
 | R13 | headless Xvfbでは実ユーザー操作を伴う`window.open`/`target=_blank`を安定して発火できない | new-windowの実行確認を誤判定する | WebView2 Runtimeを備えたWindows/Linux GUI CIで、実クリック→通知→暗黙Windowなしを確認する。スクリプト起動popupの失敗はAPI失敗と扱わない |
-| R14 | RPC Futureの完了/timeout回収をUI loopへ安全に統合できない | timeoutが発火しない、またはUIを塞ぐ | Linux GLib sourceからの`tick()`と実WebView同期往復は確認済み。Windows timerはクロスコンパイル済み。async/timeoutの実行、Windows Runtime、WSL core adapterは未確認。Nim asyncdispatchの独自loopは作らない |
+| R14 | RPC Futureの完了/timeout回収をUI loopへ安全に統合できない | timeoutが発火しない、またはUIを塞ぐ | Linux GLib sourceからの`tick()`と実WebView同期往復は確認済み。Windows timerはクロスコンパイル済み。WSL core relayはfake hostで確認済み。async/timeoutの実行、Windows Runtime、WSL実WebView2経路は未確認。Nim asyncdispatchの独自loopは作らない |
+| R15 | WSL用core binaryがLinux GTK/WebKitGTKを同時リンクすると、WSL GUIを使わなくても共有ライブラリ不足で起動不能になる | WSLがhostを起動する前に失敗し、WSLg fallbackを誘発する | `-d:niminoWsl`でLinux native backendを除外し、実機core setup smokeでWebKitGTK非導入のWSLからWindows hostを起動確認済み。配布/pack時の自動target選択はM6で固定する |
 
 ## 依存方針
 

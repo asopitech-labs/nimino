@@ -152,21 +152,33 @@ proc sendRequest*(client: WslClient; methodName: string; payload: string;
     return failureOf[uint64](written.failure)
   successOf(requestId)
 
+proc receiveNext*(client: WslClient): ProtocolResultOf[ProtocolMessage] =
+  ## Read one validated host message.  Event-loop adapters use this instead of
+  ## `receiveResponse` when the host owns the GUI loop and emits unsolicited
+  ## lifecycle or WebView events.
+  if client.isNil or client.process.isNil:
+    return failureOf[ProtocolMessage](protocolError(invalidMessage, "WSL client is closed"))
+  let received = client.process.outputStream.readMessageFrom()
+  if not received.isOk:
+    return failureOf[ProtocolMessage](received.failure)
+  let message = received.value
+  if message.sessionId != client.sessionId:
+    return failureOf[ProtocolMessage](protocolError(invalidMessage, "host response has an unknown session"))
+  if not message.version.validateVersion.isOk:
+    return failureOf[ProtocolMessage](protocolError(unsupportedVersion, "host version mismatch"))
+  if message.authenticationToken.len != 0:
+    return failureOf[ProtocolMessage](protocolError(authenticationFailed, "host returned authentication material"))
+  successOf(message)
+
 proc receiveResponse*(client: WslClient; requestId: uint64): ProtocolResultOf[ProtocolMessage] =
   if client.isNil or client.process.isNil:
     return failureOf[ProtocolMessage](protocolError(invalidMessage, "WSL client is closed"))
 
   while true:
-    let received = client.process.outputStream.readMessageFrom()
+    let received = client.receiveNext()
     if not received.isOk:
       return failureOf[ProtocolMessage](received.failure)
     let hostResponse = received.value
-    if hostResponse.sessionId != client.sessionId:
-      return failureOf[ProtocolMessage](protocolError(invalidMessage, "host response has an unknown session"))
-    if not hostResponse.version.validateVersion.isOk:
-      return failureOf[ProtocolMessage](protocolError(unsupportedVersion, "host version mismatch"))
-    if hostResponse.authenticationToken.len != 0:
-      return failureOf[ProtocolMessage](protocolError(authenticationFailed, "host returned authentication material"))
     if hostResponse.kind == event:
       client.events.add(hostResponse)
       continue

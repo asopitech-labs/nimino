@@ -90,7 +90,7 @@ type
     pendingScripts: seq[NativeScriptRequest]
     activeScripts: seq[NativeScriptRequest]
 
-when defined(linux):
+when defined(linux) and not defined(niminoWsl):
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
 elif defined(windows):
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
@@ -137,7 +137,7 @@ proc releaseCallbackReferences(view: NativeWebView) =
 proc startScriptRequest(view: NativeWebView; request: NativeScriptRequest) =
   request.view = view
   view.activeScripts.add(request)
-  when defined(linux):
+  when defined(linux) and not defined(niminoWsl):
     let started = view.linuxEvalJavaScript(request)
     if not started.isOk:
       view.completeScriptRequest(request, failureOf[string](started.failure))
@@ -207,7 +207,7 @@ proc dispatchNavigationStarting(view: NativeWebView; url: string): bool =
     ## A callback failure must not accidentally authorize a navigation.
     false
 
-when defined(linux):
+when defined(linux) and not defined(niminoWsl):
   import ./private/linux/ffi
   include "private/linux/backend"
 elif defined(windows):
@@ -253,7 +253,7 @@ proc setTitle*(window: NativeWindow; title: string): NativeResult =
   if window.isNil or window.state in {closing, closed}:
     return failure(nativeError(invalidState, "window.setTitle"))
   window.title = title
-  when defined(linux):
+  when defined(linux) and not defined(niminoWsl):
     linuxSetTitle(window)
     return success()
   elif defined(windows):
@@ -271,7 +271,7 @@ proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   view.pendingUrl = url
   view.pendingHtml.setLen(0)
   view.pendingContentKind = urlContent
-  when defined(linux):
+  when defined(linux) and not defined(niminoWsl):
     linuxLoadPendingContent(view)
     return success()
   elif defined(windows):
@@ -285,7 +285,7 @@ proc loadHtml*(view: NativeWebView; html: string): NativeResult =
   view.pendingHtml = html
   view.pendingUrl.setLen(0)
   view.pendingContentKind = htmlContent
-  when defined(linux):
+  when defined(linux) and not defined(niminoWsl):
     linuxLoadPendingContent(view)
     return success()
   elif defined(windows):
@@ -345,7 +345,7 @@ proc quit*(app: NativeApp): NativeResult =
   if app.isNil or app.state == finished:
     return failure(nativeError(invalidState, "app.quit"))
   app.quitRequested = true
-  when defined(linux):
+  when defined(linux) and not defined(niminoWsl):
     if app.state == running:
       linuxQuit(app)
     return success()
@@ -362,7 +362,7 @@ proc close*(app: NativeApp): NativeResult =
 proc setIdleHandler*(app: NativeApp; handler: NativeIdleHandler): NativeResult =
   if app.isNil or app.state != created:
     return failure(nativeError(invalidState, "app.setIdleHandler"))
-  when defined(windows) or defined(linux):
+  when defined(windows) or (defined(linux) and not defined(niminoWsl)):
     app.idleHandler = handler
     return success()
   else:
@@ -374,7 +374,7 @@ proc run*(app: NativeApp): NativeResult =
   if app.windows.len == 0:
     return failure(nativeError(invalidState, "app.run", detail = "at least one window is required"))
 
-  when defined(linux):
+  when defined(linux) and not defined(niminoWsl):
     return linuxRun(app)
   elif defined(windows):
     return windowsRun(app)

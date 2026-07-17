@@ -7,9 +7,12 @@ requires "nim >= 2.2.0"
 
 task test, "Run Nimino unit tests in ARC mode":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-nimcache --out:/tmp/nimino-test-foundation --path:packages/native packages/native/tests/test_foundation.nim"
-  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-nimcache --out:/tmp/nimino-test-core-rpc --path:packages/core --path:packages/native packages/core/tests/test_rpc.nim"
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-core-app-nimcache --out:/tmp/nimino-test-core-app --path:packages/core --path:packages/native packages/core/tests/test_app.nim"
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-nimcache --out:/tmp/nimino-test-core-rpc --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_rpc.nim"
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-core-app-nimcache --out:/tmp/nimino-test-core-app --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_app.nim"
   exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-core-app"
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-core-fake-host-nimcache --out:/tmp/nimino-wsl-core-fake-host --path:packages/wsl packages/wsl/tests/fake_core_host.nim"
+  exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-test-wsl-core-adapter-nimcache --out:/tmp/nimino-test-wsl-core-adapter --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_wsl_core_adapter.nim"
+  exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-wsl-core-adapter /tmp/nimino-wsl-core-fake-host"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-nimcache --out:/tmp/nimino-test-protocol --path:packages/wsl --path:packages/native packages/wsl/tests/test_protocol.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-launcher-nimcache --out:/tmp/nimino-test-launcher --path:packages/wsl --path:packages/native packages/wsl/tests/test_launcher.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-test-host-adapter --path:packages/wsl --path:packages/native packages/wsl/tests/test_host_adapter.nim"
@@ -19,7 +22,7 @@ task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
   exec "xvfb-run -a /tmp/nimino-linux-smoke"
 
 task testCoreLinuxRpcSmoke, "Run the Linux core RPC smoke test under Xvfb":
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-smoke --path:packages/core --path:packages/native packages/core/tests/test_linux_rpc_smoke.nim"
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_smoke.nim"
   exec "xvfb-run -a /tmp/nimino-core-linux-rpc-smoke"
 
 task testWindowsCross, "Cross-compile the Windows native M1 smoke target":
@@ -41,3 +44,7 @@ task buildWslHostArtifact, "Build a disposable Windows WSL host smoke-test artif
 task buildWslClientArtifact, "Build a disposable WSL client smoke-test artifact":
   exec "mkdir -p /workspace/.tmp"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-client-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-client-smoke --path:packages/wsl --path:packages/native tools/ci/wsl_client_smoke.nim"
+
+task buildWslCoreClientArtifact, "Build a disposable WSL core adapter smoke-test artifact":
+  exec "mkdir -p /workspace/.tmp"
+  exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-core-client-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-core-client-smoke --path:packages/core --path:packages/wsl --path:packages/native tools/ci/wsl_core_client_smoke.nim"
