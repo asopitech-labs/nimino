@@ -16,8 +16,15 @@ type
     state: NativeAppState
     capabilities: CapabilitySet
     platformApp: pointer
+    platformLoader: pointer
+    webView2CreateEnvironment: pointer
+    platformInstance: pointer
+    windowClassName: string
+    windowClassRegistered: bool
     activateHandler: culong
     quitRequested: bool
+    hasRunError: bool
+    runError: NativeError
     windows: seq[NativeWindow]
 
   NativeWindow* = ref object
@@ -34,10 +41,15 @@ type
     state: NativeState
     pendingUrl: string
     platformView: pointer
+    platformEnvironment: pointer
+    platformController: pointer
 
 when defined(linux):
   import ./private/linux/ffi
   include "private/linux/backend"
+elif defined(windows):
+  import ./private/windows/ffi
+  include "private/windows/backend"
 
 proc newNativeApp*(): NativeApp =
   new(result)
@@ -80,7 +92,11 @@ proc setTitle*(window: NativeWindow; title: string): NativeResult =
   window.title = title
   when defined(linux):
     linuxSetTitle(window)
-  success()
+    return success()
+  elif defined(windows):
+    return windowsSetTitle(window)
+  else:
+    return success()
 
 proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   if view.isNil or view.state in {closing, closed}:
@@ -90,7 +106,11 @@ proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   view.pendingUrl = url
   when defined(linux):
     linuxLoadUrl(view)
-  success()
+    return success()
+  elif defined(windows):
+    return windowsLoadUrl(view)
+  else:
+    return success()
 
 proc quit*(app: NativeApp): NativeResult =
   if app.isNil or app.state == finished:
@@ -99,6 +119,9 @@ proc quit*(app: NativeApp): NativeResult =
   when defined(linux):
     if app.state == running:
       linuxQuit(app)
+  elif defined(windows):
+    if app.state == running:
+      windowsQuit(app)
   success()
 
 proc close*(app: NativeApp): NativeResult =
@@ -112,5 +135,7 @@ proc run*(app: NativeApp): NativeResult =
 
   when defined(linux):
     return linuxRun(app)
+  elif defined(windows):
+    return windowsRun(app)
   else:
     failure(nativeError(unsupported, "app.run", detail = "native backend is unavailable"))
