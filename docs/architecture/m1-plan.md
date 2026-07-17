@@ -74,7 +74,7 @@ host:   ready             → accepted             → response    → response 
 - WSL clientはWindows Interopで`nimino-wsl-host.exe`を子プロセスとして起動します。
 - `stdin`/`stdout`はバイナリframe専用、`stderr`は診断専用です。標準出力にログを書きません。
 - frameは最大長、protocol version、session ID、request ID/event ID、method、payload、error、timeout、cancel、heartbeatを定義します。
-- clientがOS CSPRNGで生成する32 byte tokenを最初の`hello`だけに含めます。hostは認証完了前に操作を処理しません。
+- clientがOS CSPRNGで生成する32 byte tokenを、Windows Interop child専用の`NIMINO_WSL_HOST_TOKEN`と`WSLENV`でhostへ転送し、最初の`hello`にも含めます。hostは両値をconstant-time比較し、認証完了前に操作を処理しません。
 - hostは一client・一sessionで動作し、EOF、初期handshake timeout、またはshutdownでWindowを閉じ、native resourceを解放します。
 - listenerを開かないため、外部ホストから接続できません。WSL Interopが無効なら`unsupported`を返します。
 

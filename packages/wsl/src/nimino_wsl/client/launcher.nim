@@ -1,4 +1,4 @@
-import std/[osproc, sysrand]
+import std/[os, osproc, strutils, strtabs, sysrand]
 
 import ../protocol/[messages, versioning]
 import ./transport
@@ -20,6 +20,20 @@ proc newAuthenticationToken(): ProtocolResultOf[string] =
     result.value.add(hexDigits[int(value shr 4)])
     result.value.add(hexDigits[int(value and 0x0f)])
 
+proc childEnvironment(token: string): StringTableRef =
+  ## WSLENV is the explicit WSL-to-Windows propagation allow-list.  Do not put
+  ## the token in args, stdout, stderr, or a persistent parent environment.
+  result = newStringTable(modeCaseSensitive)
+  for key, value in envPairs():
+    result[key] = value
+
+  result["NIMINO_WSL_HOST_TOKEN"] = token
+  let currentWslEnv = getEnv("WSLENV")
+  var names = if currentWslEnv.len == 0: @[] else: currentWslEnv.split(':')
+  if "NIMINO_WSL_HOST_TOKEN" notin names:
+    names.add("NIMINO_WSL_HOST_TOKEN")
+  result["WSLENV"] = names.join(":")
+
 proc launchHost*(hostExecutable: string; hostArgs: openArray[string] = []):
     ProtocolResultOf[WslClient] =
   if hostExecutable.len == 0:
@@ -30,7 +44,12 @@ proc launchHost*(hostExecutable: string; hostArgs: openArray[string] = []):
     return failureOf[WslClient](token.failure)
 
   try:
-    let process = startProcess(hostExecutable, args = hostArgs, options = {poUsePath})
+    let process = startProcess(
+      hostExecutable,
+      args = hostArgs,
+      env = childEnvironment(token.value),
+      options = {poUsePath}
+    )
     let client = WslClient(process: process, nextRequestId: 1)
     let hello = ProtocolMessage(
       version: ProtocolVersion,

@@ -58,6 +58,8 @@ block summariesNeverExposeTokens:
   let summary = helloMessage().logSummary
   doAssert ValidToken notin summary
   doAssert "<redacted>" == ValidToken.redactedToken
+  doAssert ValidToken.secureEquals(ValidToken)
+  doAssert not ValidToken.secureEquals(repeat("cd", 32))
 
 block streamTransportRoundTrip:
   let stream = newStringStream()

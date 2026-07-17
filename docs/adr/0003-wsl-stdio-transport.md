@@ -14,7 +14,7 @@ WSLのNimアプリはWindows GUIを直接作らず、`nimino-wsl-host.exe`へ要
 WSL clientはWindows Interopで`nimino-wsl-host.exe`を子プロセスとして起動し、継承した`stdin`/`stdout`を唯一の双方向制御チャネルにする。これは列挙候補に加えて採用するtransportである。
 
 - stdoutは長さprefix付きバイナリframe専用、stderrは診断専用である。
-- clientはOS CSPRNGで32 byte tokenを作り、最初の`hello`にprotocol versionと共に送る。hostはhandshake timeout内に認証されない要求を処理しない。
+- clientはOS CSPRNGで32 byte tokenを作る。Windows Interop child専用の`NIMINO_WSL_HOST_TOKEN`環境変数に設定し、既存の`WSLENV`を保ったまま同名を追加してWindows hostへだけ転送する。tokenは最初の`hello`にも含め、hostは環境値とconstant-time比較する。hostはhandshake timeout内に認証されない要求を処理しない。
 - frameにはversion、session ID、request ID、event ID、method、payload、response/error、timeout、cancel、heartbeatを定義する。
 - 最大frame長とdecoder errorを定め、token/cookie/認証情報をstdout/stderr/logへ出さない。
 - 1 hostは1 client、1 sessionだけを扱う。EOF、shutdown、handshake timeoutでWindowを閉じ、native resourceを解放する。
@@ -33,6 +33,8 @@ WSLはWindows executableを起動でき、pipe/redirectionを使える。[WSLか
 | Hyper-V socket | WSLを一般VMとして扱う構成・管理者設定が必要 | 強い | 不採用 |
 
 Windows Named Pipeを将来採用する場合は、[Named Pipe security](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights)に従い明示DACLを必須とする。AF_UNIXは[Windows/WSL interop](https://devblogs.microsoft.com/commandline/windowswsl-interop-with-af_unix/)の制約を満たす実機スパイク後にのみ再検討する。
+
+Windows Interop childへの環境伝播は同一Windowsユーザーの任意processによる環境観測まで防ぐ認証境界ではない。親子が専有する継承stdio handleと組み合わせ、外部listenerを作らないことが主たる接続面の防御である。
 
 ## 帰結
 
