@@ -8,4 +8,4 @@ doAssert window.isOk
 
 let view = window.value.newWebView()
 doAssert view.isOk
-doAssert view.value.loadUrl("about:blank").isOk
+doAssert view.value.loadHtml("<main>Nimino Windows M1</main>").isOk

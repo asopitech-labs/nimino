@@ -8,6 +8,20 @@ proc linuxLoadUrl(view: NativeWebView) =
     let url = view.pendingUrl
     webkit_web_view_load_uri(cast[ptr WebKitWebView](view.platformView), cstring(url))
 
+proc linuxLoadHtml(view: NativeWebView) =
+  if view.platformView != nil:
+    let html = view.pendingHtml
+    webkit_web_view_load_html(cast[ptr WebKitWebView](view.platformView), cstring(html), nil)
+
+proc linuxLoadPendingContent(view: NativeWebView) =
+  case view.pendingContentKind
+  of urlContent:
+    view.linuxLoadUrl()
+  of htmlContent:
+    view.linuxLoadHtml()
+  of noContent:
+    discard
+
 proc linuxDisposeWindow(window: NativeWindow) =
   if window.state == closed:
     return
@@ -46,7 +60,7 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   view.platformView = g_object_ref_sink(cast[pointer](webView))
   view.state = ready
   gtk_window_set_child(gtkWindow, cast[pointer](webView))
-  view.linuxLoadUrl()
+  view.linuxLoadPendingContent()
   window.state = ready
   gtk_window_present(gtkWindow)
   success()

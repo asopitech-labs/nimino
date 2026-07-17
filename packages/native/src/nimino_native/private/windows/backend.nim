@@ -247,6 +247,24 @@ proc windowsLoadUrl(view: NativeWebView): NativeResult =
     return failure(hresultError("webview.loadUrl", status))
   success()
 
+proc windowsLoadHtml(view: NativeWebView): NativeResult =
+  if view.platformView == nil:
+    return success()
+  let html = newWideCString(view.pendingHtml)
+  let status = coreNavigateToString(view.platformView, html)
+  if not succeeded(status):
+    return failure(hresultError("webview.loadHtml", status))
+  success()
+
+proc windowsLoadPendingContent(view: NativeWebView): NativeResult =
+  case view.pendingContentKind
+  of urlContent:
+    view.windowsLoadUrl()
+  of htmlContent:
+    view.windowsLoadHtml()
+  of noContent:
+    success()
+
 proc windowsStartWebView(view: NativeWebView): NativeResult =
   let loader = view.window.app.windowsLoadLoader()
   if not loader.isOk:
@@ -385,7 +403,7 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
   if not resized.isOk:
     view.window.app.windowsFail(resized.failure)
     return S_OK
-  let loaded = view.windowsLoadUrl()
+  let loaded = view.windowsLoadPendingContent()
   if not loaded.isOk:
     view.window.app.windowsFail(loaded.failure)
   S_OK

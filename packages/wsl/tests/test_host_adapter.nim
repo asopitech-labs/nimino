@@ -42,3 +42,18 @@ block shutdownDoesNotNeedPayload:
   let stopped = adapter.handleRequest(requestMessage("app.shutdown", ""))
   doAssert stopped.isOk
   doAssert stopped.value.kind == shutdownHost
+
+block htmlLoadStartsTheUiLoop:
+  let adapter = newHostAdapter()
+  let window = adapter.handleRequest(requestMessage("native.window.create",
+    "{\"title\":\"HTML\",\"width\":320,\"height\":200}"))
+  doAssert window.isOk
+  let windowId = parseJson(window.value.payload)["windowId"].getStr()
+  let view = adapter.handleRequest(requestMessage("native.webview.create",
+    $(%*{"windowId": windowId})))
+  doAssert view.isOk
+  let webViewId = parseJson(view.value.payload)["webViewId"].getStr()
+  let loaded = adapter.handleRequest(requestMessage("native.webview.loadHtml",
+    $(%*{"webViewId": webViewId, "html": "<main>HTML</main>"})))
+  doAssert loaded.isOk
+  doAssert loaded.value.kind == startUiLoop

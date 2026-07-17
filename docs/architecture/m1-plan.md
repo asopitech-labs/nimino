@@ -6,9 +6,9 @@
 
 | 対象 | 実装済み | 確認済み | 未確認・理由 |
 | --- | --- | --- | --- |
-| Linux | GTK 4/ WebKitGTK 6.0 Window、WebView、URL、title、終了 | `make test`、`make linux-smoke` | 実表示の拡張機能はM2以降 |
-| Windows | Win32 Window、STA、WebView2 Environment/Controller/Core、Bounds、URL、COM明示解放 | `make windows-cross`でx64 PEとFFI/COM callback ABIを検査 | この開発機にはWebView2 Loader/Runtimeがなく、実GUI・URL・resizeを未実行 |
-| WSL | CSPRNG token、`WSLENV`転送、constant-time認証、stdio frame、Windows host、object table、shutdown | `make test`、`make wsl-host-cross`、`make wsl-host-smoke`、`make wsl-client-smoke`（通常client APIでWindows childを起動し、hello→Window→WebView→shutdown） | URL要求からWindows WebView表示までの成功は上記Runtime不足で未実行 |
+| Linux | GTK 4/ WebKitGTK 6.0 Window、WebView、URL/HTML、title、終了 | `make test`、`make linux-smoke` | 実表示の拡張機能はM2以降 |
+| Windows | Win32 Window、STA、WebView2 Environment/Controller/Core、Bounds、URL/HTML、COM明示解放 | `make windows-cross`でx64 PEとFFI/COM callback ABIを検査 | この開発機にはWebView2 Loader/Runtimeがなく、実GUI・URL・HTML・resizeを未実行 |
+| WSL | CSPRNG token、`WSLENV`転送、constant-time認証、stdio frame、Windows host、object table、URL/HTML要求、shutdown | `make test`、`make wsl-host-cross`、`make wsl-host-smoke`、`make wsl-client-smoke`（通常client APIでWindows childを起動し、hello→Window→WebView→shutdown） | URL/HTML要求からWindows WebView表示までの成功は上記Runtime不足で未実行 |
 
 従ってM1は**完了ではない**。Windowsにarchitecture-matched `WebView2Loader.dll`とEvergreen Runtimeを用意したCI/開発機で、Window→WebView→URL→resize→title→closeおよびWSLのURL要求を実機確認するまで保留とする。
 
@@ -70,14 +70,14 @@
 | GObject | `g_signal_connect_data`, `g_signal_handler_disconnect`, `g_object_ref_sink`, `g_object_unref` | callbackと参照寿命 |
 | GLib | `g_main_context_invoke_full` | workerからUI threadへの復帰 |
 
-M2で追加するAPIは`webkit_web_view_load_html`、`webkit_web_view_evaluate_javascript`/`_finish`、`WebKitUserContentManager`のmessage handler、`WebKitWebView::decide-policy`、`::create`、`::load-changed`です。GTKのレイアウトがWindowリサイズへ追従するため、WindowsのようなBounds更新は不要です。
+M2で追加するAPIは`webkit_web_view_evaluate_javascript`/`_finish`、`WebKitUserContentManager`のmessage handler、`WebKitWebView::decide-policy`、`::create`、`::load-changed`です。HTML読込にはM1から`webkit_web_view_load_html`を使用します。GTKのレイアウトがWindowリサイズへ追従するため、WindowsのようなBounds更新は不要です。
 
 公式根拠: [GTK application initialization](https://docs.gtk.org/gtk4/initialization.html)、[GTK threading](https://docs.gtk.org/gtk4/section-threading.html)、[WebKitWebView](https://webkitgtk.org/reference/webkit2gtk/stable/class.WebView.html)、[JavaScript evaluation](https://webkitgtk.org/reference/webkit2gtk/stable/method.WebView.evaluate_javascript.html)。
 
 ## WSL操作一覧（M1）
 
 ```text
-client: spawn host → hello(version, token) → createWindow → loadUrl → shutdown
+client: spawn host → hello(version, token) → createWindow → loadUrl/loadHtml → shutdown
 host:   ready             → accepted             → response    → response → graceful exit
 ```
 

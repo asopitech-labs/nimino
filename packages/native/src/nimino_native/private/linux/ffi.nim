@@ -49,3 +49,5 @@ proc webkit_web_view_new*(): ptr WebKitWebView
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_load_uri*(view: ptr WebKitWebView; uri: cstring)
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_web_view_load_html*(view: ptr WebKitWebView; content: cstring; baseUri: cstring)
+  {.cdecl, importc, dynlib: LibWebKit.}

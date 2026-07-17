@@ -35,5 +35,6 @@ block windowAndViewRemainSeparate:
   let view = window.value.newWebView()
   doAssert view.isOk
   doAssert view.value.loadUrl("about:blank").isOk
+  doAssert view.value.loadHtml("<main>Foundation</main>").isOk
   doAssert window.value.setTitle("Foundation updated").isOk
   doAssert not window.value.newWebView().isOk

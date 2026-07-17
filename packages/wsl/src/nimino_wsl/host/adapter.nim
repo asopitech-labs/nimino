@@ -122,23 +122,28 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   inc adapter.windowViewCounts[windowId.value]
   successOf(HostAction(kind: noHostAction, payload: encodedId("webViewId", webViewId)))
 
-proc handleLoadUrl(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;
+                       contentField, operation: string): ProtocolResultOf[HostAction] =
   let webViewId = payload.requiredId("webViewId")
-  let url = payload.requiredString("url")
+  let content = payload.requiredString(contentField)
   if not webViewId.isOk:
     return failureOf[HostAction](webViewId.failure)
-  if not url.isOk:
-    return failureOf[HostAction](url.failure)
+  if not content.isOk:
+    return failureOf[HostAction](content.failure)
   if not adapter.webViews.hasKey(webViewId.value):
     return errorAction("unknown webViewId")
   if adapter.uiStartRequested:
-    return errorAction("URL loading is closed after the UI loop starts")
+    return errorAction("content loading is closed after the UI loop starts")
   if not adapter.allWindowsHaveViews():
     return errorAction("every window must have a WebView before the UI loop starts")
 
-  let loaded = adapter.webViews[webViewId.value].loadUrl(url.value)
+  let loaded =
+    if operation == "native.webview.loadUrl":
+      adapter.webViews[webViewId.value].loadUrl(content.value)
+    else:
+      adapter.webViews[webViewId.value].loadHtml(content.value)
   if not loaded.isOk:
-    return nativeFailure("native.webview.loadUrl", loaded)
+    return nativeFailure(operation, loaded)
 
   adapter.uiStartRequested = true
   successOf(HostAction(kind: startUiLoop, payload: "{}"))
@@ -162,6 +167,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
   of "native.webview.create":
     adapter.handleWebViewCreate(payload.value)
   of "native.webview.loadUrl":
-    adapter.handleLoadUrl(payload.value)
+    adapter.handleLoadContent(payload.value, "url", message.methodName)
+  of "native.webview.loadHtml":
+    adapter.handleLoadContent(payload.value, "html", message.methodName)
   else:
     errorAction("method is not allowed")

@@ -14,6 +14,11 @@ type
     running
     finished
 
+  NativeContentKind = enum
+    noContent
+    urlContent
+    htmlContent
+
   NativeApp* = ref object
     state: NativeAppState
     capabilities: CapabilitySet
@@ -43,7 +48,9 @@ type
   NativeWebView* = ref object
     window: NativeWindow
     state: NativeState
+    pendingContentKind: NativeContentKind
     pendingUrl: string
+    pendingHtml: string
     platformView: pointer
     platformEnvironment: pointer
     platformController: pointer
@@ -108,11 +115,27 @@ proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   if url.len == 0:
     return failure(nativeError(webViewError, "webview.loadUrl", detail = "URL must not be empty"))
   view.pendingUrl = url
+  view.pendingHtml.setLen(0)
+  view.pendingContentKind = urlContent
   when defined(linux):
-    linuxLoadUrl(view)
+    linuxLoadPendingContent(view)
     return success()
   elif defined(windows):
-    return windowsLoadUrl(view)
+    return windowsLoadPendingContent(view)
+  else:
+    return success()
+
+proc loadHtml*(view: NativeWebView; html: string): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.loadHtml"))
+  view.pendingHtml = html
+  view.pendingUrl.setLen(0)
+  view.pendingContentKind = htmlContent
+  when defined(linux):
+    linuxLoadPendingContent(view)
+    return success()
+  elif defined(windows):
+    return windowsLoadPendingContent(view)
   else:
     return success()
 

@@ -1,6 +1,6 @@
 # `nimino-native` 公開API案
 
-**状態: M0 API案。未実装・未安定。**
+**状態: M1部分実装。M2以降の操作は設計案であり、未実装です。**
 
 このAPIはWindow/WebViewと低水準イベントだけを提供します。RPC、プロファイル、権限ポリシー、アセット配信、URL包装、WSL通信を含めません。
 
@@ -83,8 +83,7 @@ proc newWebView*(window: NativeWindow, bounds: Option[Rect] = none(Rect)):
   NativeResultOf[NativeWebView]
 proc close*(view: NativeWebView): NativeResult
 proc loadUrl*(view: NativeWebView, url: string): NativeResult
-proc loadHtml*(view: NativeWebView, html: string, baseUrl = "about:blank"):
-  NativeResult
+proc loadHtml*(view: NativeWebView, html: string): NativeResult
 proc evalJavaScript*(view: NativeWebView, script: string): Future[NativeResultOf[string]]
 proc onMessage*(view: NativeWebView, callback: proc(message: string) {.gcsafe.})
 proc onNavigationStarting*(view: NativeWebView,
@@ -96,7 +95,7 @@ proc onNewWindowRequested*(view: NativeWebView,
 proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.})
 ```
 
-`newWebView`が`pending`の間でも、M1では最初の`loadUrl`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。M2以降では`loadHtml`、`evalJavaScript`、message callbackを追加します。
+`newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。M2以降では`evalJavaScript`とmessage callbackを追加します。HTMLのbase URL指定は未実装で、将来の拡張候補です。
 
 ## 利用イメージ
 
