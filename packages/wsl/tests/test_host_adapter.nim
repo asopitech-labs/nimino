@@ -1,4 +1,4 @@
-import std/json
+import std/[asyncfutures, json]
 
 import nimino_wsl
 
@@ -57,3 +57,9 @@ block htmlLoadStartsTheUiLoop:
     $(%*{"webViewId": webViewId, "html": "<main>HTML</main>"})))
   doAssert loaded.isOk
   doAssert loaded.value.kind == startUiLoop
+
+  let evaluated = adapter.handleRequest(requestMessage("native.webview.evalJavaScript",
+    $(%*{"webViewId": webViewId, "script": "document.title"})))
+  doAssert evaluated.isOk
+  doAssert evaluated.value.kind == deferredResponse
+  doAssert not evaluated.value.evaluation.finished

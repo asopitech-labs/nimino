@@ -1,7 +1,7 @@
 ## Host-side M1 command adapter.  It owns the native object table but not the
 ## stdio transport or the Windows UI thread.
 
-import std/[json, strutils, tables]
+import std/[asyncfutures, json, strutils, tables]
 
 import nimino_native except success, successOf, failure, failureOf
 
@@ -11,11 +11,13 @@ type
   HostActionKind* = enum
     noHostAction
     startUiLoop
+    deferredResponse
     shutdownHost
 
   HostAction* = object
     kind*: HostActionKind
     payload*: string
+    evaluation*: Future[NativeResultOf[string]]
 
   HostAdapter* = ref object
     app*: NativeApp
@@ -148,6 +150,23 @@ proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;
   adapter.uiStartRequested = true
   successOf(HostAction(kind: startUiLoop, payload: "{}"))
 
+proc handleEvalJavaScript(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  let webViewId = payload.requiredId("webViewId")
+  let script = payload.requiredString("script")
+  if not webViewId.isOk:
+    return failureOf[HostAction](webViewId.failure)
+  if not script.isOk:
+    return failureOf[HostAction](script.failure)
+  if not adapter.uiStartRequested:
+    return errorAction("JavaScript evaluation requires the UI loop")
+  if not adapter.webViews.hasKey(webViewId.value):
+    return errorAction("unknown webViewId")
+
+  successOf(HostAction(
+    kind: deferredResponse,
+    evaluation: adapter.webViews[webViewId.value].evalJavaScript(script.value)
+  ))
+
 proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolResultOf[HostAction] =
   if adapter.isNil:
     return errorAction("host adapter is unavailable")
@@ -170,5 +189,7 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleLoadContent(payload.value, "url", message.methodName)
   of "native.webview.loadHtml":
     adapter.handleLoadContent(payload.value, "html", message.methodName)
+  of "native.webview.evalJavaScript":
+    adapter.handleEvalJavaScript(payload.value)
   else:
     errorAction("method is not allowed")

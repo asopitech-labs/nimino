@@ -4,7 +4,7 @@
 ## setup requests synchronously.  After the UI loop starts, a Win32 timer calls
 ## the non-blocking stdio poller so shutdown/EOF is handled on that same thread.
 
-import std/[os, streams, sysrand]
+import std/[asyncfutures, json, os, streams, sysrand]
 
 import nimino_native except success, successOf, failure, failureOf
 
@@ -13,11 +13,16 @@ import ../client/transport
 import ../protocol/[authentication, messages, versioning]
 
 type
+  PendingEvaluation = object
+    request: ProtocolMessage
+    future: Future[NativeResultOf[string]]
+
   HostState = ref object
     adapter: HostAdapter
     input: HostInput
     output: Stream
     sessionId: string
+    pendingEvaluations: seq[PendingEvaluation]
 
 proc sessionIdFromRandom(): string =
   let bytes = urandom(16)
@@ -58,6 +63,29 @@ proc stopForProtocolError(state: HostState; message: ProtocolMessage; detail: st
   discard state.writeMessage(state.responseFor(message, error = detail))
   discard state.adapter.app.close()
 
+proc flushEvaluations(state: HostState) =
+  var index = 0
+  while index < state.pendingEvaluations.len:
+    let pending = state.pendingEvaluations[index]
+    if not pending.future.finished:
+      inc index
+      continue
+
+    var payload = ""
+    var error = ""
+    if pending.future.failed:
+      error = "native.webview.evalJavaScript failed"
+    else:
+      let evaluation = pending.future.read()
+      if evaluation.isOk:
+        payload = $(%*{"result": evaluation.value})
+      else:
+        error = "native.webview.evalJavaScript failed: " & evaluation.failure.operation
+    if not state.writeMessage(state.responseFor(pending.request, payload, error)):
+      discard state.adapter.app.close()
+      return
+    state.pendingEvaluations.delete(index)
+
 proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
   let session = state.sessionId.validateSessionMessage(message)
   if not session.isOk:
@@ -71,9 +99,12 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
       if not state.writeMessage(state.responseFor(message, error = action.failure.detail)):
         discard state.adapter.app.close()
       return
-    discard state.writeMessage(state.responseFor(message, payload = action.value.payload))
-    if action.value.kind == shutdownHost:
-      discard state.adapter.app.close()
+    if action.value.kind == deferredResponse:
+      state.pendingEvaluations.add(PendingEvaluation(request: message, future: action.value.evaluation))
+    else:
+      discard state.writeMessage(state.responseFor(message, payload = action.value.payload))
+      if action.value.kind == shutdownHost:
+        discard state.adapter.app.close()
   of shutdown:
     discard state.writeMessage(state.responseFor(message, payload = "{}"))
     discard state.adapter.app.close()
@@ -89,6 +120,7 @@ proc pollHost(state: HostState) =
     return
   for message in state.input.takePending():
     state.handleRunningMessage(message)
+  state.flushEvaluations()
 
 proc runHost(): int =
   let expectedToken = getEnv("NIMINO_WSL_HOST_TOKEN")
@@ -157,11 +189,17 @@ proc runHost(): int =
     if not action.isOk:
       discard state.writeMessage(state.responseFor(message, error = action.failure.detail))
       continue
+    if action.value.kind == deferredResponse:
+      discard state.writeMessage(state.responseFor(message,
+        error = "JavaScript evaluation requires the UI loop"))
+      continue
     if not state.writeMessage(state.responseFor(message, payload = action.value.payload)):
       discard state.adapter.app.close()
       return 2
     case action.value.kind
     of noHostAction:
+      discard
+    of deferredResponse:
       discard
     of shutdownHost:
       discard state.adapter.app.close()
@@ -172,6 +210,7 @@ proc runHost(): int =
         state.writeEvent("app.error", "", configured.failure.operation)
         return 2
       let finished = state.adapter.app.run()
+      state.flushEvaluations()
       if not finished.isOk:
         state.writeEvent("app.error", "", finished.failure.operation)
         return 2
