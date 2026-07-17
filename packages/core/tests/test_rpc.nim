@@ -16,6 +16,9 @@ proc response(messages: seq[string]; index = 0): JsonNode =
   doAssert messages.len > index
   parseJson(messages[index])
 
+type Settings = object
+  theme: string
+
 block explicitAllowListAndSyncResponse:
   var messages: seq[string]
   let registry = newRpcRegistry(proc(message: string) = messages.add(message))
@@ -76,3 +79,22 @@ block notificationsAndMalformedMessagesDoNotExposeHandlers:
     "nimino": "rpc", "kind": "notification", "method": "telemetry.record"
   }), 1_000)
   doAssert notifications == 1
+
+block typedHandlersRemainExplicitAndSerializeJson:
+  var messages: seq[string]
+  let registry = newRpcRegistry(proc(message: string) = messages.add(message))
+  doAssert registry.registerTyped("settings.load", proc(): Settings =
+    Settings(theme: "dark")
+  )
+  doAssert registry.registerTypedAsync("settings.echo",
+    proc(settings: Settings): Future[Settings] =
+      let completed = newFuture[Settings]("nimino.rpc.test.typed")
+      completed.complete(settings)
+      completed
+  )
+  doAssert registry.handleMessage(request("typed-one", "settings.load"), 1_000)
+  doAssert messages.response()["result"]["theme"].getStr() == "dark"
+  doAssert registry.handleMessage(request("typed-two", "settings.echo",
+    %*{"theme": "light"}), 2_000)
+  registry.tick(2_000)
+  doAssert messages.response(1)["result"]["theme"].getStr() == "light"

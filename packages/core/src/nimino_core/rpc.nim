@@ -4,7 +4,7 @@
 ## does not reflect Nim symbols, expose OS APIs, or infer a callable surface
 ## from arbitrary types.
 
-import std/[asyncfutures, json, strutils, tables, times]
+import std/[asyncfutures, json, jsonutils, strutils, tables, times]
 
 const
   DefaultRpcTimeoutMs* = 30_000'i64
@@ -85,6 +85,76 @@ proc registerSync*(registry: RpcRegistry; methodName: string;
     except CatchableError:
       future.complete(rpcFailure(rpcError(handlerFailed, "RPC handler raised an exception")))
     future
+  )
+
+proc typedFailure(): RpcResult =
+  rpcFailure(rpcError(invalidRequest, "RPC parameters do not match the registered type"))
+
+proc encodeTypedFuture[T](source: Future[T]): Future[RpcResult] =
+  let target = newFuture[RpcResult]("nimino.rpc.typed")
+  if source.isNil:
+    target.complete(rpcFailure(rpcError(handlerFailed, "RPC handler did not return a Future")))
+    return target
+  source.addCallback(proc(completed: Future[T]) {.gcsafe.} =
+    if target.finished:
+      return
+    if completed.failed:
+      target.complete(rpcFailure(rpcError(handlerFailed, "RPC handler failed")))
+      return
+    try:
+      target.complete(rpcSuccess(completed.read().toJson()))
+    except CatchableError:
+      target.complete(rpcFailure(rpcError(handlerFailed, "RPC result is not JSON serializable")))
+  )
+  target
+
+proc registerTyped*[R](registry: RpcRegistry; methodName: string;
+                       handler: proc(): R {.closure.}): bool =
+  if handler.isNil:
+    return false
+  registry.registerSync(methodName, proc(params: JsonNode): RpcResult =
+    try:
+      rpcSuccess(handler().toJson())
+    except CatchableError:
+      typedFailure()
+  )
+
+proc registerTyped*[T, R](registry: RpcRegistry; methodName: string;
+                          handler: proc(params: T): R {.closure.}): bool =
+  if handler.isNil:
+    return false
+  registry.registerSync(methodName, proc(params: JsonNode): RpcResult =
+    try:
+      rpcSuccess(handler(params.jsonTo(T)).toJson())
+    except CatchableError:
+      typedFailure()
+  )
+
+proc registerTypedAsync*[R](registry: RpcRegistry; methodName: string;
+                            handler: proc(): Future[R] {.closure.}): bool =
+  if handler.isNil:
+    return false
+  registry.register(methodName, proc(params: JsonNode): Future[RpcResult] =
+    try:
+      handler().encodeTypedFuture()
+    except CatchableError:
+      let failed = newFuture[RpcResult]("nimino.rpc.typedAsync")
+      failed.complete(rpcFailure(rpcError(handlerFailed, "RPC handler raised an exception")))
+      failed
+  )
+
+proc registerTypedAsync*[T, R](registry: RpcRegistry; methodName: string;
+                               handler: proc(params: T): Future[R] {.closure.}): bool =
+  if handler.isNil:
+    return false
+  registry.register(methodName, proc(params: JsonNode): Future[RpcResult] =
+    try:
+      handler(params.jsonTo(T)).encodeTypedFuture()
+    except CatchableError:
+      let failed = newFuture[RpcResult]("nimino.rpc.typedAsync")
+      failed.complete(rpcFailure(rpcError(invalidRequest,
+        "RPC parameters do not match the registered type")))
+      failed
   )
 
 proc errorCodeName(code: RpcErrorCode): string =

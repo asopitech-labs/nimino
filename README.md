@@ -2,7 +2,7 @@
 
 Nimをホスト言語に、OS公式APIの薄いFFIでネイティブWindowとWebViewを扱う、軽量なクロスプラットフォームWeb UIデスクトップアプリケーション基盤です。
 
-> M0（調査・設計）は完了し、M2とM3を部分実装中です。Linux GTK 4/WebKitGTK 6.0ではWindow/WebView、URL/HTML、JavaScript評価、文字列message、ナビゲーション開始/完了、基本エラー通知をXvfb smokeで確認済みです。`nimino-core`はWindows/Linux向けApp/Window facadeとWindow単位の許可リストJSON RPCを実装し、Linuxで同期往復に加えて非同期Future完了とtimeout responseを実WebViewで確認しました。WSL向けcore build（`-d:niminoWsl`）はLinux GUI FFIをリンクせず、通常の`newApp`からWindows hostを起動してWindow/WebView setup・shutdownまで実機確認済みです。新規Window要求はWindows/Linuxで明示拒否しWSL hostがeventを中継しますが、実ユーザー操作による要求eventはGUI CIで未確認です。Windowsは同じnative/core機能のWin32/WebView2 direct FFIとx64クロスコンパイル済みです。現在の開発機にはWebView2 Loader/Runtimeがないため、Windows/WSLでの実WebView表示、JavaScript評価、message受信、ナビゲーションeventは未検証です。WSL側で任意のナビゲーション開始callbackによる同期中止、WSLのasync/timeout実行、パッケージ生成は未実装です。
+> M0（調査・設計）は完了し、M2とM3を部分実装中です。Linux GTK 4/WebKitGTK 6.0ではWindow/WebView、URL/HTML、JavaScript評価、文字列message、ナビゲーション開始/完了、基本エラー通知をXvfb smokeで確認済みです。`nimino-core`はWindows/Linux向けApp/Window facade、明示許可リストJSON RPC、型付き`registerTyped`/`registerTypedAsync`を実装し、Linuxで同期往復に加えて非同期Future完了とtimeout responseを実WebViewで確認しました。WSL向けcore build（`-d:niminoWsl`）はLinux GUI FFIをリンクせず、通常の`newApp`からWindows hostを起動してWindow/WebView setup・shutdownまで実機確認済みです。新規Window要求はWindows/Linuxで明示拒否しWSL hostがeventを中継しますが、実ユーザー操作による要求eventはGUI CIで未確認です。Windowsは同じnative/core機能のWin32/WebView2 direct FFIとx64クロスコンパイル済みです。現在の開発機にはWebView2 Loader/Runtimeがないため、Windows/WSLでの実WebView表示、JavaScript評価、message受信、ナビゲーションeventは未検証です。WSL側で任意のナビゲーション開始callbackによる同期中止、WSLのasync/timeout実行、パッケージ生成は未実装です。
 
 ## 目標
 

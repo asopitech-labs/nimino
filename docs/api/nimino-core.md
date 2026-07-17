@@ -1,6 +1,6 @@
 # `nimino-core` 最小公開API案
 
-**状態: M3部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrapを実装した。Linuxでは実WebViewのrequest/response/notification往復を確認済みで、Windowsはx64クロスコンパイル済み（Runtime実行は未確認）。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、Linux GUI FFIをリンクしない。実WebView2 Runtime上の読込/評価、型抽出register macro、JSON codec、プロファイルは未実装。**
+**状態: M3部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrapを実装した。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録できる。Linuxでは実WebViewのrequest/response/notification往復を確認済みで、Windowsはx64クロスコンパイル済み（Runtime実行は未確認）。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、Linux GUI FFIをリンクしない。実WebView2 Runtime上の読込/評価、型抽出register macro、TypeScript生成、プロファイルは未実装。**
 
 `nimino-core`は通常の利用者向けの高水準APIです。`nimino-native`を内包してもFFI型を公開せず、`nimino-pack`へはこの公開面だけを提供します。
 
@@ -46,7 +46,20 @@ window.rpc.register("files.save") do (request: SaveRequest) -> Future[SaveResult
 
 登録APIは明示的なメソッド名を持つ許可リストです。任意のNim関数、OS API、または`ref object`を自動公開しません。各Windowは独立したRPC registryとrequest ID空間を持ち、request/response、notification、timeout、cancel、JSON errorを扱います。
 
-`register`の型抽出マクロ、JSON codec、TypeScript定義生成の可否はM3の設計スパイクです。これはnative層へ追加しません。
+`registerTyped`と`registerTypedAsync`は、引数なしまたは一つのJSON codec対応入力型を受け、戻り値（または`Future`の戻り値）をJSON化する。これらも明示メソッド名の許可リストであり、reflectionによる任意関数公開ではない。`register`の型抽出macroとTypeScript定義生成は未実装であり、native層へ追加しない。
+
+```nim
+type Settings = object
+  theme: string
+
+discard window.rpc.registerTyped("settings.load", proc(): Settings =
+  Settings(theme: "dark")
+)
+
+discard window.rpc.registerTypedAsync("settings.save",
+  proc(settings: Settings): Future[Settings] = saveSettings(settings)
+)
+```
 
 ## 実装済みRPCとWebView bridge
 
