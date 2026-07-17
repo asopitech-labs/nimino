@@ -31,10 +31,20 @@ runtime are not copied into this repository.
 * `ICoreWebView2::ExecuteScript` (vtable slot 29)
 * `ICoreWebView2ExecuteScriptCompletedHandler` and IID
   `49511172-cc67-4bca-9923-137112f4c4cc`
+* `ICoreWebView2::{add_WebMessageReceived, remove_WebMessageReceived}`
+  (vtable slots 34 and 35)
+* `ICoreWebView2WebMessageReceivedEventHandler` and IID
+  `57213f19-00e6-49fa-8e07-898ea01ecbd2`
+* `ICoreWebView2WebMessageReceivedEventArgs::TryGetWebMessageAsString`
+  (vtable slot 5)
 
 The completed handler receives an `HRESULT` and a borrowed JSON-encoded UTF-16
 result. Nimino copies the result before the callback returns and explicitly
 holds the associated Nim request from submission through completion.
+
+The WebMessage handler copies only a string result and releases every returned
+`LPWSTR` with `CoTaskMemFree`. It stores the event token and removes the handler
+before releasing the CoreWebView2 object.
 
 The vtable slot order and callback signatures were checked against the header
 above.  Later features must be checked against a recorded SDK version before

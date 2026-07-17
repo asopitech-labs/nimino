@@ -4,6 +4,7 @@ import ./[capabilities, errors]
 
 type
   NativeIdleHandler* = proc() {.closure.}
+  NativeMessageHandler* = proc(message: string) {.closure.}
 
   NativeState* = enum
     pending
@@ -61,6 +62,11 @@ type
     platformView: pointer
     platformEnvironment: pointer
     platformController: pointer
+    platformMessageManager: pointer
+    messageSignalHandler: culong
+    messageRegistrationToken: int64
+    messageRegistered: bool
+    messageHandler: NativeMessageHandler
     pendingScripts: seq[NativeScriptRequest]
     activeScripts: seq[NativeScriptRequest]
 
@@ -119,6 +125,15 @@ proc dispatchPendingScripts(view: NativeWebView) =
   view.pendingScripts.setLen(0)
   for request in pending:
     view.startScriptRequest(request)
+
+proc dispatchMessage(view: NativeWebView; message: string) =
+  if view.isNil or view.state in {closing, closed} or view.messageHandler.isNil:
+    return
+  try:
+    view.messageHandler(message)
+  except CatchableError:
+    ## A user callback must not unwind through a native C/COM callback.
+    discard
 
 when defined(linux):
   import ./private/linux/ffi
@@ -218,6 +233,12 @@ proc evalJavaScript*(view: NativeWebView; script: string): Future[NativeResultOf
     view.pendingScripts.add(request)
     return
   view.startScriptRequest(request)
+
+proc onMessage*(view: NativeWebView; handler: NativeMessageHandler): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.onMessage"))
+  view.messageHandler = handler
+  success()
 
 proc quit*(app: NativeApp): NativeResult =
   if app.isNil or app.state == finished:

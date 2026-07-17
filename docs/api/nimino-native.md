@@ -1,6 +1,6 @@
 # `nimino-native` 公開API案
 
-**状態: M2部分実装。`evalJavaScript` は native Windows/Linux と WSL host adapter に実装済みですが、message/event と Windows Runtime 上の実行確認は未完了です。その他の M2 以降の操作は設計案です。**
+**状態: M2部分実装。`evalJavaScript` と文字列 `onMessage` は native Windows/Linux と WSL host adapter に実装済みですが、Windows Runtime 上の実行確認、navigation/event、RPC は未完了です。その他の M2 以降の操作は設計案です。**
 
 このAPIはWindow/WebViewと低水準イベントだけを提供します。RPC、プロファイル、権限ポリシー、アセット配信、URL包装、WSL通信を含めません。
 
@@ -98,6 +98,8 @@ proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.}
 `newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。HTMLのbase URL指定は未実装で、将来の拡張候補です。
 
 `evalJavaScript` は pending の View へも要求でき、ready 後に一度だけ実行します。成功値は JavaScript の評価値を JSON 化した UTF-8 文字列です（文字列値なら JSON の引用符を含みます）。Linux は WebKitGTK の `evaluate_javascript`、Windows は WebView2 の `ExecuteScript` で UI thread 上の完了 callback から Future を完了します。WSL host は完了済み Future を Win32 timer 上で polling し、同じ request ID の response として `{"result":"…"}` を返します。Linux 実行スモーク、WSL adapter 単体、Windows/WSL host クロスコンパイルは済んでいますが、Windows Runtime 上の実行と WSL の評価往復実行は未確認です。
+
+`onMessage` は文字列だけを受け入れます。Windows の Web コンテンツは `window.chrome.webview.postMessage("…")`、Linux の Web コンテンツは `window.webkit.messageHandlers.nimino.postMessage("…")` を使用します。非文字列メッセージは native 層で破棄します。Linux の実 WebView スモークは handler の登録、文字列受信、signal 切断まで確認しています。WSL host は `native.webview.message` event として中継し、client は response を待つ間に受けた event を `takeEvents()` で取得できます。Windows Runtime と WSL 往復での実行確認は未完了です。
 
 ## 利用イメージ
 

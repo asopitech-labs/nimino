@@ -8,6 +8,10 @@ import nimino_native except success, successOf, failure, failureOf
 import ../protocol/messages
 
 type
+  HostWebMessage* = object
+    webViewId*: uint64
+    message*: string
+
   HostActionKind* = enum
     noHostAction
     startUiLoop
@@ -27,6 +31,7 @@ type
     webViews: Table[uint64, NativeWebView]
     windowViewCounts: Table[uint64, int]
     uiStartRequested: bool
+    pendingMessages: seq[HostWebMessage]
 
 proc newHostAdapter*(): HostAdapter =
   HostAdapter(app: newNativeApp(), nextWindowId: 1, nextWebViewId: 1)
@@ -120,9 +125,23 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
 
   let webViewId = adapter.nextWebViewId
   inc adapter.nextWebViewId
+  let adapterPointer = cast[pointer](adapter)
+  let configured = created.value.onMessage(proc(message: string) =
+    let owner = cast[HostAdapter](adapterPointer)
+    if owner != nil:
+      owner.pendingMessages.add(HostWebMessage(webViewId: webViewId, message: message))
+  )
+  if not configured.isOk:
+    return nativeFailure("native.webview.onMessage", configured)
   adapter.webViews[webViewId] = created.value
   inc adapter.windowViewCounts[windowId.value]
   successOf(HostAction(kind: noHostAction, payload: encodedId("webViewId", webViewId)))
+
+proc takeMessages*(adapter: HostAdapter): seq[HostWebMessage] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingMessages
+  adapter.pendingMessages.setLen(0)
 
 proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;
                        contentField, operation: string): ProtocolResultOf[HostAction] =

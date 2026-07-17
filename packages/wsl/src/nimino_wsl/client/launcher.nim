@@ -8,6 +8,7 @@ type
     process: Process
     sessionId*: string
     nextRequestId*: uint64
+    events: seq[ProtocolMessage]
 
 proc newAuthenticationToken(): ProtocolResultOf[string] =
   let bytes = urandom(32)
@@ -155,20 +156,31 @@ proc receiveResponse*(client: WslClient; requestId: uint64): ProtocolResultOf[Pr
   if client.isNil or client.process.isNil:
     return failureOf[ProtocolMessage](protocolError(invalidMessage, "WSL client is closed"))
 
-  let received = client.process.outputStream.readMessageFrom()
-  if not received.isOk:
-    return failureOf[ProtocolMessage](received.failure)
-  let hostResponse = received.value
-  if hostResponse.kind != ProtocolMessageKind.response or hostResponse.sessionId != client.sessionId or
-      hostResponse.requestId != requestId:
-    return failureOf[ProtocolMessage](protocolError(invalidMessage, "host response does not match request"))
-  if not hostResponse.version.validateVersion.isOk:
-    return failureOf[ProtocolMessage](protocolError(unsupportedVersion, "host version mismatch"))
-  if hostResponse.authenticationToken.len != 0:
-    return failureOf[ProtocolMessage](protocolError(authenticationFailed, "host returned authentication material"))
-  if hostResponse.error.len != 0:
-    return failureOf[ProtocolMessage](protocolError(invalidMessage, "host rejected request: " & hostResponse.error))
-  successOf(hostResponse)
+  while true:
+    let received = client.process.outputStream.readMessageFrom()
+    if not received.isOk:
+      return failureOf[ProtocolMessage](received.failure)
+    let hostResponse = received.value
+    if hostResponse.sessionId != client.sessionId:
+      return failureOf[ProtocolMessage](protocolError(invalidMessage, "host response has an unknown session"))
+    if not hostResponse.version.validateVersion.isOk:
+      return failureOf[ProtocolMessage](protocolError(unsupportedVersion, "host version mismatch"))
+    if hostResponse.authenticationToken.len != 0:
+      return failureOf[ProtocolMessage](protocolError(authenticationFailed, "host returned authentication material"))
+    if hostResponse.kind == event:
+      client.events.add(hostResponse)
+      continue
+    if hostResponse.kind != ProtocolMessageKind.response or hostResponse.requestId != requestId:
+      return failureOf[ProtocolMessage](protocolError(invalidMessage, "host response does not match request"))
+    if hostResponse.error.len != 0:
+      return failureOf[ProtocolMessage](protocolError(invalidMessage, "host rejected request: " & hostResponse.error))
+    return successOf(hostResponse)
+
+proc takeEvents*(client: WslClient): seq[ProtocolMessage] =
+  if client.isNil:
+    return @[]
+  result = client.events
+  client.events.setLen(0)
 
 proc call*(client: WslClient; methodName: string; payload: string;
            timeoutMs: uint32 = 5_000): ProtocolResultOf[ProtocolMessage] =

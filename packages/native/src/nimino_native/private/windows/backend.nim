@@ -19,6 +19,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; errorCode: HResult; jsonResult: WideCString): HResult {.stdcall.}
 
+  WebMessageReceivedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
+
   EnvironmentCompletedHandler = object
     vtable: ptr EnvironmentCompletedVTable
     references: Atomic[int]
@@ -33,6 +39,11 @@ type
     vtable: ptr ExecuteScriptCompletedVTable
     references: Atomic[int]
     request: pointer
+
+  WebMessageReceivedHandler = object
+    vtable: ptr WebMessageReceivedVTable
+    references: Atomic[int]
+    view: pointer
 
 proc windowsDisposeWindow(window: NativeWindow)
 proc windowsFail(app: NativeApp; error: NativeError)
@@ -106,12 +117,28 @@ proc executeScriptQueryInterface(self: pointer; iid: ptr WinGuid;
                                  outInstance: ptr pointer): HResult {.stdcall.} =
   queryCallback(self, iid, outInstance, IidExecuteScriptCompletedHandler, executeScriptAddRef)
 
+proc webMessageAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr WebMessageReceivedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc webMessageRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr WebMessageReceivedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    dealloc(handler)
+  uint32(remaining)
+
+proc webMessageQueryInterface(self: pointer; iid: ptr WinGuid;
+                              outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidWebMessageReceivedEventHandler, webMessageAddRef)
+
 proc environmentInvoke(self: pointer; errorCode: HResult;
                        environment: pointer): HResult {.stdcall.}
 proc controllerInvoke(self: pointer; errorCode: HResult;
                       controller: pointer): HResult {.stdcall.}
 proc executeScriptInvoke(self: pointer; errorCode: HResult;
                          jsonResult: WideCString): HResult {.stdcall.}
+proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
 var environmentCompletedVTable = EnvironmentCompletedVTable(
   queryInterface: environmentQueryInterface,
@@ -134,6 +161,13 @@ var executeScriptCompletedVTable = ExecuteScriptCompletedVTable(
   invoke: executeScriptInvoke
 )
 
+var webMessageReceivedVTable = WebMessageReceivedVTable(
+  queryInterface: webMessageQueryInterface,
+  addRef: webMessageAddRef,
+  release: webMessageRelease,
+  invoke: webMessageInvoke
+)
+
 proc newEnvironmentCompletedHandler(view: NativeWebView): ptr EnvironmentCompletedHandler =
   result = cast[ptr EnvironmentCompletedHandler](alloc0(sizeof(EnvironmentCompletedHandler)))
   result.vtable = addr environmentCompletedVTable
@@ -151,6 +185,12 @@ proc newExecuteScriptCompletedHandler(request: NativeScriptRequest): ptr Execute
   result.vtable = addr executeScriptCompletedVTable
   result.references.store(1, moRelaxed)
   result.request = cast[pointer](request)
+
+proc newWebMessageReceivedHandler(view: NativeWebView): ptr WebMessageReceivedHandler =
+  result = cast[ptr WebMessageReceivedHandler](alloc0(sizeof(WebMessageReceivedHandler)))
+  result.vtable = addr webMessageReceivedVTable
+  result.references.store(1, moRelaxed)
+  result.view = cast[pointer](view)
 
 proc windowsAllClosed(app: NativeApp): bool =
   for window in app.windows:
@@ -175,6 +215,11 @@ proc windowsDisposeView(view: NativeWebView) =
 
   view.state = closing
   view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
+  if view.messageRegistered and view.platformView != nil:
+    let token = EventRegistrationToken(value: view.messageRegistrationToken)
+    discard coreRemoveWebMessageReceived(view.platformView, token)
+    view.messageRegistered = false
+    GC_unref(view)
   if view.platformController != nil:
     discard controllerClose(view.platformController)
   if view.platformView != nil:
@@ -320,6 +365,21 @@ proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): N
     return failure(hresultError("webview.evalJavaScript", status))
   success()
 
+proc windowsConfigureMessageBridge(view: NativeWebView): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.onMessage"))
+  let handler = newWebMessageReceivedHandler(view)
+  var token: EventRegistrationToken
+  GC_ref(view)
+  let status = coreAddWebMessageReceived(view.platformView, cast[pointer](handler), addr token)
+  discard webMessageRelease(handler)
+  if not succeeded(status):
+    GC_unref(view)
+    return failure(hresultError("webview.onMessage", status))
+  view.messageRegistrationToken = token.value
+  view.messageRegistered = true
+  success()
+
 proc windowsStartWebView(view: NativeWebView): NativeResult =
   let loader = view.window.app.windowsLoadLoader()
   if not loader.isOk:
@@ -454,6 +514,10 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
 
   view.platformView = core
   view.state = ready
+  let messaging = view.windowsConfigureMessageBridge()
+  if not messaging.isOk:
+    view.window.app.windowsFail(messaging.failure)
+    return S_OK
   let resized = view.window.windowsResize()
   if not resized.isOk:
     view.window.app.windowsFail(resized.failure)
@@ -483,6 +547,21 @@ proc executeScriptInvoke(self: pointer; errorCode: HResult;
     let serialized = if jsonResult.isNil: "null" else: $jsonResult
     view.completeScriptRequest(request, successOf(serialized))
   GC_unref(request)
+  S_OK
+
+proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  let handler = cast[ptr WebMessageReceivedHandler](self)
+  let view = cast[NativeWebView](handler.view)
+  if view.isNil or view.state in {closing, closed} or args.isNil:
+    return S_OK
+  var message: WideCString
+  let status = webMessageTryGetAsString(args, addr message)
+  if succeeded(status) and message != nil:
+    let copied = $message
+    coTaskMemFree(cast[pointer](message))
+    view.dispatchMessage(copied)
+  elif message != nil:
+    coTaskMemFree(cast[pointer](message))
   S_OK
 
 proc windowsQuit(app: NativeApp): NativeResult =

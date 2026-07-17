@@ -23,6 +23,7 @@ type
     output: Stream
     sessionId: string
     pendingEvaluations: seq[PendingEvaluation]
+    nextEventId: uint64
 
 proc sessionIdFromRandom(): string =
   let bytes = urandom(16)
@@ -48,12 +49,14 @@ proc responseFor(state: HostState; request: ProtocolMessage; payload = "";
 proc writeMessage(state: HostState; message: ProtocolMessage): bool =
   state.output.writeMessageTo(message).isOk
 
-proc writeEvent(state: HostState; methodName, payload, error: string) =
-  discard state.writeMessage(ProtocolMessage(
+proc writeEvent(state: HostState; methodName, payload, error: string): bool =
+  let eventId = state.nextEventId
+  inc state.nextEventId
+  state.writeMessage(ProtocolMessage(
     version: ProtocolVersion,
     kind: event,
     sessionId: state.sessionId,
-    eventId: 1,
+    eventId: eventId,
     methodName: methodName,
     payload: payload,
     error: error
@@ -85,6 +88,16 @@ proc flushEvaluations(state: HostState) =
       discard state.adapter.app.close()
       return
     state.pendingEvaluations.delete(index)
+
+proc flushMessages(state: HostState) =
+  for message in state.adapter.takeMessages():
+    let payload = $(%*{
+      "webViewId": $message.webViewId,
+      "message": message.message
+    })
+    if not state.writeEvent("native.webview.message", payload, ""):
+      discard state.adapter.app.close()
+      return
 
 proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
   let session = state.sessionId.validateSessionMessage(message)
@@ -121,6 +134,7 @@ proc pollHost(state: HostState) =
   for message in state.input.takePending():
     state.handleRunningMessage(message)
   state.flushEvaluations()
+  state.flushMessages()
 
 proc runHost(): int =
   let expectedToken = getEnv("NIMINO_WSL_HOST_TOKEN")
@@ -153,7 +167,8 @@ proc runHost(): int =
     adapter: newHostAdapter(),
     input: input.value,
     output: output,
-    sessionId: sessionId
+    sessionId: sessionId,
+    nextEventId: 1
   )
   if not state.writeMessage(ProtocolMessage(
     version: ProtocolVersion,
@@ -207,14 +222,15 @@ proc runHost(): int =
     of startUiLoop:
       let configured = state.adapter.app.setIdleHandler(proc() = state.pollHost())
       if not configured.isOk:
-        state.writeEvent("app.error", "", configured.failure.operation)
+        discard state.writeEvent("app.error", "", configured.failure.operation)
         return 2
       let finished = state.adapter.app.run()
       state.flushEvaluations()
+      state.flushMessages()
       if not finished.isOk:
-        state.writeEvent("app.error", "", finished.failure.operation)
+        discard state.writeEvent("app.error", "", finished.failure.operation)
         return 2
-      state.writeEvent("app.closed", "{}", "")
+      discard state.writeEvent("app.closed", "{}", "")
       return 0
 
 when isMainModule:

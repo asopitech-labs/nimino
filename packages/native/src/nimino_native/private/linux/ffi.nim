@@ -13,6 +13,7 @@ type
   GtkApplication* {.incompleteStruct.} = object
   GtkWindow* {.incompleteStruct.} = object
   WebKitWebView* {.incompleteStruct.} = object
+  WebKitUserContentManager* {.incompleteStruct.} = object
   GAsyncResult* {.incompleteStruct.} = object
   GError* {.incompleteStruct.} = object
   JSCValue* {.incompleteStruct.} = object
@@ -72,6 +73,14 @@ proc webkit_web_view_evaluate_javascript_finish*(view: ptr WebKitWebView;
                                                   asyncResult: ptr GAsyncResult;
                                                   error: ptr ptr GError): ptr JSCValue
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_web_view_get_user_content_manager*(view: ptr WebKitWebView): ptr WebKitUserContentManager
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_content_manager_register_script_message_handler*(manager: ptr WebKitUserContentManager;
+                                                                   name, worldName: cstring): cint
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_content_manager_unregister_script_message_handler*(manager: ptr WebKitUserContentManager;
+                                                                     name, worldName: cstring)
+  {.cdecl, importc, dynlib: LibWebKit.}
 
 const LibJavaScriptCore = "libjavascriptcoregtk-6.0.so.1"
 
@@ -82,4 +91,8 @@ proc jsc_context_get_exception*(context: ptr JSCContext): ptr JSCException
 proc jsc_exception_get_message*(exception: ptr JSCException): cstring
   {.cdecl, importc, dynlib: LibJavaScriptCore.}
 proc jsc_value_to_json*(value: ptr JSCValue; indent: uint32): cstring
+  {.cdecl, importc, dynlib: LibJavaScriptCore.}
+proc jsc_value_is_string*(value: ptr JSCValue): cint
+  {.cdecl, importc, dynlib: LibJavaScriptCore.}
+proc jsc_value_to_string*(value: ptr JSCValue): cstring
   {.cdecl, importc, dynlib: LibJavaScriptCore.}

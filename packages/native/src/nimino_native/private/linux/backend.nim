@@ -22,6 +22,55 @@ proc linuxLoadPendingContent(view: NativeWebView) =
   of noContent:
     discard
 
+proc linuxScriptMessageReceived(manager: pointer; value: ptr JSCValue;
+                                userData: pointer) {.cdecl.} =
+  let view = cast[NativeWebView](userData)
+  if view.isNil or value.isNil or jsc_value_is_string(value) == 0:
+    return
+  let text = jsc_value_to_string(value)
+  if text.isNil:
+    return
+  let message = $text
+  g_free(cast[pointer](text))
+  view.dispatchMessage(message)
+
+proc linuxConfigureMessageBridge(view: NativeWebView): NativeResult =
+  let manager = webkit_web_view_get_user_content_manager(cast[ptr WebKitWebView](view.platformView))
+  if manager.isNil:
+    return failure(nativeError(webViewError, "webview.onMessage",
+      detail = "WebKitGTK user content manager is unavailable"))
+  let signal = g_signal_connect_data(
+    manager,
+    "script-message-received::nimino",
+    cast[pointer](linuxScriptMessageReceived),
+    cast[pointer](view),
+    nil,
+    0
+  )
+  if signal == 0:
+    return failure(nativeError(webViewError, "webview.onMessage",
+      detail = "WebKitGTK message signal registration failed"))
+  if webkit_user_content_manager_register_script_message_handler(manager, "nimino", nil) == 0:
+    g_signal_handler_disconnect(manager, signal)
+    return failure(nativeError(webViewError, "webview.onMessage",
+      detail = "WebKitGTK message handler registration failed"))
+  view.platformMessageManager = manager
+  view.messageSignalHandler = signal
+  view.messageRegistered = true
+  success()
+
+proc linuxDisposeMessageBridge(view: NativeWebView) =
+  if view.platformMessageManager.isNil:
+    return
+  let manager = cast[ptr WebKitUserContentManager](view.platformMessageManager)
+  if view.messageSignalHandler != 0:
+    g_signal_handler_disconnect(manager, view.messageSignalHandler)
+    view.messageSignalHandler = 0
+  if view.messageRegistered:
+    webkit_user_content_manager_unregister_script_message_handler(manager, "nimino", nil)
+    view.messageRegistered = false
+  view.platformMessageManager = nil
+
 proc linuxEvaluationCompleted(sourceObject: pointer; asyncResult: ptr GAsyncResult;
                               userData: pointer) {.cdecl.} =
   let request = cast[NativeScriptRequest](userData)
@@ -91,6 +140,7 @@ proc linuxDisposeWindow(window: NativeWindow) =
   window.state = closing
   for view in window.views:
     view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
+    view.linuxDisposeMessageBridge()
     if view.platformView != nil:
       g_object_unref(view.platformView)
       view.platformView = nil
@@ -122,6 +172,9 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
 
   view.platformView = g_object_ref_sink(cast[pointer](webView))
   view.state = ready
+  let messaging = view.linuxConfigureMessageBridge()
+  if not messaging.isOk:
+    return messaging
   gtk_window_set_child(gtkWindow, cast[pointer](webView))
   view.linuxLoadPendingContent()
   view.dispatchPendingScripts()

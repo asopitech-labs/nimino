@@ -32,6 +32,9 @@ type
     right*: int32
     bottom*: int32
 
+  EventRegistrationToken* {.bycopy.} = object
+    value*: int64
+
   WinMessage* {.bycopy.} = object
     hwnd*: HWND
     message*: uint32
@@ -122,6 +125,10 @@ const
   IidExecuteScriptCompletedHandler* = WinGuid(
     data1: 0x49511172'u32, data2: 0xcc67'u16, data3: 0x4bca'u16,
     data4: [0x99'u8, 0x23'u8, 0x13'u8, 0x71'u8, 0x12'u8, 0xf4'u8, 0xc4'u8, 0xcc'u8]
+  )
+  IidWebMessageReceivedEventHandler* = WinGuid(
+    data1: 0x57213f19'u32, data2: 0x00e6'u16, data3: 0x49fa'u16,
+    data4: [0x8e'u8, 0x07'u8, 0x89'u8, 0x8e'u8, 0xa0'u8, 0x1e'u8, 0xcb'u8, 0xd2'u8]
   )
 
 proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
@@ -240,3 +247,23 @@ proc coreExecuteScript*(core: pointer; script: WideCString; handler: pointer): H
     cast[ptr ComInterface](core).vtable[29]
   )
   dispatch(core, script, handler)
+
+proc coreAddWebMessageReceived*(core: pointer; handler: pointer;
+                                token: ptr EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; handler: pointer;
+                           token: ptr EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[34]
+  )
+  dispatch(core, handler, token)
+
+proc coreRemoveWebMessageReceived*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[35]
+  )
+  dispatch(core, token)
+
+proc webMessageTryGetAsString*(args: pointer; value: ptr WideCString): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; value: ptr WideCString): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[5]
+  )
+  dispatch(args, value)
