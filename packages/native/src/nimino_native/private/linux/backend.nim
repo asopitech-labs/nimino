@@ -22,12 +22,75 @@ proc linuxLoadPendingContent(view: NativeWebView) =
   of noContent:
     discard
 
+proc linuxEvaluationCompleted(sourceObject: pointer; asyncResult: ptr GAsyncResult;
+                              userData: pointer) {.cdecl.} =
+  let request = cast[NativeScriptRequest](userData)
+  if request.isNil:
+    return
+  if request.view.isNil:
+    GC_unref(request)
+    return
+  let view = request.view
+  var error: ptr GError
+  let value = webkit_web_view_evaluate_javascript_finish(
+    cast[ptr WebKitWebView](sourceObject), asyncResult, addr error
+  )
+  if value.isNil:
+    if error != nil:
+      g_error_free(error)
+    view.completeScriptRequest(request, failureOf[string](nativeError(
+      webViewError, "webview.evalJavaScript", detail = "WebKitGTK evaluation failed"
+    )))
+    GC_unref(request)
+    return
+
+  let context = jsc_value_get_context(value)
+  let exception =
+    if context.isNil: nil
+    else: jsc_context_get_exception(context)
+  if exception != nil:
+    let message = jsc_exception_get_message(exception)
+    let detail = if message.isNil: "JavaScript evaluation failed" else: $message
+    view.completeScriptRequest(request, failureOf[string](nativeError(
+      webViewError, "webview.evalJavaScript", detail = detail
+    )))
+  else:
+    let json = jsc_value_to_json(value, 0)
+    if json.isNil:
+      view.completeScriptRequest(request, failureOf[string](nativeError(
+        webViewError, "webview.evalJavaScript", detail = "JavaScript result is not JSON serializable"
+      )))
+    else:
+      let serialized = $json
+      g_free(cast[pointer](json))
+      view.completeScriptRequest(request, successOf(serialized))
+  g_object_unref(value)
+  GC_unref(request)
+
+proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.evalJavaScript"))
+  GC_ref(request)
+  let script = request.script
+  webkit_web_view_evaluate_javascript(
+    cast[ptr WebKitWebView](view.platformView),
+    cstring(script),
+    -1,
+    nil,
+    nil,
+    nil,
+    linuxEvaluationCompleted,
+    cast[pointer](request)
+  )
+  success()
+
 proc linuxDisposeWindow(window: NativeWindow) =
   if window.state == closed:
     return
 
   window.state = closing
   for view in window.views:
+    view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
     if view.platformView != nil:
       g_object_unref(view.platformView)
       view.platformView = nil
@@ -61,6 +124,7 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   view.state = ready
   gtk_window_set_child(gtkWindow, cast[pointer](webView))
   view.linuxLoadPendingContent()
+  view.dispatchPendingScripts()
   window.state = ready
   gtk_window_present(gtkWindow)
   success()

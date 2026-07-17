@@ -1,3 +1,5 @@
+import std/asyncfutures
+
 import nimino_native
 
 block nativeResultSuccess:
@@ -38,3 +40,11 @@ block windowAndViewRemainSeparate:
   doAssert view.value.loadHtml("<main>Foundation</main>").isOk
   doAssert window.value.setTitle("Foundation updated").isOk
   doAssert not window.value.newWebView().isOk
+
+block javascriptEvaluationRejectsInvalidView:
+  let view = NativeWebView(nil)
+  let evaluation = view.evalJavaScript("document.title")
+  doAssert evaluation.finished
+  let result = evaluation.read()
+  doAssert not result.isOk
+  doAssert result.failure.kind == invalidState

@@ -13,6 +13,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; errorCode: HResult; controller: pointer): HResult {.stdcall.}
 
+  ExecuteScriptCompletedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; errorCode: HResult; jsonResult: WideCString): HResult {.stdcall.}
+
   EnvironmentCompletedHandler = object
     vtable: ptr EnvironmentCompletedVTable
     references: Atomic[int]
@@ -22,6 +28,11 @@ type
     vtable: ptr ControllerCompletedVTable
     references: Atomic[int]
     view: pointer
+
+  ExecuteScriptCompletedHandler = object
+    vtable: ptr ExecuteScriptCompletedVTable
+    references: Atomic[int]
+    request: pointer
 
 proc windowsDisposeWindow(window: NativeWindow)
 proc windowsFail(app: NativeApp; error: NativeError)
@@ -80,10 +91,27 @@ proc controllerQueryInterface(self: pointer; iid: ptr WinGuid;
                               outInstance: ptr pointer): HResult {.stdcall.} =
   queryCallback(self, iid, outInstance, IidControllerCompletedHandler, controllerAddRef)
 
+proc executeScriptAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr ExecuteScriptCompletedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc executeScriptRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr ExecuteScriptCompletedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    dealloc(handler)
+  uint32(remaining)
+
+proc executeScriptQueryInterface(self: pointer; iid: ptr WinGuid;
+                                 outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidExecuteScriptCompletedHandler, executeScriptAddRef)
+
 proc environmentInvoke(self: pointer; errorCode: HResult;
                        environment: pointer): HResult {.stdcall.}
 proc controllerInvoke(self: pointer; errorCode: HResult;
                       controller: pointer): HResult {.stdcall.}
+proc executeScriptInvoke(self: pointer; errorCode: HResult;
+                         jsonResult: WideCString): HResult {.stdcall.}
 
 var environmentCompletedVTable = EnvironmentCompletedVTable(
   queryInterface: environmentQueryInterface,
@@ -99,6 +127,13 @@ var controllerCompletedVTable = ControllerCompletedVTable(
   invoke: controllerInvoke
 )
 
+var executeScriptCompletedVTable = ExecuteScriptCompletedVTable(
+  queryInterface: executeScriptQueryInterface,
+  addRef: executeScriptAddRef,
+  release: executeScriptRelease,
+  invoke: executeScriptInvoke
+)
+
 proc newEnvironmentCompletedHandler(view: NativeWebView): ptr EnvironmentCompletedHandler =
   result = cast[ptr EnvironmentCompletedHandler](alloc0(sizeof(EnvironmentCompletedHandler)))
   result.vtable = addr environmentCompletedVTable
@@ -110,6 +145,12 @@ proc newControllerCompletedHandler(view: NativeWebView): ptr ControllerCompleted
   result.vtable = addr controllerCompletedVTable
   result.references.store(1, moRelaxed)
   result.view = cast[pointer](view)
+
+proc newExecuteScriptCompletedHandler(request: NativeScriptRequest): ptr ExecuteScriptCompletedHandler =
+  result = cast[ptr ExecuteScriptCompletedHandler](alloc0(sizeof(ExecuteScriptCompletedHandler)))
+  result.vtable = addr executeScriptCompletedVTable
+  result.references.store(1, moRelaxed)
+  result.request = cast[pointer](request)
 
 proc windowsAllClosed(app: NativeApp): bool =
   for window in app.windows:
@@ -133,6 +174,7 @@ proc windowsDisposeView(view: NativeWebView) =
     return
 
   view.state = closing
+  view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
   if view.platformController != nil:
     discard controllerClose(view.platformController)
   if view.platformView != nil:
@@ -264,6 +306,19 @@ proc windowsLoadPendingContent(view: NativeWebView): NativeResult =
     view.windowsLoadHtml()
   of noContent:
     success()
+
+proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.evalJavaScript"))
+  let handler = newExecuteScriptCompletedHandler(request)
+  GC_ref(request)
+  let script = newWideCString(request.script)
+  let status = coreExecuteScript(view.platformView, script, cast[pointer](handler))
+  discard executeScriptRelease(handler)
+  if not succeeded(status):
+    GC_unref(request)
+    return failure(hresultError("webview.evalJavaScript", status))
+  success()
 
 proc windowsStartWebView(view: NativeWebView): NativeResult =
   let loader = view.window.app.windowsLoadLoader()
@@ -406,6 +461,28 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
   let loaded = view.windowsLoadPendingContent()
   if not loaded.isOk:
     view.window.app.windowsFail(loaded.failure)
+    return S_OK
+  view.dispatchPendingScripts()
+  S_OK
+
+proc executeScriptInvoke(self: pointer; errorCode: HResult;
+                         jsonResult: WideCString): HResult {.stdcall.} =
+  let handler = cast[ptr ExecuteScriptCompletedHandler](self)
+  let request = cast[NativeScriptRequest](handler.request)
+  if request.isNil:
+    return S_OK
+  if request.view.isNil:
+    GC_unref(request)
+    return S_OK
+  let view = request.view
+  if not succeeded(errorCode):
+    view.completeScriptRequest(request, failureOf[string](hresultError(
+      "webview.evalJavaScript", errorCode
+    )))
+  else:
+    let serialized = if jsonResult.isNil: "null" else: $jsonResult
+    view.completeScriptRequest(request, successOf(serialized))
+  GC_unref(request)
   S_OK
 
 proc windowsQuit(app: NativeApp): NativeResult =

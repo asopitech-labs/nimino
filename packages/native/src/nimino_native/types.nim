@@ -1,3 +1,5 @@
+import std/asyncfutures
+
 import ./[capabilities, errors]
 
 type
@@ -18,6 +20,11 @@ type
     noContent
     urlContent
     htmlContent
+
+  NativeScriptRequest = ref object
+    view: NativeWebView
+    script: string
+    future: Future[NativeResultOf[string]]
 
   NativeApp* = ref object
     state: NativeAppState
@@ -54,6 +61,64 @@ type
     platformView: pointer
     platformEnvironment: pointer
     platformController: pointer
+    pendingScripts: seq[NativeScriptRequest]
+    activeScripts: seq[NativeScriptRequest]
+
+when defined(linux):
+  proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
+elif defined(windows):
+  proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
+
+proc completeScriptRequest(view: NativeWebView; request: NativeScriptRequest;
+                           evaluation: NativeResultOf[string]) =
+  if request.isNil:
+    return
+  if request.future != nil and not request.future.finished:
+    request.future.complete(evaluation)
+
+  if view != nil and view.activeScripts.len > 0:
+    for index in countdown(view.activeScripts.high, 0):
+      if cast[pointer](view.activeScripts[index]) == cast[pointer](request):
+        view.activeScripts.delete(index)
+        break
+
+proc failOutstandingScripts(view: NativeWebView; error: NativeError) =
+  if view.isNil:
+    return
+  for request in view.pendingScripts:
+    view.completeScriptRequest(request, failureOf[string](error))
+    request.view = nil
+  view.pendingScripts.setLen(0)
+  for request in view.activeScripts:
+    if request.future != nil and not request.future.finished:
+      request.future.complete(failureOf[string](error))
+  ## Native callbacks retain their request with GC_ref until they return. Keep
+  ## no Nim-side ownership after closing, but let each callback GC_unref it.
+  view.activeScripts.setLen(0)
+
+proc startScriptRequest(view: NativeWebView; request: NativeScriptRequest) =
+  request.view = view
+  view.activeScripts.add(request)
+  when defined(linux):
+    let started = view.linuxEvalJavaScript(request)
+    if not started.isOk:
+      view.completeScriptRequest(request, failureOf[string](started.failure))
+  elif defined(windows):
+    let started = view.windowsEvalJavaScript(request)
+    if not started.isOk:
+      view.completeScriptRequest(request, failureOf[string](started.failure))
+  else:
+    view.completeScriptRequest(request, failureOf[string](nativeError(
+      unsupported, "webview.evalJavaScript", detail = "native backend is unavailable"
+    )))
+
+proc dispatchPendingScripts(view: NativeWebView) =
+  if view.isNil or view.state != ready or view.platformView.isNil:
+    return
+  let pending = view.pendingScripts
+  view.pendingScripts.setLen(0)
+  for request in pending:
+    view.startScriptRequest(request)
 
 when defined(linux):
   import ./private/linux/ffi
@@ -138,6 +203,21 @@ proc loadHtml*(view: NativeWebView; html: string): NativeResult =
     return windowsLoadPendingContent(view)
   else:
     return success()
+
+proc evalJavaScript*(view: NativeWebView; script: string): Future[NativeResultOf[string]] =
+  let request = NativeScriptRequest(
+    script: script,
+    future: newFuture[NativeResultOf[string]]("nimino.native.evalJavaScript")
+  )
+  result = request.future
+  if view.isNil or view.state in {closing, closed}:
+    result.complete(failureOf[string](nativeError(invalidState, "webview.evalJavaScript")))
+    return
+
+  if view.state != ready or view.platformView.isNil:
+    view.pendingScripts.add(request)
+    return
+  view.startScriptRequest(request)
 
 proc quit*(app: NativeApp): NativeResult =
   if app.isNil or app.state == finished:

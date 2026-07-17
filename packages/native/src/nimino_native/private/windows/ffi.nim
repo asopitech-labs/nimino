@@ -119,6 +119,10 @@ const
     data1: 0x6c4819f3'u32, data2: 0xc9b7'u16, data3: 0x4260'u16,
     data4: [0x81'u8, 0x27'u8, 0xc9'u8, 0xf5'u8, 0xbd'u8, 0xe7'u8, 0xf6'u8, 0x8c'u8]
   )
+  IidExecuteScriptCompletedHandler* = WinGuid(
+    data1: 0x49511172'u32, data2: 0xcc67'u16, data3: 0x4bca'u16,
+    data4: [0x99'u8, 0x23'u8, 0x13'u8, 0x71'u8, 0x12'u8, 0xf4'u8, 0xc4'u8, 0xcc'u8]
+  )
 
 proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
   {.stdcall, importc: "CoInitializeEx", dynlib: "ole32.dll".}
@@ -230,3 +234,9 @@ proc coreNavigateToString*(core: pointer; html: WideCString): HResult {.inline.}
     cast[ptr ComInterface](core).vtable[6]
   )
   dispatch(core, html)
+
+proc coreExecuteScript*(core: pointer; script: WideCString; handler: pointer): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; script: WideCString; handler: pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[29]
+  )
+  dispatch(core, script, handler)

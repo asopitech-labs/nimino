@@ -11,7 +11,7 @@ WebView2はSTAとWin32メッセージポンプを必要とし、GTK/WebKitGTKは
 
 - `app.run()`をUIスレッドで呼び、WindowsはWin32 message loop、Linuxは`g_application_run`/GLib default main contextを唯一のUI loop所有者とする。
 - すべてのUI/native操作は所有UI threadでのみ実行する。workerまたはIPC readerは`postToUi`を通す。
-- Nim asyncはUI loopを置換しない。M2のスパイクで、Win32 timerとGLib idle/timeoutが`asyncdispatch.poll(0)`を有界に実行する方式を検証する。完了handlerはUI queueで解決する。
+- Nim asyncはUI loopを置換しない。M2の `evalJavaScript` は OS WebView の完了 callback（GTK main context / Win32 STA）で Future を直接完了する。一般の `asyncdispatch.poll(0)` 統合と worker からの UI dispatch は、message/RPC を追加する前の別スパイクとして残す。
 - `NativeApp → NativeWindow → NativeWebView`の順で明示的に所有する。各オブジェクトは`pending/ready/closing/closed`状態を持つ。
 - `close`はidempotentとし、Window終了中に完了した非同期create/loadは`invalidState`または`webViewError`へ変換する。
 
@@ -30,4 +30,4 @@ WebView2はSTAとWin32メッセージポンプを必要とし、GTK/WebKitGTKは
 
 ## 帰結
 
-M1は同期のWindow/URL操作までに限定する。JavaScript評価、message、RPCはasyncスパイクがこの規律を満たしたM2/M3で追加する。UI callbackから同期的にNim Futureを待つAPIは提供しない。
+M1は同期のWindow/URL操作までに限定する。M2の最初の実装として JavaScript 評価だけを追加し、callback user data は `GC_ref`/`GC_unref` で明示保持する。message、WSL 中継、RPCは後続の M2/M3で追加する。UI callbackから同期的にNim Futureを待つAPIは提供しない。

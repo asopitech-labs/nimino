@@ -1,6 +1,6 @@
 # `nimino-native` 公開API案
 
-**状態: M1部分実装。M2以降の操作は設計案であり、未実装です。**
+**状態: M2部分実装。`evalJavaScript` は native Windows/Linux に実装済みですが、message/event と WSL 中継は未実装です。その他の M2 以降の操作は設計案です。**
 
 このAPIはWindow/WebViewと低水準イベントだけを提供します。RPC、プロファイル、権限ポリシー、アセット配信、URL包装、WSL通信を含めません。
 
@@ -95,7 +95,9 @@ proc onNewWindowRequested*(view: NativeWebView,
 proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.})
 ```
 
-`newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。M2以降では`evalJavaScript`とmessage callbackを追加します。HTMLのbase URL指定は未実装で、将来の拡張候補です。
+`newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。HTMLのbase URL指定は未実装で、将来の拡張候補です。
+
+`evalJavaScript` は pending の View へも要求でき、ready 後に一度だけ実行します。成功値は JavaScript の評価値を JSON 化した UTF-8 文字列です（文字列値なら JSON の引用符を含みます）。Linux は WebKitGTK の `evaluate_javascript`、Windows は WebView2 の `ExecuteScript` で UI thread 上の完了 callback から Future を完了します。Linux 実行スモークと Windows クロスコンパイルは済んでいますが、Windows Runtime 上の実行と WSL 中継は未確認です。
 
 ## 利用イメージ
 

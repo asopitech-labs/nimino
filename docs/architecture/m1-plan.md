@@ -70,7 +70,7 @@
 | GObject | `g_signal_connect_data`, `g_signal_handler_disconnect`, `g_object_ref_sink`, `g_object_unref` | callbackと参照寿命 |
 | GLib | `g_main_context_invoke_full` | workerからUI threadへの復帰 |
 
-M2で追加するAPIは`webkit_web_view_evaluate_javascript`/`_finish`、`WebKitUserContentManager`のmessage handler、`WebKitWebView::decide-policy`、`::create`、`::load-changed`です。HTML読込にはM1から`webkit_web_view_load_html`を使用します。GTKのレイアウトがWindowリサイズへ追従するため、WindowsのようなBounds更新は不要です。
+M2の最初の縦機能として、native の `webkit_web_view_evaluate_javascript`/`_finish` と WebView2 `ExecuteScript` を実装した。残る M2 API は`WebKitUserContentManager`のmessage handler、`WebKitWebView::decide-policy`、`::create`、`::load-changed`、Windows 対応イベント、WSL 中継である。HTML読込にはM1から`webkit_web_view_load_html`を使用する。GTKのレイアウトがWindowリサイズへ追従するため、WindowsのようなBounds更新は不要である。
 
 公式根拠: [GTK application initialization](https://docs.gtk.org/gtk4/initialization.html)、[GTK threading](https://docs.gtk.org/gtk4/section-threading.html)、[WebKitWebView](https://webkitgtk.org/reference/webkit2gtk/stable/class.WebView.html)、[JavaScript evaluation](https://webkitgtk.org/reference/webkit2gtk/stable/method.WebView.evaluate_javascript.html)。
 

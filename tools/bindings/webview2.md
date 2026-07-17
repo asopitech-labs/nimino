@@ -26,6 +26,16 @@ runtime are not copied into this repository.
 * `ICoreWebView2::{Navigate, NavigateToString}`
 * the two creation completion handler IIDs and their `IUnknown` methods
 
+## M2 surface copied into Nimino
+
+* `ICoreWebView2::ExecuteScript` (vtable slot 29)
+* `ICoreWebView2ExecuteScriptCompletedHandler` and IID
+  `49511172-cc67-4bca-9923-137112f4c4cc`
+
+The completed handler receives an `HRESULT` and a borrowed JSON-encoded UTF-16
+result. Nimino copies the result before the callback returns and explicitly
+holds the associated Nim request from submission through completion.
+
 The vtable slot order and callback signatures were checked against the header
 above.  Later features must be checked against a recorded SDK version before
 adding a new slot.
