@@ -9,6 +9,7 @@ doAssert window.isOk
 let view = window.value.newWebView()
 doAssert view.isOk
 doAssert view.value.onMessage(proc(message: string) = discard).isOk
+doAssert view.value.onError(proc(error: NativeError) = discard).isOk
 doAssert view.value.onNavigationStarting(proc(url: string): bool = true).isOk
 doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
 doAssert view.value.loadHtml("<main>Nimino Windows M1</main>").isOk

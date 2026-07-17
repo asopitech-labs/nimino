@@ -1,6 +1,6 @@
 # `nimino-native` 公開API案
 
-**状態: M2部分実装。`evalJavaScript`、文字列 `onMessage`、`onNavigationStarting`/`onNavigationCompleted` は native Windows/Linux と WSL host adapter に実装済みです。Windows/Linuxの開始callbackは同期中止を実装し、WSL hostは開始eventを中継します。WSL clientで任意callbackを同期評価するIPCは未実装です。Linuxは実WebViewで確認済みですが、Windows Runtime 上の実行確認、new-window/error event、RPC は未完了です。その他の M2 以降の操作は設計案です。**
+**状態: M2部分実装。`evalJavaScript`、文字列 `onMessage`、`onNavigationStarting`/`onNavigationCompleted`、基本`onError` は native Windows/Linux と WSL host adapter に実装済みです。Windows/Linuxの開始callbackは同期中止を実装し、WSL hostは開始/error eventを中継します。WSL clientで任意callbackを同期評価するIPCは未実装です。Linuxは実WebViewで確認済みですが、Windows Runtime 上の実行確認、new-window event、RPC は未完了です。その他の M2 以降の操作は設計案です。**
 
 このAPIはWindow/WebViewと低水準イベントだけを提供します。RPC、プロファイル、権限ポリシー、アセット配信、URL包装、WSL通信を含めません。
 
@@ -104,6 +104,8 @@ proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.}
 `onNavigationStarting` はWindowsで `NavigationStartingEventArgs::put_Cancel`、Linuxで `decide-policy` の`use/ignore`を使い、callbackが`false`または例外を返したときに中止します。handler未登録時は許可します。Linux実WebViewでは許可経路を確認済みです。WSL hostは`native.webview.navigationStarting` eventをclientへ中継しますが、eventはnative callbackが戻った後に送信されるため、現時点では既定許可でありclientが中止を決めることはできません。この差をcore APIへ漏らさないための候補は[ADR-0005提案](../adr/0005-wsl-navigation-policy.md)で管理します。
 
 `onNavigationCompleted` は主frameの読込完了後に URL と成功可否を通知します。Linuxは `load-changed` と `load-failed` を併用して失敗を成功扱いせず、Windowsは `ICoreWebView2::NavigationCompleted` の `IsSuccess` を使用します。hostは `native.webview.navigationCompleted` eventとして中継します。各バックエンドはWindow破棄前にsignal/COM event登録を解除します。Linux実WebViewでの成功経路、Windows/WSLのクロスコンパイルは確認済みですが、Windows Runtime とWSL往復での実行確認は未完了です。
+
+`onError` はまず入力検証とmain-frame navigation失敗を通知します。入力検証では該当操作の戻り値も失敗になります。Linuxでは`load-failed`、Windowsでは`NavigationCompleted`の失敗を`webViewError`として通知します。WSL hostは`native.webview.error` eventへ`kind`、`operation`、`platformCode`、`detail`を渡します。JavaScript評価の失敗は引き続きそのFutureで返し、この通知へ二重送信しません。
 
 ## 利用イメージ
 

@@ -78,6 +78,8 @@ proc linuxLoadFailed(webView: pointer; loadEvent: cint; failingUri: cstring;
   let view = cast[NativeWebView](userData)
   if view != nil and view.state notin {closing, closed}:
     view.navigationFailed = true
+    view.dispatchError(nativeError(webViewError, "webview.navigate",
+      detail = "WebKitGTK navigation failed"))
   ## Returning false preserves WebKitGTK's default error-page handling.
   0
 

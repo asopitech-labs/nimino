@@ -99,6 +99,19 @@ proc flushMessages(state: HostState) =
       discard state.adapter.app.close()
       return
 
+proc flushErrors(state: HostState) =
+  for nativeError in state.adapter.takeErrors():
+    let payload = $(%*{
+      "webViewId": $nativeError.webViewId,
+      "kind": $nativeError.error.kind,
+      "operation": nativeError.error.operation,
+      "platformCode": nativeError.error.platformCode,
+      "detail": nativeError.error.detail
+    })
+    if not state.writeEvent("native.webview.error", payload, ""):
+      discard state.adapter.app.close()
+      return
+
 proc flushNavigationStarts(state: HostState) =
   for started in state.adapter.takeNavigationStarts():
     let payload = $(%*{
@@ -156,6 +169,7 @@ proc pollHost(state: HostState) =
     state.handleRunningMessage(message)
   state.flushEvaluations()
   state.flushMessages()
+  state.flushErrors()
   state.flushNavigationStarts()
   state.flushNavigationCompletions()
 
@@ -250,6 +264,7 @@ proc runHost(): int =
       let finished = state.adapter.app.run()
       state.flushEvaluations()
       state.flushMessages()
+      state.flushErrors()
       state.flushNavigationStarts()
       state.flushNavigationCompletions()
       if not finished.isOk:

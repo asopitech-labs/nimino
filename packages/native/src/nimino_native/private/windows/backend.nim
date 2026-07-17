@@ -706,8 +706,15 @@ proc navigationCompletedInvoke(self: pointer; sender, args: pointer): HResult {.
   let copiedSource = if succeeded(sourceStatus) and source != nil: $source else: ""
   if source != nil:
     coTaskMemFree(cast[pointer](source))
-  view.dispatchNavigationCompleted(copiedSource,
-    succeeded(successStatus) and isSuccess != 0)
+  let navigationSucceeded = succeeded(successStatus) and isSuccess != 0
+  if not navigationSucceeded:
+    let error =
+      if not succeeded(successStatus):
+        hresultError("webview.navigate", successStatus)
+      else:
+        nativeError(webViewError, "webview.navigate", detail = "WebView2 navigation failed")
+    view.dispatchError(error)
+  view.dispatchNavigationCompleted(copiedSource, navigationSucceeded)
   S_OK
 
 proc navigationStartingInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
