@@ -5,6 +5,7 @@ import ./[capabilities, errors]
 type
   NativeIdleHandler* = proc() {.closure.}
   NativeMessageHandler* = proc(message: string) {.closure.}
+  NativeNavigationCompletedHandler* = proc(url: string; succeeded: bool) {.closure.}
 
   NativeState* = enum
     pending
@@ -64,9 +65,15 @@ type
     platformController: pointer
     platformMessageManager: pointer
     messageSignalHandler: culong
+    loadChangedSignalHandler: culong
+    loadFailedSignalHandler: culong
     messageRegistrationToken: int64
     messageRegistered: bool
+    navigationCompletedToken: int64
+    navigationCompletedRegistered: bool
+    navigationFailed: bool
     messageHandler: NativeMessageHandler
+    navigationCompletedHandler: NativeNavigationCompletedHandler
     pendingScripts: seq[NativeScriptRequest]
     activeScripts: seq[NativeScriptRequest]
 
@@ -131,6 +138,16 @@ proc dispatchMessage(view: NativeWebView; message: string) =
     return
   try:
     view.messageHandler(message)
+  except CatchableError:
+    ## A user callback must not unwind through a native C/COM callback.
+    discard
+
+proc dispatchNavigationCompleted(view: NativeWebView; url: string; succeeded: bool) =
+  if view.isNil or view.state in {closing, closed} or
+      view.navigationCompletedHandler.isNil:
+    return
+  try:
+    view.navigationCompletedHandler(url, succeeded)
   except CatchableError:
     ## A user callback must not unwind through a native C/COM callback.
     discard
@@ -238,6 +255,13 @@ proc onMessage*(view: NativeWebView; handler: NativeMessageHandler): NativeResul
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.onMessage"))
   view.messageHandler = handler
+  success()
+
+proc onNavigationCompleted*(view: NativeWebView;
+                            handler: NativeNavigationCompletedHandler): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.onNavigationCompleted"))
+  view.navigationCompletedHandler = handler
   success()
 
 proc quit*(app: NativeApp): NativeResult =

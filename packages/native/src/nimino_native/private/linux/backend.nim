@@ -59,6 +59,59 @@ proc linuxConfigureMessageBridge(view: NativeWebView): NativeResult =
   view.messageRegistered = true
   success()
 
+proc linuxLoadChanged(webView: pointer; loadEvent: cint; userData: pointer) {.cdecl.} =
+  let view = cast[NativeWebView](userData)
+  if view.isNil or view.state in {closing, closed}:
+    return
+  case loadEvent
+  of 0: # WEBKIT_LOAD_STARTED
+    view.navigationFailed = false
+  of 3: # WEBKIT_LOAD_FINISHED
+    let uri = webkit_web_view_get_uri(cast[ptr WebKitWebView](webView))
+    let copiedUri = if uri.isNil: "" else: $uri
+    view.dispatchNavigationCompleted(copiedUri, not view.navigationFailed)
+  else:
+    discard
+
+proc linuxLoadFailed(webView: pointer; loadEvent: cint; failingUri: cstring;
+                     error: ptr GError; userData: pointer): cint {.cdecl.} =
+  let view = cast[NativeWebView](userData)
+  if view != nil and view.state notin {closing, closed}:
+    view.navigationFailed = true
+  ## Returning false preserves WebKitGTK's default error-page handling.
+  0
+
+proc linuxConfigureLoadEvents(view: NativeWebView): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.onNavigationCompleted"))
+  let webView = cast[ptr WebKitWebView](view.platformView)
+  let changed = g_signal_connect_data(
+    webView,
+    "load-changed",
+    cast[pointer](linuxLoadChanged),
+    cast[pointer](view),
+    nil,
+    0
+  )
+  if changed == 0:
+    return failure(nativeError(webViewError, "webview.onNavigationCompleted",
+      detail = "WebKitGTK load-changed signal registration failed"))
+  let failed = g_signal_connect_data(
+    webView,
+    "load-failed",
+    cast[pointer](linuxLoadFailed),
+    cast[pointer](view),
+    nil,
+    0
+  )
+  if failed == 0:
+    g_signal_handler_disconnect(webView, changed)
+    return failure(nativeError(webViewError, "webview.onNavigationCompleted",
+      detail = "WebKitGTK load-failed signal registration failed"))
+  view.loadChangedSignalHandler = changed
+  view.loadFailedSignalHandler = failed
+  success()
+
 proc linuxDisposeMessageBridge(view: NativeWebView) =
   if view.platformMessageManager.isNil:
     return
@@ -70,6 +123,17 @@ proc linuxDisposeMessageBridge(view: NativeWebView) =
     webkit_user_content_manager_unregister_script_message_handler(manager, "nimino", nil)
     view.messageRegistered = false
   view.platformMessageManager = nil
+
+proc linuxDisposeLoadEvents(view: NativeWebView) =
+  if view.platformView.isNil:
+    return
+  let webView = cast[ptr WebKitWebView](view.platformView)
+  if view.loadChangedSignalHandler != 0:
+    g_signal_handler_disconnect(webView, view.loadChangedSignalHandler)
+    view.loadChangedSignalHandler = 0
+  if view.loadFailedSignalHandler != 0:
+    g_signal_handler_disconnect(webView, view.loadFailedSignalHandler)
+    view.loadFailedSignalHandler = 0
 
 proc linuxEvaluationCompleted(sourceObject: pointer; asyncResult: ptr GAsyncResult;
                               userData: pointer) {.cdecl.} =
@@ -141,6 +205,7 @@ proc linuxDisposeWindow(window: NativeWindow) =
   for view in window.views:
     view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
     view.linuxDisposeMessageBridge()
+    view.linuxDisposeLoadEvents()
     if view.platformView != nil:
       g_object_unref(view.platformView)
       view.platformView = nil
@@ -175,6 +240,9 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let messaging = view.linuxConfigureMessageBridge()
   if not messaging.isOk:
     return messaging
+  let navigationEvents = view.linuxConfigureLoadEvents()
+  if not navigationEvents.isOk:
+    return navigationEvents
   gtk_window_set_child(gtkWindow, cast[pointer](webView))
   view.linuxLoadPendingContent()
   view.dispatchPendingScripts()

@@ -130,6 +130,10 @@ const
     data1: 0x57213f19'u32, data2: 0x00e6'u16, data3: 0x49fa'u16,
     data4: [0x8e'u8, 0x07'u8, 0x89'u8, 0x8e'u8, 0xa0'u8, 0x1e'u8, 0xcb'u8, 0xd2'u8]
   )
+  IidNavigationCompletedEventHandler* = WinGuid(
+    data1: 0xd33a35bf'u32, data2: 0x1c49'u16, data3: 0x4f98'u16,
+    data4: [0x93'u8, 0xab'u8, 0x00'u8, 0x6e'u8, 0x05'u8, 0x33'u8, 0xfe'u8, 0x1c'u8]
+  )
 
 proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
   {.stdcall, importc: "CoInitializeEx", dynlib: "ole32.dll".}
@@ -236,11 +240,31 @@ proc coreNavigate*(core: pointer; uri: WideCString): HResult {.inline.} =
   )
   dispatch(core, uri)
 
+proc coreGetSource*(core: pointer; source: ptr WideCString): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; source: ptr WideCString): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[4]
+  )
+  dispatch(core, source)
+
 proc coreNavigateToString*(core: pointer; html: WideCString): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; html: WideCString): HResult {.stdcall.}](
     cast[ptr ComInterface](core).vtable[6]
   )
   dispatch(core, html)
+
+proc coreAddNavigationCompleted*(core: pointer; handler: pointer;
+                                 token: ptr EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; handler: pointer;
+                           token: ptr EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[15]
+  )
+  dispatch(core, handler, token)
+
+proc coreRemoveNavigationCompleted*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[16]
+  )
+  dispatch(core, token)
 
 proc coreExecuteScript*(core: pointer; script: WideCString; handler: pointer): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; script: WideCString; handler: pointer): HResult {.stdcall.}](
@@ -265,5 +289,11 @@ proc coreRemoveWebMessageReceived*(core: pointer; token: EventRegistrationToken)
 proc webMessageTryGetAsString*(args: pointer; value: ptr WideCString): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; value: ptr WideCString): HResult {.stdcall.}](
     cast[ptr ComInterface](args).vtable[5]
+  )
+  dispatch(args, value)
+
+proc navigationCompletedGetIsSuccess*(args: pointer; value: ptr WinBool): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; value: ptr WinBool): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[3]
   )
   dispatch(args, value)

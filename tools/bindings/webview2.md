@@ -37,6 +37,12 @@ runtime are not copied into this repository.
   `57213f19-00e6-49fa-8e07-898ea01ecbd2`
 * `ICoreWebView2WebMessageReceivedEventArgs::TryGetWebMessageAsString`
   (vtable slot 5)
+* `ICoreWebView2::{add_NavigationCompleted, remove_NavigationCompleted}`
+  (vtable slots 15 and 16)
+* `ICoreWebView2NavigationCompletedEventHandler` and IID
+  `d33a35bf-1c49-4f98-93ab-006e0533fe1c`
+* `ICoreWebView2NavigationCompletedEventArgs::get_IsSuccess` (vtable slot 3)
+  and `ICoreWebView2::get_Source` (vtable slot 4)
 
 The completed handler receives an `HRESULT` and a borrowed JSON-encoded UTF-16
 result. Nimino copies the result before the callback returns and explicitly
@@ -45,6 +51,10 @@ holds the associated Nim request from submission through completion.
 The WebMessage handler copies only a string result and releases every returned
 `LPWSTR` with `CoTaskMemFree`. It stores the event token and removes the handler
 before releasing the CoreWebView2 object.
+
+The navigation-completed handler likewise stores/removes its event token,
+copies and frees `get_Source`'s `LPWSTR`, and reads `IsSuccess` without
+assuming that a finished navigation succeeded.
 
 The vtable slot order and callback signatures were checked against the header
 above.  Later features must be checked against a recorded SDK version before

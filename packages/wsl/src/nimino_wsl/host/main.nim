@@ -99,6 +99,17 @@ proc flushMessages(state: HostState) =
       discard state.adapter.app.close()
       return
 
+proc flushNavigationCompletions(state: HostState) =
+  for completed in state.adapter.takeNavigationCompletions():
+    let payload = $(%*{
+      "webViewId": $completed.webViewId,
+      "url": completed.url,
+      "succeeded": completed.succeeded
+    })
+    if not state.writeEvent("native.webview.navigationCompleted", payload, ""):
+      discard state.adapter.app.close()
+      return
+
 proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
   let session = state.sessionId.validateSessionMessage(message)
   if not session.isOk:
@@ -135,6 +146,7 @@ proc pollHost(state: HostState) =
     state.handleRunningMessage(message)
   state.flushEvaluations()
   state.flushMessages()
+  state.flushNavigationCompletions()
 
 proc runHost(): int =
   let expectedToken = getEnv("NIMINO_WSL_HOST_TOKEN")
@@ -227,6 +239,7 @@ proc runHost(): int =
       let finished = state.adapter.app.run()
       state.flushEvaluations()
       state.flushMessages()
+      state.flushNavigationCompletions()
       if not finished.isOk:
         discard state.writeEvent("app.error", "", finished.failure.operation)
         return 2

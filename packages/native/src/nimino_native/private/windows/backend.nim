@@ -25,6 +25,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
+  NavigationCompletedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
+
   EnvironmentCompletedHandler = object
     vtable: ptr EnvironmentCompletedVTable
     references: Atomic[int]
@@ -42,6 +48,11 @@ type
 
   WebMessageReceivedHandler = object
     vtable: ptr WebMessageReceivedVTable
+    references: Atomic[int]
+    view: pointer
+
+  NavigationCompletedHandler = object
+    vtable: ptr NavigationCompletedVTable
     references: Atomic[int]
     view: pointer
 
@@ -132,6 +143,22 @@ proc webMessageQueryInterface(self: pointer; iid: ptr WinGuid;
                               outInstance: ptr pointer): HResult {.stdcall.} =
   queryCallback(self, iid, outInstance, IidWebMessageReceivedEventHandler, webMessageAddRef)
 
+proc navigationCompletedAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr NavigationCompletedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc navigationCompletedRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr NavigationCompletedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    dealloc(handler)
+  uint32(remaining)
+
+proc navigationCompletedQueryInterface(self: pointer; iid: ptr WinGuid;
+                                       outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidNavigationCompletedEventHandler,
+    navigationCompletedAddRef)
+
 proc environmentInvoke(self: pointer; errorCode: HResult;
                        environment: pointer): HResult {.stdcall.}
 proc controllerInvoke(self: pointer; errorCode: HResult;
@@ -139,6 +166,7 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
 proc executeScriptInvoke(self: pointer; errorCode: HResult;
                          jsonResult: WideCString): HResult {.stdcall.}
 proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
+proc navigationCompletedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
 var environmentCompletedVTable = EnvironmentCompletedVTable(
   queryInterface: environmentQueryInterface,
@@ -168,6 +196,13 @@ var webMessageReceivedVTable = WebMessageReceivedVTable(
   invoke: webMessageInvoke
 )
 
+var navigationCompletedVTable = NavigationCompletedVTable(
+  queryInterface: navigationCompletedQueryInterface,
+  addRef: navigationCompletedAddRef,
+  release: navigationCompletedRelease,
+  invoke: navigationCompletedInvoke
+)
+
 proc newEnvironmentCompletedHandler(view: NativeWebView): ptr EnvironmentCompletedHandler =
   result = cast[ptr EnvironmentCompletedHandler](alloc0(sizeof(EnvironmentCompletedHandler)))
   result.vtable = addr environmentCompletedVTable
@@ -189,6 +224,12 @@ proc newExecuteScriptCompletedHandler(request: NativeScriptRequest): ptr Execute
 proc newWebMessageReceivedHandler(view: NativeWebView): ptr WebMessageReceivedHandler =
   result = cast[ptr WebMessageReceivedHandler](alloc0(sizeof(WebMessageReceivedHandler)))
   result.vtable = addr webMessageReceivedVTable
+  result.references.store(1, moRelaxed)
+  result.view = cast[pointer](view)
+
+proc newNavigationCompletedHandler(view: NativeWebView): ptr NavigationCompletedHandler =
+  result = cast[ptr NavigationCompletedHandler](alloc0(sizeof(NavigationCompletedHandler)))
+  result.vtable = addr navigationCompletedVTable
   result.references.store(1, moRelaxed)
   result.view = cast[pointer](view)
 
@@ -219,6 +260,11 @@ proc windowsDisposeView(view: NativeWebView) =
     let token = EventRegistrationToken(value: view.messageRegistrationToken)
     discard coreRemoveWebMessageReceived(view.platformView, token)
     view.messageRegistered = false
+    GC_unref(view)
+  if view.navigationCompletedRegistered and view.platformView != nil:
+    let token = EventRegistrationToken(value: view.navigationCompletedToken)
+    discard coreRemoveNavigationCompleted(view.platformView, token)
+    view.navigationCompletedRegistered = false
     GC_unref(view)
   if view.platformController != nil:
     discard controllerClose(view.platformController)
@@ -380,6 +426,21 @@ proc windowsConfigureMessageBridge(view: NativeWebView): NativeResult =
   view.messageRegistered = true
   success()
 
+proc windowsConfigureNavigationCompleted(view: NativeWebView): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.onNavigationCompleted"))
+  let handler = newNavigationCompletedHandler(view)
+  var token: EventRegistrationToken
+  GC_ref(view)
+  let status = coreAddNavigationCompleted(view.platformView, cast[pointer](handler), addr token)
+  discard navigationCompletedRelease(handler)
+  if not succeeded(status):
+    GC_unref(view)
+    return failure(hresultError("webview.onNavigationCompleted", status))
+  view.navigationCompletedToken = token.value
+  view.navigationCompletedRegistered = true
+  success()
+
 proc windowsStartWebView(view: NativeWebView): NativeResult =
   let loader = view.window.app.windowsLoadLoader()
   if not loader.isOk:
@@ -514,6 +575,10 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
 
   view.platformView = core
   view.state = ready
+  let navigationEvents = view.windowsConfigureNavigationCompleted()
+  if not navigationEvents.isOk:
+    view.window.app.windowsFail(navigationEvents.failure)
+    return S_OK
   let messaging = view.windowsConfigureMessageBridge()
   if not messaging.isOk:
     view.window.app.windowsFail(messaging.failure)
@@ -562,6 +627,22 @@ proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
     view.dispatchMessage(copied)
   elif message != nil:
     coTaskMemFree(cast[pointer](message))
+  S_OK
+
+proc navigationCompletedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  let handler = cast[ptr NavigationCompletedHandler](self)
+  let view = cast[NativeWebView](handler.view)
+  if view.isNil or view.state in {closing, closed} or args.isNil:
+    return S_OK
+  var isSuccess: WinBool
+  let successStatus = navigationCompletedGetIsSuccess(args, addr isSuccess)
+  var source: WideCString
+  let sourceStatus = coreGetSource(view.platformView, addr source)
+  let copiedSource = if succeeded(sourceStatus) and source != nil: $source else: ""
+  if source != nil:
+    coTaskMemFree(cast[pointer](source))
+  view.dispatchNavigationCompleted(copiedSource,
+    succeeded(successStatus) and isSuccess != 0)
   S_OK
 
 proc windowsQuit(app: NativeApp): NativeResult =

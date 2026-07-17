@@ -1,6 +1,6 @@
 # Nimino Architecture
 
-**状態: M0完了、M1実装とM2（JavaScript評価・文字列message）を部分実装中（2026-07-17）**
+**状態: M0完了、M1実装とM2（JavaScript評価・文字列message・ナビゲーション完了）を部分実装中（2026-07-17）**
 
 Niminoは、NimアプリケーションがOS固有のWindow、WebView、またはWSL通信を直接意識せずにWeb UIを構築できるようにするモノレポです。レンダリングエンジンや汎用WebViewラッパーは実装・導入しません。
 
@@ -32,7 +32,7 @@ URL / manifest -- nimino-pack -- nimino-core public API -- nimino-native
 | ターゲット | Window/WebView | M0の決定 | M1状態 |
 | --- | --- | --- | --- |
 | Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2をx64クロスコンパイル済み。Loader/Runtime不足のため実GUI未検証 |
-| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1とM2評価/messageをXvfb実行済み |
+| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1とM2評価/message/navigation完了をXvfb実行済み |
 | WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client smoke済み。M2 request/event adapter実装済み、Runtime依存操作は未検証 |
 | macOS | Cocoa + WKWebView | 将来のprivate backendのみ。共通APIへ固有要件を入れない | 対象外 |
 

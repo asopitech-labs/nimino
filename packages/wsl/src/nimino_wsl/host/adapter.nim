@@ -12,6 +12,11 @@ type
     webViewId*: uint64
     message*: string
 
+  HostNavigationCompleted* = object
+    webViewId*: uint64
+    url*: string
+    succeeded*: bool
+
   HostActionKind* = enum
     noHostAction
     startUiLoop
@@ -32,6 +37,7 @@ type
     windowViewCounts: Table[uint64, int]
     uiStartRequested: bool
     pendingMessages: seq[HostWebMessage]
+    pendingNavigationCompletions: seq[HostNavigationCompleted]
 
 proc newHostAdapter*(): HostAdapter =
   HostAdapter(app: newNativeApp(), nextWindowId: 1, nextWebViewId: 1)
@@ -133,6 +139,18 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   )
   if not configured.isOk:
     return nativeFailure("native.webview.onMessage", configured)
+  let navigationConfigured = created.value.onNavigationCompleted(
+    proc(url: string; succeeded: bool) =
+      let owner = cast[HostAdapter](adapterPointer)
+      if owner != nil:
+        owner.pendingNavigationCompletions.add(HostNavigationCompleted(
+          webViewId: webViewId,
+          url: url,
+          succeeded: succeeded
+        ))
+  )
+  if not navigationConfigured.isOk:
+    return nativeFailure("native.webview.onNavigationCompleted", navigationConfigured)
   adapter.webViews[webViewId] = created.value
   inc adapter.windowViewCounts[windowId.value]
   successOf(HostAction(kind: noHostAction, payload: encodedId("webViewId", webViewId)))
@@ -142,6 +160,12 @@ proc takeMessages*(adapter: HostAdapter): seq[HostWebMessage] =
     return @[]
   result = adapter.pendingMessages
   adapter.pendingMessages.setLen(0)
+
+proc takeNavigationCompletions*(adapter: HostAdapter): seq[HostNavigationCompleted] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingNavigationCompletions
+  adapter.pendingNavigationCompletions.setLen(0)
 
 proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;
                        contentField, operation: string): ProtocolResultOf[HostAction] =
