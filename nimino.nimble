@@ -25,6 +25,10 @@ task testCoreLinuxRpcSmoke, "Run the Linux core RPC smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_smoke.nim"
   exec "xvfb-run -a /tmp/nimino-core-linux-rpc-smoke"
 
+task testCoreLinuxRpcAsyncSmoke, "Run the Linux async and timeout core RPC smoke test under Xvfb":
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-async-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-async-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_async_smoke.nim"
+  exec "xvfb-run -a /tmp/nimino-core-linux-rpc-async-smoke"
+
 task testWindowsCross, "Cross-compile the Windows native M1 smoke target":
   exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-windows-cross-nimcache --out:/tmp/nimino-windows-cross.exe --path:packages/native packages/native/tests/test_windows_cross.nim"
   exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-windows-cross.exe | grep -q 'file format pei-x86-64'"

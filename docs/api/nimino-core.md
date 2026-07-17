@@ -65,7 +65,7 @@ discard app.run()
 
 Web側には`window.nimino.invoke(method, params, { timeoutMs })`および`window.nimino.notify(method, params)`を提供する。wire形式は`nimino = "rpc"`、`kind = request | notification | cancel`、文字列ID、明示的method、JSON params、timeoutMsである。responseは同じIDに`ok/result`または構造化`error`を返す。未登録methodは拒否し、cancel/timeout後の遅延Futureはresponseを二重送信しない。
 
-registryの`tick()`はWindows timerとLinux GLib timeout sourceからUI threadで呼ばれる。Linuxの実smokeは`invoke → 許可済みhandler → response → notify`を確認している。WSLではcoreがhostの`native.webview.message` eventを同じWindow registryへ渡し、responseを`native.webview.evalJavaScript` requestとして中継することを認証済みfake hostで確認している。async handlerの実WebView完了・timeout、Window close中の遅延Future、Windows Runtime、WSLの実WebView2経路は未確認である。
+registryの`tick()`はWindows timerとLinux GLib timeout sourceからUI threadで呼ばれる。Linuxの実smokeは`invoke → 許可済みhandler → response → notify`に加え、通知で完了するFutureと許可済み未完了Futureのtimeout responseを確認している。WSLではcoreがhostの`native.webview.message` eventを同じWindow registryへ渡し、responseを`native.webview.evalJavaScript` requestとして中継することを認証済みfake hostで確認している。Window close中の遅延Future、Windows Runtime、WSLの実WebView2 async/timeout経路は未確認である。
 
 `loadHtml`はbridgeを文書の先頭へ挿入する。URL読込では読込完了後にbridgeを入れるため、リモートURLの最初期scriptからの`invoke`はdocument-start script注入スパイクが完了するまで保証しない。この制約を隠して本番向けURL包装には利用しない。
 

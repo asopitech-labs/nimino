@@ -3,7 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test linux-smoke core-linux-rpc-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-client-smoke wsl-core-smoke check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test linux-smoke core-linux-rpc-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-client-smoke wsl-core-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -46,6 +46,10 @@ linux-smoke: image ## Xvfb上でLinux GTK/WebKitGTKのM1 smoke testを実行す�
 core-linux-rpc-smoke: image ## Xvfb上でLinux core RPC bootstrap smoke testを実行する
 
 	$(COMPOSE) run --rm -e WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 -e NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 $(SERVICE) nimble testCoreLinuxRpcSmoke
+
+core-linux-rpc-async-smoke: image ## Xvfb上でLinux core RPCのasync/timeout smoke testを実行する
+
+	$(COMPOSE) run --rm -e WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 -e NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 $(SERVICE) nimble testCoreLinuxRpcAsyncSmoke
 
 windows-cross: image ## MinGWを使いWindows x64向けnative smokeバイナリをクロスコンパイルする
 
