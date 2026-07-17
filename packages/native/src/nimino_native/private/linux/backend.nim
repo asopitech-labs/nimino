@@ -283,6 +283,7 @@ proc linuxDisposeWindow(window: NativeWindow) =
     view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
     view.linuxDisposeMessageBridge()
     view.linuxDisposeLoadEvents()
+    view.releaseCallbackReferences()
     if view.platformView != nil:
       g_object_unref(view.platformView)
       view.platformView = nil

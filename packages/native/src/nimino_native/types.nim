@@ -122,6 +122,18 @@ proc failOutstandingScripts(view: NativeWebView; error: NativeError) =
   ## no Nim-side ownership after closing, but let each callback GC_unref it.
   view.activeScripts.setLen(0)
 
+proc releaseCallbackReferences(view: NativeWebView) =
+  ## Native signal/COM registrations are removed by each backend before this
+  ## runs.  Clearing Nim closures here prevents a closed WebView from keeping
+  ## an owning core Window or application callback cycle alive under ARC.
+  if view.isNil:
+    return
+  view.messageHandler = nil
+  view.errorHandler = nil
+  view.newWindowRequestedHandler = nil
+  view.navigationStartingHandler = nil
+  view.navigationCompletedHandler = nil
+
 proc startScriptRequest(view: NativeWebView; request: NativeScriptRequest) =
   request.view = view
   view.activeScripts.add(request)

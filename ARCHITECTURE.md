@@ -1,6 +1,6 @@
 # Nimino Architecture
 
-**状態: M0完了、M1実装、M2（JavaScript評価・文字列message・ナビゲーション開始/完了・基本エラー通知・新規Window拒否）とM3 RPC基盤を部分実装中（2026-07-17）**
+**状態: M0完了、M1実装、M2（JavaScript評価・文字列message・ナビゲーション開始/完了・基本エラー通知・新規Window拒否）とM3 Windows/Linux core facade・RPCを部分実装中（2026-07-17）**
 
 Niminoは、NimアプリケーションがOS固有のWindow、WebView、またはWSL通信を直接意識せずにWeb UIを構築できるようにするモノレポです。レンダリングエンジンや汎用WebViewラッパーは実装・導入しません。
 
@@ -31,9 +31,9 @@ URL / manifest -- nimino-pack -- nimino-core public API -- nimino-native
 
 | ターゲット | Window/WebView | M0の決定 | M1状態 |
 | --- | --- | --- | --- |
-| Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2をx64クロスコンパイル済み。Loader/Runtime不足のため実GUI未検証 |
-| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1とM2評価/message/navigation開始/完了/errorをXvfb実行済み |
-| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client smoke済み。M2 request/event adapter実装済み。開始/new-window eventは中継するがWSL側の同期中止は未実装 |
+| Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2とM3 core facadeをx64クロスコンパイル済み。Loader/Runtime不足のため実GUI未検証 |
+| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1/M2評価/message/navigation開始/完了/errorとM3 RPC同期往復をXvfb実行済み |
+| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client smoke済み。M2 request/event adapter実装済み。M3 core adapterは未実装で、WSLのLinux GUI backend選択を拒否する |
 | macOS | Cocoa + WKWebView | 将来のprivate backendのみ。共通APIへ固有要件を入れない | 対象外 |
 
 ## 公開面とエラー
@@ -89,7 +89,7 @@ NativeApp (明示 close)
 
 ## リポジトリ配置
 
-M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはGUI非依存のRPC registryだけを追加しており、App/Window facade、WebView bootstrap、WSL adapterは未実装です。`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
+M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registryを追加しています。WSL adapter、型抽出macro、プロファイルは未実装です。`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
 
 ```text
 packages/

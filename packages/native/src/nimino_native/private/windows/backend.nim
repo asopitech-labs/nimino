@@ -369,6 +369,7 @@ proc windowsDisposeView(view: NativeWebView) =
   if view.platformEnvironment != nil:
     discard comRelease(view.platformEnvironment)
     view.platformEnvironment = nil
+  view.releaseCallbackReferences()
   view.state = closed
 
 proc windowsDisposeWindow(window: NativeWindow) =
