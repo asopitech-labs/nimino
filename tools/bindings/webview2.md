@@ -49,6 +49,12 @@ runtime are not copied into this repository.
   `9adbe429-f36d-432b-9ddc-f8881fbd76e3`
 * `ICoreWebView2NavigationStartingEventArgs::{get_Uri, put_Cancel}`
   (vtable slots 3 and 8)
+* `ICoreWebView2::{add_NewWindowRequested, remove_NewWindowRequested}`
+  (vtable slots 45 and 46)
+* `ICoreWebView2NewWindowRequestedEventHandler` and IID
+  `d4c185fe-c81c-4989-97af-2d3fa7ab5651`
+* `ICoreWebView2NewWindowRequestedEventArgs::{get_Uri, put_Handled}`
+  (vtable slots 3 and 6)
 
 The completed handler receives an `HRESULT` and a borrowed JSON-encoded UTF-16
 result. Nimino copies the result before the callback returns and explicitly
@@ -65,6 +71,9 @@ assuming that a finished navigation succeeded.
 The navigation-starting handler copies/frees its URI and writes `Cancel` only
 when the registered Nim callback denies the request. It is registered before
 initial content is loaded and removed before releasing CoreWebView2.
+
+The new-window handler copies/frees its URI, notifies Nim, then writes
+`Handled = true`. It does not create a hidden or implicit WebView2 instance.
 
 The vtable slot order and callback signatures were checked against the header
 above.  Later features must be checked against a recorded SDK version before

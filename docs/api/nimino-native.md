@@ -1,6 +1,6 @@
 # `nimino-native` 公開API案
 
-**状態: M2部分実装。`evalJavaScript`、文字列 `onMessage`、`onNavigationStarting`/`onNavigationCompleted`、基本`onError` は native Windows/Linux と WSL host adapter に実装済みです。Windows/Linuxの開始callbackは同期中止を実装し、WSL hostは開始/error eventを中継します。WSL clientで任意callbackを同期評価するIPCは未実装です。Linuxは実WebViewで確認済みですが、Windows Runtime 上の実行確認、new-window event、RPC は未完了です。その他の M2 以降の操作は設計案です。**
+**状態: M2部分実装。`evalJavaScript`、文字列 `onMessage`、`onNavigationStarting`/`onNavigationCompleted`、基本`onError`、`onNewWindowRequested` は native Windows/Linux と WSL host adapter に実装済みです。Windows/Linuxの開始callbackは同期中止を実装し、新規Windowは暗黙生成せず拒否します。WSL hostは開始/error/new-window eventを中継します。WSL clientで任意callbackを同期評価するIPCは未実装です。Linuxは通常の実WebView経路を確認済みですが、実ユーザー操作での新規Window要求、Windows Runtime 上の実行、RPC は未完了です。その他の M2 以降の操作は設計案です。**
 
 このAPIはWindow/WebViewと低水準イベントだけを提供します。RPC、プロファイル、権限ポリシー、アセット配信、URL包装、WSL通信を含めません。
 
@@ -91,7 +91,7 @@ proc onNavigationStarting*(view: NativeWebView,
 proc onNavigationCompleted*(view: NativeWebView,
   callback: proc(url: string, succeeded: bool) {.gcsafe.})
 proc onNewWindowRequested*(view: NativeWebView,
-  callback: proc(url: string): bool {.gcsafe.})
+  callback: proc(url: string) {.gcsafe.})
 proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.})
 ```
 
@@ -106,6 +106,8 @@ proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.}
 `onNavigationCompleted` は主frameの読込完了後に URL と成功可否を通知します。Linuxは `load-changed` と `load-failed` を併用して失敗を成功扱いせず、Windowsは `ICoreWebView2::NavigationCompleted` の `IsSuccess` を使用します。hostは `native.webview.navigationCompleted` eventとして中継します。各バックエンドはWindow破棄前にsignal/COM event登録を解除します。Linux実WebViewでの成功経路、Windows/WSLのクロスコンパイルは確認済みですが、Windows Runtime とWSL往復での実行確認は未完了です。
 
 `onError` はまず入力検証とmain-frame navigation失敗を通知します。入力検証では該当操作の戻り値も失敗になります。Linuxでは`load-failed`、Windowsでは`NavigationCompleted`の失敗を`webViewError`として通知します。WSL hostは`native.webview.error` eventへ`kind`、`operation`、`platformCode`、`detail`を渡します。JavaScript評価の失敗は引き続きそのFutureで返し、この通知へ二重送信しません。
+
+`onNewWindowRequested` は`window.open`や`target="_blank"`要求のURLを通知します。native層は暗黙にWindow/WebViewを増やさず、Windowsは`NewWindowRequested::Handled = true`、Linuxはnew-window policyを`ignore`し、`create` signalを登録して予期しない生成も返却値`nil`で拒否します。WSL hostは`native.webview.newWindowRequested` eventを中継します。Windows/Linux/WSLの実ユーザー操作による発火確認は、WebView2 Runtimeを備えたGUI CIで残っています。
 
 ## 利用イメージ
 

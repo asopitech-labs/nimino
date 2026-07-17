@@ -138,6 +138,10 @@ const
     data1: 0x9adbe429'u32, data2: 0xf36d'u16, data3: 0x432b'u16,
     data4: [0x9d'u8, 0xdc'u8, 0xf8'u8, 0x88'u8, 0x1f'u8, 0xbd'u8, 0x76'u8, 0xe3'u8]
   )
+  IidNewWindowRequestedEventHandler* = WinGuid(
+    data1: 0xd4c185fe'u32, data2: 0xc81c'u16, data3: 0x4989'u16,
+    data4: [0x97'u8, 0xaf'u8, 0x2d'u8, 0x3f'u8, 0xa7'u8, 0xab'u8, 0x56'u8, 0x51'u8]
+  )
 
 proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
   {.stdcall, importc: "CoInitializeEx", dynlib: "ole32.dll".}
@@ -258,6 +262,20 @@ proc coreRemoveNavigationStarting*(core: pointer; token: EventRegistrationToken)
   )
   dispatch(core, token)
 
+proc coreAddNewWindowRequested*(core: pointer; handler: pointer;
+                                token: ptr EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; handler: pointer;
+                           token: ptr EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[45]
+  )
+  dispatch(core, handler, token)
+
+proc coreRemoveNewWindowRequested*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[46]
+  )
+  dispatch(core, token)
+
 proc coreGetSource*(core: pointer; source: ptr WideCString): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; source: ptr WideCString): HResult {.stdcall.}](
     cast[ptr ComInterface](core).vtable[4]
@@ -325,5 +343,17 @@ proc navigationStartingGetUri*(args: pointer; value: ptr WideCString): HResult {
 proc navigationStartingSetCancel*(args: pointer; value: WinBool): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; value: WinBool): HResult {.stdcall.}](
     cast[ptr ComInterface](args).vtable[8]
+  )
+  dispatch(args, value)
+
+proc newWindowRequestedGetUri*(args: pointer; value: ptr WideCString): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; value: ptr WideCString): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[3]
+  )
+  dispatch(args, value)
+
+proc newWindowRequestedSetHandled*(args: pointer; value: WinBool): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; value: WinBool): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[6]
   )
   dispatch(args, value)

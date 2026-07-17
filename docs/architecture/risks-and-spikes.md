@@ -16,6 +16,7 @@
 | R10 | `Result`/asyncdispatch APIのNim 2.x差 | 公開APIのコンパイル不能 | `std/results`がNim 2.2.10にないことを確認済み。外部依存を増やさず独自`NativeResult`/`NativeResultOf[T]`をARCでスパイク済み。asyncdispatchは別途確認 |
 | R11 | WebKit process swap後にbackendが無効な内部状態を保持 | Linux不安定 | Web process pointerを公開/保持せず、WebViewのみに操作を閉じる |
 | R12 | WSL client上の任意ナビゲーションpolicyを、Windows UI callback時に評価するとUI待機・nested loop・IPC deadlockを招く | coreのURL制御をWSLで透過提供できない | [ADR-0005提案](../adr/0005-wsl-navigation-policy.md)の双方向decision protocolまたはhost適用可能な宣言的ruleのスパイク。任意callbackを既定許可へ偽装しない |
+| R13 | headless Xvfbでは実ユーザー操作を伴う`window.open`/`target=_blank`を安定して発火できない | new-windowの実行確認を誤判定する | WebView2 Runtimeを備えたWindows/Linux GUI CIで、実クリック→通知→暗黙Windowなしを確認する。スクリプト起動popupの失敗はAPI失敗と扱わない |
 
 ## 依存方針
 

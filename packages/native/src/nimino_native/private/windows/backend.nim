@@ -37,6 +37,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
+  NewWindowRequestedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
+
   EnvironmentCompletedHandler = object
     vtable: ptr EnvironmentCompletedVTable
     references: Atomic[int]
@@ -64,6 +70,11 @@ type
 
   NavigationStartingHandler = object
     vtable: ptr NavigationStartingVTable
+    references: Atomic[int]
+    view: pointer
+
+  NewWindowRequestedHandler = object
+    vtable: ptr NewWindowRequestedVTable
     references: Atomic[int]
     view: pointer
 
@@ -186,6 +197,22 @@ proc navigationStartingQueryInterface(self: pointer; iid: ptr WinGuid;
   queryCallback(self, iid, outInstance, IidNavigationStartingEventHandler,
     navigationStartingAddRef)
 
+proc newWindowRequestedAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr NewWindowRequestedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc newWindowRequestedRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr NewWindowRequestedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    dealloc(handler)
+  uint32(remaining)
+
+proc newWindowRequestedQueryInterface(self: pointer; iid: ptr WinGuid;
+                                      outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidNewWindowRequestedEventHandler,
+    newWindowRequestedAddRef)
+
 proc environmentInvoke(self: pointer; errorCode: HResult;
                        environment: pointer): HResult {.stdcall.}
 proc controllerInvoke(self: pointer; errorCode: HResult;
@@ -195,6 +222,7 @@ proc executeScriptInvoke(self: pointer; errorCode: HResult;
 proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 proc navigationCompletedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 proc navigationStartingInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
+proc newWindowRequestedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
 var environmentCompletedVTable = EnvironmentCompletedVTable(
   queryInterface: environmentQueryInterface,
@@ -238,6 +266,13 @@ var navigationStartingVTable = NavigationStartingVTable(
   invoke: navigationStartingInvoke
 )
 
+var newWindowRequestedVTable = NewWindowRequestedVTable(
+  queryInterface: newWindowRequestedQueryInterface,
+  addRef: newWindowRequestedAddRef,
+  release: newWindowRequestedRelease,
+  invoke: newWindowRequestedInvoke
+)
+
 proc newEnvironmentCompletedHandler(view: NativeWebView): ptr EnvironmentCompletedHandler =
   result = cast[ptr EnvironmentCompletedHandler](alloc0(sizeof(EnvironmentCompletedHandler)))
   result.vtable = addr environmentCompletedVTable
@@ -274,6 +309,12 @@ proc newNavigationStartingHandler(view: NativeWebView): ptr NavigationStartingHa
   result.references.store(1, moRelaxed)
   result.view = cast[pointer](view)
 
+proc newNewWindowRequestedHandler(view: NativeWebView): ptr NewWindowRequestedHandler =
+  result = cast[ptr NewWindowRequestedHandler](alloc0(sizeof(NewWindowRequestedHandler)))
+  result.vtable = addr newWindowRequestedVTable
+  result.references.store(1, moRelaxed)
+  result.view = cast[pointer](view)
+
 proc windowsAllClosed(app: NativeApp): bool =
   for window in app.windows:
     if window.state != closed:
@@ -301,6 +342,11 @@ proc windowsDisposeView(view: NativeWebView) =
     let token = EventRegistrationToken(value: view.messageRegistrationToken)
     discard coreRemoveWebMessageReceived(view.platformView, token)
     view.messageRegistered = false
+    GC_unref(view)
+  if view.newWindowRegistered and view.platformView != nil:
+    let token = EventRegistrationToken(value: view.newWindowToken)
+    discard coreRemoveNewWindowRequested(view.platformView, token)
+    view.newWindowRegistered = false
     GC_unref(view)
   if view.navigationStartingRegistered and view.platformView != nil:
     let token = EventRegistrationToken(value: view.navigationStartingToken)
@@ -502,6 +548,21 @@ proc windowsConfigureNavigationStarting(view: NativeWebView): NativeResult =
   view.navigationStartingRegistered = true
   success()
 
+proc windowsConfigureNewWindowRequested(view: NativeWebView): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.onNewWindowRequested"))
+  let handler = newNewWindowRequestedHandler(view)
+  var token: EventRegistrationToken
+  GC_ref(view)
+  let status = coreAddNewWindowRequested(view.platformView, cast[pointer](handler), addr token)
+  discard newWindowRequestedRelease(handler)
+  if not succeeded(status):
+    GC_unref(view)
+    return failure(hresultError("webview.onNewWindowRequested", status))
+  view.newWindowToken = token.value
+  view.newWindowRegistered = true
+  success()
+
 proc windowsStartWebView(view: NativeWebView): NativeResult =
   let loader = view.window.app.windowsLoadLoader()
   if not loader.isOk:
@@ -640,6 +701,10 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
   if not navigationStarting.isOk:
     view.window.app.windowsFail(navigationStarting.failure)
     return S_OK
+  let newWindowEvents = view.windowsConfigureNewWindowRequested()
+  if not newWindowEvents.isOk:
+    view.window.app.windowsFail(newWindowEvents.failure)
+    return S_OK
   let navigationEvents = view.windowsConfigureNavigationCompleted()
   if not navigationEvents.isOk:
     view.window.app.windowsFail(navigationEvents.failure)
@@ -729,6 +794,21 @@ proc navigationStartingInvoke(self: pointer; sender, args: pointer): HResult {.s
     coTaskMemFree(cast[pointer](uri))
   if not view.dispatchNavigationStarting(copiedUri):
     discard navigationStartingSetCancel(args, 1)
+  S_OK
+
+proc newWindowRequestedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  let handler = cast[ptr NewWindowRequestedHandler](self)
+  let view = cast[NativeWebView](handler.view)
+  if view.isNil or view.state in {closing, closed} or args.isNil:
+    return S_OK
+  var uri: WideCString
+  let uriStatus = newWindowRequestedGetUri(args, addr uri)
+  let copiedUri = if succeeded(uriStatus) and uri != nil: $uri else: ""
+  if uri != nil:
+    coTaskMemFree(cast[pointer](uri))
+  view.dispatchNewWindowRequested(copiedUri)
+  ## A new native Window/WebView is never created implicitly at this layer.
+  discard newWindowRequestedSetHandled(args, 1)
   S_OK
 
 proc windowsQuit(app: NativeApp): NativeResult =

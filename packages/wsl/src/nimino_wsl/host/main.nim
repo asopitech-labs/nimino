@@ -112,6 +112,16 @@ proc flushErrors(state: HostState) =
       discard state.adapter.app.close()
       return
 
+proc flushNewWindowRequests(state: HostState) =
+  for requested in state.adapter.takeNewWindowRequests():
+    let payload = $(%*{
+      "webViewId": $requested.webViewId,
+      "url": requested.url
+    })
+    if not state.writeEvent("native.webview.newWindowRequested", payload, ""):
+      discard state.adapter.app.close()
+      return
+
 proc flushNavigationStarts(state: HostState) =
   for started in state.adapter.takeNavigationStarts():
     let payload = $(%*{
@@ -170,6 +180,7 @@ proc pollHost(state: HostState) =
   state.flushEvaluations()
   state.flushMessages()
   state.flushErrors()
+  state.flushNewWindowRequests()
   state.flushNavigationStarts()
   state.flushNavigationCompletions()
 
@@ -265,6 +276,7 @@ proc runHost(): int =
       state.flushEvaluations()
       state.flushMessages()
       state.flushErrors()
+      state.flushNewWindowRequests()
       state.flushNavigationStarts()
       state.flushNavigationCompletions()
       if not finished.isOk:

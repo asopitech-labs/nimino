@@ -6,6 +6,7 @@ type
   NativeIdleHandler* = proc() {.closure.}
   NativeMessageHandler* = proc(message: string) {.closure.}
   NativeErrorHandler* = proc(error: NativeError) {.closure.}
+  NativeNewWindowRequestedHandler* = proc(url: string) {.closure.}
   NativeNavigationStartingHandler* = proc(url: string): bool {.closure.}
   NativeNavigationCompletedHandler* = proc(url: string; succeeded: bool) {.closure.}
 
@@ -68,10 +69,13 @@ type
     platformMessageManager: pointer
     messageSignalHandler: culong
     policyDecisionSignalHandler: culong
+    createSignalHandler: culong
     loadChangedSignalHandler: culong
     loadFailedSignalHandler: culong
     messageRegistrationToken: int64
     messageRegistered: bool
+    newWindowToken: int64
+    newWindowRegistered: bool
     navigationStartingToken: int64
     navigationStartingRegistered: bool
     navigationCompletedToken: int64
@@ -79,6 +83,7 @@ type
     navigationFailed: bool
     messageHandler: NativeMessageHandler
     errorHandler: NativeErrorHandler
+    newWindowRequestedHandler: NativeNewWindowRequestedHandler
     navigationStartingHandler: NativeNavigationStartingHandler
     navigationCompletedHandler: NativeNavigationCompletedHandler
     pendingScripts: seq[NativeScriptRequest]
@@ -154,6 +159,16 @@ proc dispatchError(view: NativeWebView; error: NativeError) =
     return
   try:
     view.errorHandler(error)
+  except CatchableError:
+    ## A user callback must not unwind through a native C/COM callback.
+    discard
+
+proc dispatchNewWindowRequested(view: NativeWebView; url: string) =
+  if view.isNil or view.state in {closing, closed} or
+      view.newWindowRequestedHandler.isNil:
+    return
+  try:
+    view.newWindowRequestedHandler(url)
   except CatchableError:
     ## A user callback must not unwind through a native C/COM callback.
     discard
@@ -290,6 +305,13 @@ proc onError*(view: NativeWebView; handler: NativeErrorHandler): NativeResult =
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.onError"))
   view.errorHandler = handler
+  success()
+
+proc onNewWindowRequested*(view: NativeWebView;
+                           handler: NativeNewWindowRequestedHandler): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.onNewWindowRequested"))
+  view.newWindowRequestedHandler = handler
   success()
 
 proc onNavigationCompleted*(view: NativeWebView;

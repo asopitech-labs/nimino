@@ -16,6 +16,10 @@ type
     webViewId*: uint64
     error*: NativeError
 
+  HostNewWindowRequested* = object
+    webViewId*: uint64
+    url*: string
+
   HostNavigationCompleted* = object
     webViewId*: uint64
     url*: string
@@ -46,6 +50,7 @@ type
     uiStartRequested: bool
     pendingMessages: seq[HostWebMessage]
     pendingErrors: seq[HostNativeError]
+    pendingNewWindowRequests: seq[HostNewWindowRequested]
     pendingNavigationStarts: seq[HostNavigationStarting]
     pendingNavigationCompletions: seq[HostNavigationCompleted]
 
@@ -156,6 +161,16 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   )
   if not errorConfigured.isOk:
     return nativeFailure("native.webview.onError", errorConfigured)
+  let newWindowConfigured = created.value.onNewWindowRequested(proc(url: string) =
+    let owner = cast[HostAdapter](adapterPointer)
+    if owner != nil:
+      owner.pendingNewWindowRequests.add(HostNewWindowRequested(
+        webViewId: webViewId,
+        url: url
+      ))
+  )
+  if not newWindowConfigured.isOk:
+    return nativeFailure("native.webview.onNewWindowRequested", newWindowConfigured)
   let navigationStartingConfigured = created.value.onNavigationStarting(
     proc(url: string): bool =
       let owner = cast[HostAdapter](adapterPointer)
@@ -197,6 +212,12 @@ proc takeErrors*(adapter: HostAdapter): seq[HostNativeError] =
     return @[]
   result = adapter.pendingErrors
   adapter.pendingErrors.setLen(0)
+
+proc takeNewWindowRequests*(adapter: HostAdapter): seq[HostNewWindowRequested] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingNewWindowRequests
+  adapter.pendingNewWindowRequests.setLen(0)
 
 proc takeNavigationStarts*(adapter: HostAdapter): seq[HostNavigationStarting] =
   if adapter.isNil:

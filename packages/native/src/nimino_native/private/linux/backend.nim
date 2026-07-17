@@ -119,18 +119,23 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
   let view = cast[NativeWebView](userData)
   if view.isNil or view.state in {closing, closed}:
     return 0
-  if decisionType != 0: # WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION
-    return 0
   let navigation = cast[ptr WebKitNavigationPolicyDecision](policyDecision)
   let action = webkit_navigation_policy_decision_get_navigation_action(navigation)
+  let decision = cast[ptr WebKitPolicyDecision](policyDecision)
   let request = if action.isNil: nil else: webkit_navigation_action_get_request(action)
   let uri = if request.isNil: nil else: webkit_uri_request_get_uri(request)
   let copiedUri = if uri.isNil: "" else: $uri
-  let decision = cast[ptr WebKitPolicyDecision](policyDecision)
-  if view.dispatchNavigationStarting(copiedUri):
-    webkit_policy_decision_use(decision)
-  else:
+  case decisionType
+  of 0: # WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION
+    if view.dispatchNavigationStarting(copiedUri):
+      webkit_policy_decision_use(decision)
+    else:
+      webkit_policy_decision_ignore(decision)
+  of 1: # WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION
+    view.dispatchNewWindowRequested(copiedUri)
     webkit_policy_decision_ignore(decision)
+  else:
+    return 0
   ## The decision was handled explicitly above.
   1
 
@@ -149,6 +154,33 @@ proc linuxConfigureNavigationStarting(view: NativeWebView): NativeResult =
     return failure(nativeError(webViewError, "webview.onNavigationStarting",
       detail = "WebKitGTK decide-policy signal registration failed"))
   view.policyDecisionSignalHandler = signal
+  success()
+
+proc linuxCreateRequested(webView: pointer; action: ptr WebKitNavigationAction;
+                          userData: pointer): pointer {.cdecl.} =
+  let view = cast[NativeWebView](userData)
+  if view != nil and view.state notin {closing, closed}:
+    let request = if action.isNil: nil else: webkit_navigation_action_get_request(action)
+    let uri = if request.isNil: nil else: webkit_uri_request_get_uri(request)
+    view.dispatchNewWindowRequested(if uri.isNil: "" else: $uri)
+  ## Nimino does not create an implicit Window/WebView for window.open().
+  nil
+
+proc linuxConfigureNewWindowRequested(view: NativeWebView): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.onNewWindowRequested"))
+  let signal = g_signal_connect_data(
+    view.platformView,
+    "create",
+    cast[pointer](linuxCreateRequested),
+    cast[pointer](view),
+    nil,
+    0
+  )
+  if signal == 0:
+    return failure(nativeError(webViewError, "webview.onNewWindowRequested",
+      detail = "WebKitGTK create signal registration failed"))
+  view.createSignalHandler = signal
   success()
 
 proc linuxDisposeMessageBridge(view: NativeWebView) =
@@ -176,6 +208,9 @@ proc linuxDisposeLoadEvents(view: NativeWebView) =
   if view.policyDecisionSignalHandler != 0:
     g_signal_handler_disconnect(webView, view.policyDecisionSignalHandler)
     view.policyDecisionSignalHandler = 0
+  if view.createSignalHandler != 0:
+    g_signal_handler_disconnect(webView, view.createSignalHandler)
+    view.createSignalHandler = 0
 
 proc linuxEvaluationCompleted(sourceObject: pointer; asyncResult: ptr GAsyncResult;
                               userData: pointer) {.cdecl.} =
@@ -288,6 +323,9 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let navigationStarting = view.linuxConfigureNavigationStarting()
   if not navigationStarting.isOk:
     return navigationStarting
+  let newWindowEvents = view.linuxConfigureNewWindowRequested()
+  if not newWindowEvents.isOk:
+    return newWindowEvents
   gtk_window_set_child(gtkWindow, cast[pointer](webView))
   view.linuxLoadPendingContent()
   view.dispatchPendingScripts()

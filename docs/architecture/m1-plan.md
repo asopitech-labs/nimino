@@ -70,7 +70,7 @@
 | GObject | `g_signal_connect_data`, `g_signal_handler_disconnect`, `g_object_ref_sink`, `g_object_unref` | callbackと参照寿命 |
 | GLib | `g_main_context_invoke_full` | workerからUI threadへの復帰 |
 
-M2の縦機能として、native の `webkit_web_view_evaluate_javascript`/`_finish` と WebView2 `ExecuteScript`、文字列message、ナビゲーション開始/完了、基本error通知を実装した。Linuxの開始は`WebKitWebView::decide-policy`、完了/errorは`::load-changed`と`::load-failed`、WindowsはWebView2 `NavigationStarting`/`NavigationCompleted`を使用し、WSL hostはeventとして中継する。Windows/Linuxは開始callbackによる中止を実装する一方、WSL client同期判定は[ADR-0005提案](../adr/0005-wsl-navigation-policy.md)のスパイク待ちである。残る M2 API は`::create`とnew-windowである。HTML読込にはM1から`webkit_web_view_load_html`を使用する。GTKのレイアウトがWindowリサイズへ追従するため、WindowsのようなBounds更新は不要である。
+M2の縦機能として、native の `webkit_web_view_evaluate_javascript`/`_finish` と WebView2 `ExecuteScript`、文字列message、ナビゲーション開始/完了、基本error通知、新規Window要求を実装した。Linuxの開始/new-windowは`WebKitWebView::decide-policy`と`::create`、完了/errorは`::load-changed`と`::load-failed`、WindowsはWebView2 `NavigationStarting`/`NavigationCompleted`/`NewWindowRequested`を使用し、WSL hostはeventとして中継する。Windows/Linuxは開始callbackによる中止を実装し、新規Windowは暗黙作成せず拒否する。一方、WSL client同期判定は[ADR-0005提案](../adr/0005-wsl-navigation-policy.md)のスパイク待ちである。新規Windowの実ユーザー操作テストとWindows Runtime実行は未確認である。HTML読込にはM1から`webkit_web_view_load_html`を使用する。GTKのレイアウトがWindowリサイズへ追従するため、WindowsのようなBounds更新は不要である。
 
 公式根拠: [GTK application initialization](https://docs.gtk.org/gtk4/initialization.html)、[GTK threading](https://docs.gtk.org/gtk4/section-threading.html)、[WebKitWebView](https://webkitgtk.org/reference/webkit2gtk/stable/class.WebView.html)、[JavaScript evaluation](https://webkitgtk.org/reference/webkit2gtk/stable/method.WebView.evaluate_javascript.html)。
 
