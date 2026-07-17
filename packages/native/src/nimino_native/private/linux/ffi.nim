@@ -14,6 +14,10 @@ type
   GtkWindow* {.incompleteStruct.} = object
   WebKitWebView* {.incompleteStruct.} = object
   WebKitUserContentManager* {.incompleteStruct.} = object
+  WebKitPolicyDecision* {.incompleteStruct.} = object
+  WebKitNavigationPolicyDecision* {.incompleteStruct.} = object
+  WebKitNavigationAction* {.incompleteStruct.} = object
+  WebKitURIRequest* {.incompleteStruct.} = object
   GAsyncResult* {.incompleteStruct.} = object
   GError* {.incompleteStruct.} = object
   JSCValue* {.incompleteStruct.} = object
@@ -82,6 +86,16 @@ proc webkit_user_content_manager_register_script_message_handler*(manager: ptr W
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_user_content_manager_unregister_script_message_handler*(manager: ptr WebKitUserContentManager;
                                                                      name, worldName: cstring)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_navigation_policy_decision_get_navigation_action*(decision: ptr WebKitNavigationPolicyDecision): ptr WebKitNavigationAction
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_navigation_action_get_request*(action: ptr WebKitNavigationAction): ptr WebKitURIRequest
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_uri_request_get_uri*(request: ptr WebKitURIRequest): cstring
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_policy_decision_use*(decision: ptr WebKitPolicyDecision)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_policy_decision_ignore*(decision: ptr WebKitPolicyDecision)
   {.cdecl, importc, dynlib: LibWebKit.}
 
 const LibJavaScriptCore = "libjavascriptcoregtk-6.0.so.1"

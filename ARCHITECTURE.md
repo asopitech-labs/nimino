@@ -1,6 +1,6 @@
 # Nimino Architecture
 
-**状態: M0完了、M1実装とM2（JavaScript評価・文字列message・ナビゲーション完了）を部分実装中（2026-07-17）**
+**状態: M0完了、M1実装とM2（JavaScript評価・文字列message・ナビゲーション開始/完了）を部分実装中（2026-07-17）**
 
 Niminoは、NimアプリケーションがOS固有のWindow、WebView、またはWSL通信を直接意識せずにWeb UIを構築できるようにするモノレポです。レンダリングエンジンや汎用WebViewラッパーは実装・導入しません。
 
@@ -32,8 +32,8 @@ URL / manifest -- nimino-pack -- nimino-core public API -- nimino-native
 | ターゲット | Window/WebView | M0の決定 | M1状態 |
 | --- | --- | --- | --- |
 | Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2をx64クロスコンパイル済み。Loader/Runtime不足のため実GUI未検証 |
-| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1とM2評価/message/navigation完了をXvfb実行済み |
-| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client smoke済み。M2 request/event adapter実装済み、Runtime依存操作は未検証 |
+| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1とM2評価/message/navigation開始/完了をXvfb実行済み |
+| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client smoke済み。M2 request/event adapter実装済み。開始eventは中継するがWSL側の同期中止は未実装 |
 | macOS | Cocoa + WKWebView | 将来のprivate backendのみ。共通APIへ固有要件を入れない | 対象外 |
 
 ## 公開面とエラー
@@ -75,6 +75,7 @@ NativeApp (明示 close)
 - LinuxではGTK/GLib default main contextを所有するスレッドだけがGTK widgetとWebKitWebViewを操作します。
 - バックグラウンド処理は`postToUi`でUIキューへ投入します。UIスレッドは待機、同期RPC、ネストしたイベントループで塞ぎません。
 - WSL clientが保持するのは不透明なIDだけです。`HWND`、COM pointer、GObject pointerはIPCを越えません。
+- Windows/Linuxのnative navigation-starting callbackは同期的に許可/中止を決める。WSL clientの任意callbackを同じ時点で評価する方式は、UI threadを待機・ネストloopで塞がない設計を要するため、[ADR-0005提案](docs/adr/0005-wsl-navigation-policy.md)のスパイク完了まで公開policyに昇格させない。
 
 詳しい終了順序とasync統合は[ADR-0002](docs/adr/0002-ui-loop-and-native-lifetime.md)、メモリ方式は[ADR-0004](docs/adr/0004-arc-and-explicit-native-release.md)を参照してください。
 

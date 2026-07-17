@@ -134,6 +134,10 @@ const
     data1: 0xd33a35bf'u32, data2: 0x1c49'u16, data3: 0x4f98'u16,
     data4: [0x93'u8, 0xab'u8, 0x00'u8, 0x6e'u8, 0x05'u8, 0x33'u8, 0xfe'u8, 0x1c'u8]
   )
+  IidNavigationStartingEventHandler* = WinGuid(
+    data1: 0x9adbe429'u32, data2: 0xf36d'u16, data3: 0x432b'u16,
+    data4: [0x9d'u8, 0xdc'u8, 0xf8'u8, 0x88'u8, 0x1f'u8, 0xbd'u8, 0x76'u8, 0xe3'u8]
+  )
 
 proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
   {.stdcall, importc: "CoInitializeEx", dynlib: "ole32.dll".}
@@ -240,6 +244,20 @@ proc coreNavigate*(core: pointer; uri: WideCString): HResult {.inline.} =
   )
   dispatch(core, uri)
 
+proc coreAddNavigationStarting*(core: pointer; handler: pointer;
+                                token: ptr EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; handler: pointer;
+                           token: ptr EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[7]
+  )
+  dispatch(core, handler, token)
+
+proc coreRemoveNavigationStarting*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[8]
+  )
+  dispatch(core, token)
+
 proc coreGetSource*(core: pointer; source: ptr WideCString): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; source: ptr WideCString): HResult {.stdcall.}](
     cast[ptr ComInterface](core).vtable[4]
@@ -295,5 +313,17 @@ proc webMessageTryGetAsString*(args: pointer; value: ptr WideCString): HResult {
 proc navigationCompletedGetIsSuccess*(args: pointer; value: ptr WinBool): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; value: ptr WinBool): HResult {.stdcall.}](
     cast[ptr ComInterface](args).vtable[3]
+  )
+  dispatch(args, value)
+
+proc navigationStartingGetUri*(args: pointer; value: ptr WideCString): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; value: ptr WideCString): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[3]
+  )
+  dispatch(args, value)
+
+proc navigationStartingSetCancel*(args: pointer; value: WinBool): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; value: WinBool): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[8]
   )
   dispatch(args, value)

@@ -5,10 +5,11 @@ import nimino_native
 var callbackApp: pointer
 var evaluationFinished: bool
 var messageReceived: bool
+var navigationStarted: bool
 var navigationCompleted: bool
 
 proc quitWhenComplete() {.gcsafe.} =
-  if evaluationFinished and messageReceived and navigationCompleted:
+  if evaluationFinished and messageReceived and navigationStarted and navigationCompleted:
     doAssert cast[NativeApp](callbackApp).quit().isOk
 
 proc completeEvaluation(completed: Future[NativeResultOf[string]]) {.gcsafe.} =
@@ -29,6 +30,10 @@ proc receiveNavigationCompleted(url: string; succeeded: bool) {.gcsafe.} =
   navigationCompleted = true
   quitWhenComplete()
 
+proc receiveNavigationStarting(url: string): bool {.gcsafe.} =
+  navigationStarted = true
+  true
+
 let app = newNativeApp()
 callbackApp = cast[pointer](app)
 let window = app.newWindow("Nimino Linux smoke", 320, 200)
@@ -36,6 +41,7 @@ doAssert window.isOk
 let view = window.value.newWebView()
 doAssert view.isOk
 doAssert view.value.onMessage(receiveMessage).isOk
+doAssert view.value.onNavigationStarting(receiveNavigationStarting).isOk
 doAssert view.value.onNavigationCompleted(receiveNavigationCompleted).isOk
 doAssert view.value.loadHtml("""
 <main>Nimino Linux smoke</main>
@@ -48,5 +54,6 @@ evaluated.addCallback(completeEvaluation)
 doAssert app.run().isOk
 doAssert evaluated.finished
 doAssert messageReceived
+doAssert navigationStarted
 doAssert navigationCompleted
 echo "Linux native smoke passed"

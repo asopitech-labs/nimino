@@ -39,6 +39,7 @@ block windowAndViewRemainSeparate:
   doAssert view.value.loadUrl("about:blank").isOk
   doAssert view.value.loadHtml("<main>Foundation</main>").isOk
   doAssert window.value.setTitle("Foundation updated").isOk
+  doAssert view.value.onNavigationStarting(proc(url: string): bool = true).isOk
   doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
   doAssert not window.value.newWebView().isOk
 

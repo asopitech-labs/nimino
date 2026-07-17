@@ -5,6 +5,7 @@ import ./[capabilities, errors]
 type
   NativeIdleHandler* = proc() {.closure.}
   NativeMessageHandler* = proc(message: string) {.closure.}
+  NativeNavigationStartingHandler* = proc(url: string): bool {.closure.}
   NativeNavigationCompletedHandler* = proc(url: string; succeeded: bool) {.closure.}
 
   NativeState* = enum
@@ -65,14 +66,18 @@ type
     platformController: pointer
     platformMessageManager: pointer
     messageSignalHandler: culong
+    policyDecisionSignalHandler: culong
     loadChangedSignalHandler: culong
     loadFailedSignalHandler: culong
     messageRegistrationToken: int64
     messageRegistered: bool
+    navigationStartingToken: int64
+    navigationStartingRegistered: bool
     navigationCompletedToken: int64
     navigationCompletedRegistered: bool
     navigationFailed: bool
     messageHandler: NativeMessageHandler
+    navigationStartingHandler: NativeNavigationStartingHandler
     navigationCompletedHandler: NativeNavigationCompletedHandler
     pendingScripts: seq[NativeScriptRequest]
     activeScripts: seq[NativeScriptRequest]
@@ -151,6 +156,17 @@ proc dispatchNavigationCompleted(view: NativeWebView; url: string; succeeded: bo
   except CatchableError:
     ## A user callback must not unwind through a native C/COM callback.
     discard
+
+proc dispatchNavigationStarting(view: NativeWebView; url: string): bool =
+  if view.isNil or view.state in {closing, closed}:
+    return false
+  if view.navigationStartingHandler.isNil:
+    return true
+  try:
+    view.navigationStartingHandler(url)
+  except CatchableError:
+    ## A callback failure must not accidentally authorize a navigation.
+    false
 
 when defined(linux):
   import ./private/linux/ffi
@@ -262,6 +278,13 @@ proc onNavigationCompleted*(view: NativeWebView;
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.onNavigationCompleted"))
   view.navigationCompletedHandler = handler
+  success()
+
+proc onNavigationStarting*(view: NativeWebView;
+                           handler: NativeNavigationStartingHandler): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.onNavigationStarting"))
+  view.navigationStartingHandler = handler
   success()
 
 proc quit*(app: NativeApp): NativeResult =

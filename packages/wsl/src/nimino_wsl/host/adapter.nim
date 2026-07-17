@@ -17,6 +17,10 @@ type
     url*: string
     succeeded*: bool
 
+  HostNavigationStarting* = object
+    webViewId*: uint64
+    url*: string
+
   HostActionKind* = enum
     noHostAction
     startUiLoop
@@ -37,6 +41,7 @@ type
     windowViewCounts: Table[uint64, int]
     uiStartRequested: bool
     pendingMessages: seq[HostWebMessage]
+    pendingNavigationStarts: seq[HostNavigationStarting]
     pendingNavigationCompletions: seq[HostNavigationCompleted]
 
 proc newHostAdapter*(): HostAdapter =
@@ -139,6 +144,20 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   )
   if not configured.isOk:
     return nativeFailure("native.webview.onMessage", configured)
+  let navigationStartingConfigured = created.value.onNavigationStarting(
+    proc(url: string): bool =
+      let owner = cast[HostAdapter](adapterPointer)
+      if owner != nil:
+        owner.pendingNavigationStarts.add(HostNavigationStarting(
+          webViewId: webViewId,
+          url: url
+        ))
+      ## WSL control responses need a separate no-nested-loop protocol spike.
+      ## The adapter keeps native's default allow behavior until then.
+      true
+  )
+  if not navigationStartingConfigured.isOk:
+    return nativeFailure("native.webview.onNavigationStarting", navigationStartingConfigured)
   let navigationConfigured = created.value.onNavigationCompleted(
     proc(url: string; succeeded: bool) =
       let owner = cast[HostAdapter](adapterPointer)
@@ -160,6 +179,12 @@ proc takeMessages*(adapter: HostAdapter): seq[HostWebMessage] =
     return @[]
   result = adapter.pendingMessages
   adapter.pendingMessages.setLen(0)
+
+proc takeNavigationStarts*(adapter: HostAdapter): seq[HostNavigationStarting] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingNavigationStarts
+  adapter.pendingNavigationStarts.setLen(0)
 
 proc takeNavigationCompletions*(adapter: HostAdapter): seq[HostNavigationCompleted] =
   if adapter.isNil:

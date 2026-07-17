@@ -43,6 +43,12 @@ runtime are not copied into this repository.
   `d33a35bf-1c49-4f98-93ab-006e0533fe1c`
 * `ICoreWebView2NavigationCompletedEventArgs::get_IsSuccess` (vtable slot 3)
   and `ICoreWebView2::get_Source` (vtable slot 4)
+* `ICoreWebView2::{add_NavigationStarting, remove_NavigationStarting}`
+  (vtable slots 7 and 8)
+* `ICoreWebView2NavigationStartingEventHandler` and IID
+  `9adbe429-f36d-432b-9ddc-f8881fbd76e3`
+* `ICoreWebView2NavigationStartingEventArgs::{get_Uri, put_Cancel}`
+  (vtable slots 3 and 8)
 
 The completed handler receives an `HRESULT` and a borrowed JSON-encoded UTF-16
 result. Nimino copies the result before the callback returns and explicitly
@@ -55,6 +61,10 @@ before releasing the CoreWebView2 object.
 The navigation-completed handler likewise stores/removes its event token,
 copies and frees `get_Source`'s `LPWSTR`, and reads `IsSuccess` without
 assuming that a finished navigation succeeded.
+
+The navigation-starting handler copies/frees its URI and writes `Cancel` only
+when the registered Nim callback denies the request. It is registered before
+initial content is loaded and removed before releasing CoreWebView2.
 
 The vtable slot order and callback signatures were checked against the header
 above.  Later features must be checked against a recorded SDK version before
