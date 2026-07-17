@@ -3,7 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test linux-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -38,6 +38,10 @@ shell: image ## コンテナ内の対話shellを開く
 test: image ## M1以降のNimbleテストをコンテナ内で実行する
 
 	$(COMPOSE) run --rm $(SERVICE) nimble test
+
+linux-smoke: image ## Xvfb上でLinux GTK/WebKitGTKのM1 smoke testを実行する
+
+	$(COMPOSE) run --rm -e WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 $(SERVICE) nimble testLinuxSmoke
 
 check: test ## testの別名
 

@@ -9,6 +9,7 @@ RUN apt-get update \
       pkg-config \
       libgtk-4-dev \
       libwebkitgtk-6.0-dev \
+      xauth \
       xvfb \
     && rm -rf /var/lib/apt/lists/*
 

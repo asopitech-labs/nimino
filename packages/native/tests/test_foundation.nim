@@ -27,3 +27,13 @@ block capabilitiesAreExplicit:
   let available: CapabilitySet = {multipleWebViews}
   doAssert available.supports(multipleWebViews)
   doAssert not available.supports(systemTray)
+
+block windowAndViewRemainSeparate:
+  let app = newNativeApp()
+  let window = app.newWindow("Foundation", 320, 200)
+  doAssert window.isOk
+  let view = window.value.newWebView()
+  doAssert view.isOk
+  doAssert view.value.loadUrl("about:blank").isOk
+  doAssert window.value.setTitle("Foundation updated").isOk
+  doAssert not window.value.newWebView().isOk

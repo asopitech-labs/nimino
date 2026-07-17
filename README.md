@@ -2,7 +2,7 @@
 
 Nimをホスト言語に、OS公式APIの薄いFFIでネイティブWindowとWebViewを扱う、軽量なクロスプラットフォームWeb UIデスクトップアプリケーション基盤です。
 
-> M0（調査・設計）は完了し、M1を実装中です。エラー分類・結果値・Capabilityと、WSL IPCのframe/token/protocol codecの単体テストは実装済みです。ネイティブWindow、WebView、RPC、WSLホスト、パッケージ生成は未実装です。
+> M0（調査・設計）は完了し、M1を実装中です。エラー分類・結果値・Capability、WSL IPCのframe/token/protocol codecの単体テスト、Linux GTK 4/WebKitGTK 6.0の最小Window/WebView/URL/終了経路は実装済みです。Windows native backend、WSL host、RPC、パッケージ生成は未実装です。
 
 ## 目標
 
@@ -38,6 +38,8 @@ make verify-env
 ```
 
 主なターゲットは`make image`（image作成）、`make verify-env`（Nim/Nimble/GTK/WebKitGTK検証）、`make shell`（コンテナshell）、`make test`（M1以降のNimbleテスト）、`make clean`（Compose資源の停止・削除）です。`nimble test`は、M1で`nimino.nimble`とテストを追加してから実行します。
+
+Linuxの実ネイティブスモークは`make linux-smoke`で実行します。これはDockerのnamespace制限を回避するため、そのテストコンテナだけでWebKit sandboxを無効にします。アプリの本番実行設定にはこの環境変数を含めません。
 
 Dockerデーモンが利用できない環境では、コンテナ内ビルド・テストは実行できません。WindowsのWin32/WebView2実行確認とWSL統合確認はWindows CIまたはWindows開発機で行います。
 
