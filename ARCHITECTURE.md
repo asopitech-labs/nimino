@@ -1,6 +1,6 @@
 # Nimino Architecture
 
-**状態: M0完了、M1共通基盤を実装中（2026-07-17）**
+**状態: M0完了、M1の共通基盤・WSL protocol codecを実装中（2026-07-17）**
 
 Niminoは、NimアプリケーションがOS固有のWindow、WebView、またはWSL通信を直接意識せずにWeb UIを構築できるようにするモノレポです。レンダリングエンジンや汎用WebViewラッパーは実装・導入しません。
 

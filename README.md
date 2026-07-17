@@ -2,7 +2,7 @@
 
 Nimをホスト言語に、OS公式APIの薄いFFIでネイティブWindowとWebViewを扱う、軽量なクロスプラットフォームWeb UIデスクトップアプリケーション基盤です。
 
-> M0（調査・設計）は完了し、M1の共通基盤を実装中です。エラー分類・結果値・Capabilityの単体テストは実装済みですが、ネイティブWindow、WebView、RPC、WSLホスト、パッケージ生成は未実装です。
+> M0（調査・設計）は完了し、M1を実装中です。エラー分類・結果値・Capabilityと、WSL IPCのframe/token/protocol codecの単体テストは実装済みです。ネイティブWindow、WebView、RPC、WSLホスト、パッケージ生成は未実装です。
 
 ## 目標
 
