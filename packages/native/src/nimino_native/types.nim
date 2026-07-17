@@ -41,6 +41,7 @@ type
     windowClassName: string
     windowClassRegistered: bool
     idleTimerWindow: pointer
+    idleTimerSource: uint32
     idleHandler: NativeIdleHandler
     activateHandler: culong
     quitRequested: bool
@@ -349,7 +350,7 @@ proc close*(app: NativeApp): NativeResult =
 proc setIdleHandler*(app: NativeApp; handler: NativeIdleHandler): NativeResult =
   if app.isNil or app.state != created:
     return failure(nativeError(invalidState, "app.setIdleHandler"))
-  when defined(windows):
+  when defined(windows) or defined(linux):
     app.idleHandler = handler
     return success()
   else:

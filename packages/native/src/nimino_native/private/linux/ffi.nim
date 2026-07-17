@@ -26,6 +26,7 @@ type
   GClosureNotify* = proc(data: pointer; closure: pointer) {.cdecl.}
   GAsyncReadyCallback* = proc(sourceObject: pointer; asyncResult: ptr GAsyncResult;
                               userData: pointer) {.cdecl.}
+  GSourceFunc* = proc(data: pointer): cint {.cdecl.}
 
 proc gtk_application_new*(applicationId: cstring; flags: cint): ptr GtkApplication
   {.cdecl, importc, dynlib: LibGtk.}
@@ -61,6 +62,10 @@ proc g_signal_connect_data*(instance: pointer; detailedSignal: cstring;
   {.cdecl, importc, dynlib: LibGObject.}
 proc g_signal_handler_disconnect*(instance: pointer; handlerId: culong)
   {.cdecl, importc, dynlib: LibGObject.}
+proc g_timeout_add*(interval: uint32; callback: GSourceFunc; data: pointer): uint32
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_source_remove*(tag: uint32): cint
+  {.cdecl, importc, dynlib: LibGlib.}
 
 proc webkit_web_view_new*(): ptr WebKitWebView
   {.cdecl, importc, dynlib: LibWebKit.}

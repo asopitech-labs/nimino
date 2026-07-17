@@ -339,6 +339,23 @@ proc linuxQuit(app: NativeApp) =
   if app.platformApp != nil:
     g_application_quit(cast[ptr GApplication](app.platformApp))
 
+proc linuxIdleTick(data: pointer): cint {.cdecl.} =
+  let app = cast[NativeApp](data)
+  if app.isNil or app.state != running:
+    return 0
+  if app.idleHandler != nil:
+    try:
+      app.idleHandler()
+    except CatchableError:
+      app.hasRunError = true
+      app.runError = nativeError(osError, "app.idleHandler")
+      app.quitRequested = true
+      app.linuxQuit()
+      return 0
+  if app.quitRequested:
+    return 0
+  1
+
 proc linuxActivate(application: pointer; data: pointer) {.cdecl.} =
   let app = cast[NativeApp](data)
   for window in app.windows:
@@ -357,6 +374,12 @@ proc linuxRun(app: NativeApp): NativeResult =
     return failure(nativeError(osError, "app.run", detail = "GTK application creation failed"))
 
   app.state = running
+  if app.idleHandler != nil:
+    app.idleTimerSource = g_timeout_add(10, linuxIdleTick, cast[pointer](app))
+    if app.idleTimerSource == 0:
+      app.state = finished
+      return failure(nativeError(osError, "app.setIdleHandler",
+        detail = "GLib timeout source creation failed"))
   app.activateHandler = g_signal_connect_data(
     app.platformApp,
     "activate",
@@ -374,10 +397,16 @@ proc linuxRun(app: NativeApp): NativeResult =
   for window in app.windows:
     window.linuxDisposeWindow()
 
+  if app.idleTimerSource != 0:
+    discard g_source_remove(app.idleTimerSource)
+    app.idleTimerSource = 0
+
   g_object_unref(app.platformApp)
   app.platformApp = nil
   app.state = finished
 
+  if app.hasRunError:
+    return failure(app.runError)
   if status == 0:
     success()
   else:

@@ -3,13 +3,15 @@ import std/asyncfutures
 import nimino_native
 
 var callbackApp: pointer
+var idleTicks: int
 var evaluationFinished: bool
 var messageReceived: bool
 var navigationStarted: bool
 var navigationCompleted: bool
 
 proc quitWhenComplete() {.gcsafe.} =
-  if evaluationFinished and messageReceived and navigationStarted and navigationCompleted:
+  if idleTicks > 0 and evaluationFinished and messageReceived and
+      navigationStarted and navigationCompleted:
     doAssert cast[NativeApp](callbackApp).quit().isOk
 
 proc completeEvaluation(completed: Future[NativeResultOf[string]]) {.gcsafe.} =
@@ -25,6 +27,10 @@ proc receiveMessage(message: string) {.gcsafe.} =
   messageReceived = true
   quitWhenComplete()
 
+proc receiveIdle() {.gcsafe.} =
+  inc idleTicks
+  quitWhenComplete()
+
 proc receiveNavigationCompleted(url: string; succeeded: bool) {.gcsafe.} =
   doAssert succeeded
   navigationCompleted = true
@@ -36,6 +42,7 @@ proc receiveNavigationStarting(url: string): bool {.gcsafe.} =
 
 let app = newNativeApp()
 callbackApp = cast[pointer](app)
+doAssert app.setIdleHandler(receiveIdle).isOk
 let window = app.newWindow("Nimino Linux smoke", 320, 200)
 doAssert window.isOk
 let view = window.value.newWebView()
@@ -53,6 +60,7 @@ evaluated.addCallback(completeEvaluation)
 
 doAssert app.run().isOk
 doAssert evaluated.finished
+doAssert idleTicks > 0
 doAssert messageReceived
 doAssert navigationStarted
 doAssert navigationCompleted
