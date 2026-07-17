@@ -1,0 +1,17 @@
+services:
+  nimino-dev:
+    build:
+      context: .
+      dockerfile: tools/docker/Dockerfile
+      args:
+        NIM_IMAGE: nimlang/nim:latest
+    image: nimino-dev:local
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - nimble-cache:/root/.cache/nimble
+    init: true
+    tty: true
+
+volumes:
+  nimble-cache:
