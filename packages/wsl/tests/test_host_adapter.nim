@@ -1,0 +1,44 @@
+import std/json
+
+import nimino_wsl
+
+proc requestMessage(methodName, payload: string): ProtocolMessage =
+  ProtocolMessage(
+    version: ProtocolVersion,
+    kind: request,
+    sessionId: "session",
+    requestId: 1,
+    methodName: methodName,
+    payload: payload
+  )
+
+block createsWindowViewAndUrlBeforeStartingUi:
+  let adapter = newHostAdapter()
+  let window = adapter.handleRequest(requestMessage("native.window.create",
+    "{\"title\":\"WSL\",\"width\":800,\"height\":600}"))
+  doAssert window.isOk
+  let windowId = parseJson(window.value.payload)["windowId"].getStr()
+
+  let view = adapter.handleRequest(requestMessage("native.webview.create",
+    $(%*{"windowId": windowId})))
+  doAssert view.isOk
+  let webViewId = parseJson(view.value.payload)["webViewId"].getStr()
+
+  let loaded = adapter.handleRequest(requestMessage("native.webview.loadUrl",
+    $(%*{"webViewId": webViewId, "url": "https://example.com"})))
+  doAssert loaded.isOk
+  doAssert loaded.value.kind == startUiLoop
+
+block rejectsUnknownObjectsAndLateMutation:
+  let adapter = newHostAdapter()
+  let unknown = adapter.handleRequest(requestMessage("native.webview.create", "{\"windowId\":\"42\"}"))
+  doAssert not unknown.isOk
+
+  let denied = adapter.handleRequest(requestMessage("forbidden", "{}"))
+  doAssert not denied.isOk
+
+block shutdownDoesNotNeedPayload:
+  let adapter = newHostAdapter()
+  let stopped = adapter.handleRequest(requestMessage("app.shutdown", ""))
+  doAssert stopped.isOk
+  doAssert stopped.value.kind == shutdownHost
