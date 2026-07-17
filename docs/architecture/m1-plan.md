@@ -2,6 +2,16 @@
 
 **M1の完了条件:** Windows、Linux、WSLのすべてで、Window生成、WebView生成、URL読込、リサイズ、タイトル変更、正常終了を確認すること。任意の一ターゲットだけの成功は完了ではありません。
 
+## 実装・検証状況（2026-07-17）
+
+| 対象 | 実装済み | 確認済み | 未確認・理由 |
+| --- | --- | --- | --- |
+| Linux | GTK 4/ WebKitGTK 6.0 Window、WebView、URL、title、終了 | `make test`、`make linux-smoke` | 実表示の拡張機能はM2以降 |
+| Windows | Win32 Window、STA、WebView2 Environment/Controller/Core、Bounds、URL、COM明示解放 | `make windows-cross`でx64 PEとFFI/COM callback ABIを検査 | この開発機にはWebView2 Loader/Runtimeがなく、実GUI・URL・resizeを未実行 |
+| WSL | CSPRNG token、`WSLENV`転送、constant-time認証、stdio frame、Windows host、object table、shutdown | `make test`、`make wsl-host-cross`、`make wsl-host-smoke`、`make wsl-client-smoke`（通常client APIでWindows childを起動し、hello→Window→WebView→shutdown） | URL要求からWindows WebView表示までの成功は上記Runtime不足で未実行 |
+
+従ってM1は**完了ではない**。Windowsにarchitecture-matched `WebView2Loader.dll`とEvergreen Runtimeを用意したCI/開発機で、Window→WebView→URL→resize→title→closeおよびWSLのURL要求を実機確認するまで保留とする。
+
 ## 実装前ゲート
 
 以下のスパイクが通るまでM1の本実装を開始しません。

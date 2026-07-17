@@ -8,6 +8,7 @@ requires "nim >= 2.2.0"
 task test, "Run Nimino unit tests in ARC mode":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-nimcache --out:/tmp/nimino-test-foundation --path:packages/native packages/native/tests/test_foundation.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-nimcache --out:/tmp/nimino-test-protocol --path:packages/wsl --path:packages/native packages/wsl/tests/test_protocol.nim"
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-launcher-nimcache --out:/tmp/nimino-test-launcher --path:packages/wsl --path:packages/native packages/wsl/tests/test_launcher.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-test-host-adapter --path:packages/wsl --path:packages/native packages/wsl/tests/test_host_adapter.nim"
 
 task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
@@ -17,3 +18,15 @@ task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
 task testWindowsCross, "Cross-compile the Windows native M1 smoke target":
   exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-windows-cross-nimcache --out:/tmp/nimino-windows-cross.exe --path:packages/native packages/native/tests/test_windows_cross.nim"
   exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-windows-cross.exe | grep -q 'file format pei-x86-64'"
+
+task buildWslHost, "Cross-compile the Windows WSL host executable":
+  exec "nim c --os:windows --cpu:amd64 --threads:on --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-wsl-host.exe --path:packages/wsl --path:packages/native packages/wsl/src/nimino_wsl/host/main.nim"
+  exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-wsl-host.exe | grep -q 'file format pei-x86-64'"
+
+task buildWslHostArtifact, "Build a disposable Windows WSL host smoke-test artifact":
+  exec "mkdir -p /workspace/.tmp"
+  exec "nim c --os:windows --cpu:amd64 --threads:on --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-wsl-host-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-host.exe --path:packages/wsl --path:packages/native packages/wsl/src/nimino_wsl/host/main.nim"
+
+task buildWslClientArtifact, "Build a disposable WSL client smoke-test artifact":
+  exec "mkdir -p /workspace/.tmp"
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-client-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-client-smoke --path:packages/wsl --path:packages/native tools/ci/wsl_client_smoke.nim"

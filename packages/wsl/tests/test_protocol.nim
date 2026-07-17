@@ -22,6 +22,21 @@ block validHello:
   let result = helloMessage().validateHello
   doAssert result.isOk
 
+block hostAuthenticationRequiresTheExpectedToken:
+  let authenticated = ValidToken.authenticateHello(helloMessage())
+  doAssert authenticated.isOk
+  let wrongToken = repeat("cd", 32).authenticateHello(helloMessage())
+  doAssert not wrongToken.isOk
+  doAssert wrongToken.failure.kind == authenticationFailed
+
+  let session = validateSessionMessage("session", ProtocolMessage(
+    version: ProtocolVersion,
+    kind: request,
+    sessionId: "session",
+    methodName: "native.window.create"
+  ))
+  doAssert session.isOk
+
 block invalidTokenIsRejected:
   var message = helloMessage()
   message.authenticationToken = "not-a-token"

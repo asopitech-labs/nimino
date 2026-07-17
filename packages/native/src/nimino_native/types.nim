@@ -1,6 +1,8 @@
 import ./[capabilities, errors]
 
 type
+  NativeIdleHandler* = proc() {.closure.}
+
   NativeState* = enum
     pending
     ready
@@ -21,6 +23,8 @@ type
     platformInstance: pointer
     windowClassName: string
     windowClassRegistered: bool
+    idleTimerWindow: pointer
+    idleHandler: NativeIdleHandler
     activateHandler: culong
     quitRequested: bool
     hasRunError: bool
@@ -119,13 +123,25 @@ proc quit*(app: NativeApp): NativeResult =
   when defined(linux):
     if app.state == running:
       linuxQuit(app)
+    return success()
   elif defined(windows):
     if app.state == running:
-      windowsQuit(app)
-  success()
+      return windowsQuit(app)
+    return success()
+  else:
+    return success()
 
 proc close*(app: NativeApp): NativeResult =
   app.quit()
+
+proc setIdleHandler*(app: NativeApp; handler: NativeIdleHandler): NativeResult =
+  if app.isNil or app.state != created:
+    return failure(nativeError(invalidState, "app.setIdleHandler"))
+  when defined(windows):
+    app.idleHandler = handler
+    return success()
+  else:
+    return failure(nativeError(unsupported, "app.setIdleHandler"))
 
 proc run*(app: NativeApp): NativeResult =
   if app.isNil or app.state != created:

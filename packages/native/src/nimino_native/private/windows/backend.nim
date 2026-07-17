@@ -123,6 +123,11 @@ proc windowsUnloadLoader(app: NativeApp) =
     discard freeLibrary(app.platformLoader)
     app.platformLoader = nil
 
+proc windowsStopIdleTimer(app: NativeApp) =
+  if app.idleTimerWindow != nil:
+    discard killTimer(app.idleTimerWindow, 1)
+    app.idleTimerWindow = nil
+
 proc windowsDisposeView(view: NativeWebView) =
   if view.isNil or view.state == closed:
     return
@@ -146,6 +151,8 @@ proc windowsDisposeWindow(window: NativeWindow) =
     return
 
   window.state = closing
+  if window.app.idleTimerWindow == window.platformWindow:
+    window.app.windowsStopIdleTimer()
   for view in window.views:
     view.windowsDisposeView()
   window.platformWindow = nil
@@ -297,11 +304,14 @@ proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
       if not resized.isOk:
         window.app.windowsFail(resized.failure)
       return 0
+    of WmTimer:
+      if window.app.idleHandler != nil:
+        window.app.idleHandler()
+      return 0
     of WmClose:
       discard destroyWindow(hwnd)
       return 0
     of WmDestroy:
-      window.platformWindow = nil
       window.windowsDisposeWindow()
       return 0
     of WmNcDestroy:
@@ -380,8 +390,12 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
     view.window.app.windowsFail(loaded.failure)
   S_OK
 
-proc windowsQuit(app: NativeApp) =
-  app.windowsRequestQuit()
+proc windowsQuit(app: NativeApp): NativeResult =
+  for window in app.windows:
+    if window.platformWindow != nil:
+      if postMessageW(window.platformWindow, WmClose, 0, 0) == 0:
+        return failure(windowsError("app.quit", getLastError()))
+  success()
 
 proc windowsRun(app: NativeApp): NativeResult =
   if app.quitRequested:
@@ -403,6 +417,8 @@ proc windowsRun(app: NativeApp): NativeResult =
     app.quitRequested = true
   else:
     for window in app.windows:
+      if app.quitRequested:
+        break
       let created = window.windowsCreateWindow()
       if not created.isOk:
         app.windowsFail(created.failure)
@@ -410,6 +426,15 @@ proc windowsRun(app: NativeApp): NativeResult =
 
   if app.quitRequested:
     app.windowsRequestQuit()
+
+  if not app.quitRequested and app.idleHandler != nil:
+    for window in app.windows:
+      if window.platformWindow != nil:
+        if setTimer(window.platformWindow, 1, 10, nil) == 0:
+          app.windowsFail(windowsError("app.setIdleHandler", getLastError()))
+        else:
+          app.idleTimerWindow = window.platformWindow
+        break
 
   var message: WinMessage
   var messageResult = 1'i32
@@ -429,6 +454,7 @@ proc windowsRun(app: NativeApp): NativeResult =
         discard destroyWindow(window.platformWindow)
       else:
         window.windowsDisposeWindow()
+  app.windowsStopIdleTimer()
   app.windowsUnloadLoader()
   app.windowsUnregisterWindowClass()
   coUninitialize()

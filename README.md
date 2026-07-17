@@ -2,7 +2,7 @@
 
 Nimをホスト言語に、OS公式APIの薄いFFIでネイティブWindowとWebViewを扱う、軽量なクロスプラットフォームWeb UIデスクトップアプリケーション基盤です。
 
-> M0（調査・設計）は完了し、M1を実装中です。エラー分類・結果値・Capability、WSL IPCのframe/token/protocol codecとclient Stream transportの単体テスト、Linux GTK 4/WebKitGTK 6.0の最小Window/WebView/URL/終了経路は実装済みです。Windows native backend、WSL host、RPC、パッケージ生成は未実装です。
+> M0（調査・設計）は完了し、M1を実装中です。Linux GTK 4/WebKitGTK 6.0のWindow/WebView/URL/終了はXvfb smokeで確認済みです。WindowsはWin32/WebView2 direct FFIとx64クロスコンパイル、WSLは認証済みWindows hostの実機stdio smoke（Window/WebView作成とshutdown）まで実装・確認済みです。現在の開発機にはWebView2 Loader/Runtimeがないため、Windows/WSLでの実WebView表示とURL読込成功は未検証です。RPCとパッケージ生成は未実装です。
 
 ## 目標
 
@@ -37,11 +37,11 @@ make help
 make verify-env
 ```
 
-主なターゲットは`make image`（image作成）、`make verify-env`（Nim/Nimble/GTK/WebKitGTK検証）、`make shell`（コンテナshell）、`make test`（M1以降のNimbleテスト）、`make clean`（Compose資源の停止・削除）です。`nimble test`は、M1で`nimino.nimble`とテストを追加してから実行します。
+主なターゲットは`make image`（image作成）、`make verify-env`（Nim/Nimble/GTK/WebKitGTK検証）、`make shell`（コンテナshell）、`make test`（単体テスト）、`make windows-cross`（Windows native x64クロスコンパイル）、`make wsl-host-cross`（Windows WSL hostクロスコンパイル）、`make wsl-host-smoke`（host単体の認証・Window/WebView・shutdown実機確認）、`make wsl-client-smoke`（通常WSL client APIでWindows hostを起動する実機確認）、`make linux-smoke`（Linux GUI smoke）、`make clean`（Compose資源と一時成果物の削除）です。
 
 Linuxの実ネイティブスモークは`make linux-smoke`で実行します。これはDockerのnamespace制限を回避するため、そのテストコンテナだけでWebKit sandboxを無効にします。アプリの本番実行設定にはこの環境変数を含めません。
 
-Dockerデーモンが利用できない環境では、コンテナ内ビルド・テストは実行できません。WindowsのWin32/WebView2実行確認とWSL統合確認はWindows CIまたはWindows開発機で行います。
+Dockerデーモンが利用できない環境では、コンテナ内ビルド・テストは実行できません。`make wsl-host-smoke`はWSLとWindows Interop、PowerShellを必要とします。WebView2 Runtimeを含むWindowsの実GUI確認はWindows CIまたはWindows開発機で行います。
 
 ## 現在の状態と次の段階
 

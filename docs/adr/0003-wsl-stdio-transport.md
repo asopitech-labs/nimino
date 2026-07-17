@@ -14,6 +14,8 @@ WSLのNimアプリはWindows GUIを直接作らず、`nimino-wsl-host.exe`へ要
 WSL clientはWindows Interopで`nimino-wsl-host.exe`を子プロセスとして起動し、継承した`stdin`/`stdout`を唯一の双方向制御チャネルにする。これは列挙候補に加えて採用するtransportである。
 
 - stdoutは長さprefix付きバイナリframe専用、stderrは診断専用である。
+- Windows hostのmain threadがWin32/WebView2 STAとnative objectを所有する。UI開始前は設定requestを同期処理し、開始後はWin32 timerから`PeekNamedPipe`で継承stdinを非ブロッキングpollする。Nim reader threadからnative objectへ触れないため、UI thread所有権とstdout frame順序を保てる。
+- `WSL_INTEROP`環境ではclientは`cmd.exe /D /S /C`経由でWindows hostを起動する。`cmd.exe`をWSL UNC current directoryから起動すると診断がstdoutへ混入するため、Windowsローカルに対応する`/mnt/c/Windows`または`/mnt/c`をchild working directoryにする。
 - clientはOS CSPRNGで32 byte tokenを作る。Windows Interop child専用の`NIMINO_WSL_HOST_TOKEN`環境変数に設定し、既存の`WSLENV`を保ったまま同名を追加してWindows hostへだけ転送する。tokenは最初の`hello`にも含め、hostは環境値とconstant-time比較する。hostはhandshake timeout内に認証されない要求を処理しない。
 - frameにはversion、session ID、request ID、event ID、method、payload、response/error、timeout、cancel、heartbeatを定義する。
 - 最大frame長とdecoder errorを定め、token/cookie/認証情報をstdout/stderr/logへ出さない。

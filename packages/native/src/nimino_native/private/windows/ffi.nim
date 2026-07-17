@@ -104,6 +104,7 @@ const
   WmClose* = 0x0010'u32
   WmNcCreate* = 0x0081'u32
   WmNcDestroy* = 0x0082'u32
+  WmTimer* = 0x0113'u32
   GwlpUserData* = -21'i32
 
   IidIUnknown* = WinGuid(
@@ -170,6 +171,14 @@ proc dispatchMessageW*(message: ptr WinMessage): LResult
   {.stdcall, importc: "DispatchMessageW", dynlib: "user32.dll".}
 proc postQuitMessage*(exitCode: int32)
   {.stdcall, importc: "PostQuitMessage", dynlib: "user32.dll".}
+proc postMessageW*(window: HWND; message: uint32; wParam: WParam;
+                   lParam: LParam): WinBool
+  {.stdcall, importc: "PostMessageW", dynlib: "user32.dll".}
+proc setTimer*(window: HWND; identifier: uint; intervalMs: uint32;
+               callback: pointer): uint
+  {.stdcall, importc: "SetTimer", dynlib: "user32.dll".}
+proc killTimer*(window: HWND; identifier: uint): WinBool
+  {.stdcall, importc: "KillTimer", dynlib: "user32.dll".}
 
 proc succeeded*(value: HResult): bool {.inline.} = value >= 0
 

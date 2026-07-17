@@ -1,4 +1,4 @@
-import std/[os, osproc, strutils, strtabs, sysrand]
+import std/[os, osproc, streams, strutils, strtabs, sysrand]
 
 import ../protocol/[messages, versioning]
 import ./transport
@@ -29,10 +29,64 @@ proc childEnvironment(token: string): StringTableRef =
 
   result["NIMINO_WSL_HOST_TOKEN"] = token
   let currentWslEnv = getEnv("WSLENV")
-  var names = if currentWslEnv.len == 0: @[] else: currentWslEnv.split(':')
+  var names: seq[string]
+  for name in currentWslEnv.split(':'):
+    if name.len > 0:
+      names.add(name)
   if "NIMINO_WSL_HOST_TOKEN" notin names:
     names.add("NIMINO_WSL_HOST_TOKEN")
   result["WSLENV"] = names.join(":")
+
+proc quoteForCmd(value: string): string =
+  ## The command is passed as one `/C` argument.  Quote each component so a
+  ## space in the Windows/UNC path cannot change the executable or arguments.
+  var safeWithoutQuotes = value.len > 0
+  for character in value:
+    if not (character.isAlphaNumeric or character in {'\\', '/', '.', '_', '-', ':'}):
+      safeWithoutQuotes = false
+      break
+  if safeWithoutQuotes:
+    return value
+  "\"" & value.replace("\"", "\"\"") & "\""
+
+proc windowsInteropWorkingDirectory(): string =
+  ## Starting cmd.exe from a WSL UNC current directory makes cmd emit its
+  ## "UNC paths are not supported" diagnostic on stdout, corrupting frames.
+  for candidate in ["/mnt/c/Windows", "/mnt/c"]:
+    if dirExists(candidate):
+      return candidate
+  getCurrentDir()
+
+proc startHostProcess(hostExecutable: string; hostArgs: openArray[string];
+                      token: string): Process =
+  let environment = childEnvironment(token)
+  if existsEnv("WSL_INTEROP"):
+    var command = hostExecutable.quoteForCmd()
+    for argument in hostArgs:
+      command.add(' ')
+      command.add(argument.quoteForCmd())
+    return startProcess(
+      "cmd.exe",
+      workingDir = windowsInteropWorkingDirectory(),
+      args = ["/D", "/S", "/C", command],
+      env = environment,
+      options = {poUsePath}
+    )
+  startProcess(hostExecutable, args = hostArgs, env = environment, options = {poUsePath})
+
+proc startupFailureDetail(process: Process): string =
+  ## The host's own diagnostics are fixed, token-free strings.  Do not relay
+  ## arbitrary child stderr into protocol errors or application logs.
+  let exitCode = process.peekExitCode()
+  if exitCode == -1:
+    return "Windows host closed stdout before the ready handshake"
+  try:
+    let diagnostic = process.errorStream.readAll().strip()
+    if diagnostic.startsWith("nimino-wsl-host:"):
+      return diagnostic
+  except CatchableError:
+    discard
+  "Windows host exited before the ready handshake (exit code " & $exitCode & ")"
 
 proc launchHost*(hostExecutable: string; hostArgs: openArray[string] = []):
     ProtocolResultOf[WslClient] =
@@ -44,12 +98,7 @@ proc launchHost*(hostExecutable: string; hostArgs: openArray[string] = []):
     return failureOf[WslClient](token.failure)
 
   try:
-    let process = startProcess(
-      hostExecutable,
-      args = hostArgs,
-      env = childEnvironment(token.value),
-      options = {poUsePath}
-    )
+    let process = startHostProcess(hostExecutable, hostArgs, token.value)
     let client = WslClient(process: process, nextRequestId: 1)
     let hello = ProtocolMessage(
       version: ProtocolVersion,
@@ -64,8 +113,9 @@ proc launchHost*(hostExecutable: string; hostArgs: openArray[string] = []):
 
     let readyMessage = process.outputStream.readMessageFrom()
     if not readyMessage.isOk:
+      let detail = process.startupFailureDetail()
       osproc.close(process)
-      return failureOf[WslClient](readyMessage.failure)
+      return failureOf[WslClient](protocolError(readyMessage.failure.kind, detail))
     if readyMessage.value.kind != ready:
       osproc.close(process)
       return failureOf[WslClient](protocolError(invalidMessage, "host did not return ready"))
@@ -101,6 +151,32 @@ proc sendRequest*(client: WslClient; methodName: string; payload: string;
     return failureOf[uint64](written.failure)
   successOf(requestId)
 
+proc receiveResponse*(client: WslClient; requestId: uint64): ProtocolResultOf[ProtocolMessage] =
+  if client.isNil or client.process.isNil:
+    return failureOf[ProtocolMessage](protocolError(invalidMessage, "WSL client is closed"))
+
+  let received = client.process.outputStream.readMessageFrom()
+  if not received.isOk:
+    return failureOf[ProtocolMessage](received.failure)
+  let hostResponse = received.value
+  if hostResponse.kind != ProtocolMessageKind.response or hostResponse.sessionId != client.sessionId or
+      hostResponse.requestId != requestId:
+    return failureOf[ProtocolMessage](protocolError(invalidMessage, "host response does not match request"))
+  if not hostResponse.version.validateVersion.isOk:
+    return failureOf[ProtocolMessage](protocolError(unsupportedVersion, "host version mismatch"))
+  if hostResponse.authenticationToken.len != 0:
+    return failureOf[ProtocolMessage](protocolError(authenticationFailed, "host returned authentication material"))
+  if hostResponse.error.len != 0:
+    return failureOf[ProtocolMessage](protocolError(invalidMessage, "host rejected request: " & hostResponse.error))
+  successOf(hostResponse)
+
+proc call*(client: WslClient; methodName: string; payload: string;
+           timeoutMs: uint32 = 5_000): ProtocolResultOf[ProtocolMessage] =
+  let sent = client.sendRequest(methodName, payload, timeoutMs)
+  if not sent.isOk:
+    return failureOf[ProtocolMessage](sent.failure)
+  client.receiveResponse(sent.value)
+
 proc close*(client: WslClient): ProtocolResult =
   if client.isNil or client.process.isNil:
     return failure(protocolError(invalidMessage, "WSL client is closed"))
@@ -112,6 +188,14 @@ proc close*(client: WslClient): ProtocolResult =
     timeoutMs: 5_000
   )
   let written = client.process.inputStream.writeMessageTo(shutdown)
+  if not written.isOk:
+    osproc.close(client.process)
+    client.process = nil
+    return written
+
+  let acknowledged = client.receiveResponse(0)
   osproc.close(client.process)
   client.process = nil
-  written
+  if not acknowledged.isOk:
+    return failure(acknowledged.failure)
+  success()
