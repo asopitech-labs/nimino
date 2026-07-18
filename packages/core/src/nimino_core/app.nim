@@ -1051,6 +1051,60 @@ proc loadAssets*(window: Window; directory: string): CoreResult =
     coreFailure(coreError(invalidArgument, "window.loadAssets",
       detail = "asset root could not be normalized"))
 
+proc inlineWslAssets(root, html: string): string =
+  result = html
+  var cursor = 0
+  while true:
+    let start = result.find("<script", cursor)
+    if start < 0: break
+    let tagEnd = result.find('>', start)
+    if tagEnd < 0: break
+    let srcStart = result.find("src=\"", start)
+    if srcStart < 0 or srcStart > tagEnd:
+      cursor = tagEnd + 1
+      continue
+    let valueStart = srcStart + 5
+    let valueEnd = result.find('"', valueStart)
+    if valueEnd < 0 or valueEnd > tagEnd:
+      cursor = tagEnd + 1
+      continue
+    let relative = result[valueStart ..< valueEnd]
+    let candidate = (root / relative).absolutePath().normalizedPath()
+    let relativeCheck = relativePath(candidate, root)
+    let closing = result.find("</script>", tagEnd)
+    if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or closing < 0 or not fileExists(candidate):
+      cursor = tagEnd + 1
+      continue
+    let body = readFile(candidate)
+    let tail = if closing + 9 < result.len: result[closing + 9 .. ^1] else: ""
+    result = result[0 ..< start] & "<script>" & body & "</script>" & tail
+    cursor = start + body.len + 17
+  cursor = 0
+  while true:
+    let start = result.find("<link", cursor)
+    if start < 0: break
+    let tagEnd = result.find('>', start)
+    if tagEnd < 0: break
+    let hrefStart = result.find("href=\"", start)
+    if hrefStart < 0 or hrefStart > tagEnd:
+      cursor = tagEnd + 1
+      continue
+    let valueStart = hrefStart + 6
+    let valueEnd = result.find('"', valueStart)
+    let relValue = result.find("rel=\"stylesheet\"", start)
+    if valueEnd < 0 or valueEnd > tagEnd or relValue < start or relValue > tagEnd:
+      cursor = tagEnd + 1
+      continue
+    let candidate = (root / result[valueStart ..< valueEnd]).absolutePath().normalizedPath()
+    let relativeCheck = relativePath(candidate, root)
+    if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
+      cursor = tagEnd + 1
+      continue
+    let body = readFile(candidate)
+    let tail = if tagEnd + 1 < result.len: result[tagEnd + 1 .. ^1] else: ""
+    result = result[0 ..< start] & "<style>" & body & "</style>" & tail
+    cursor = start + body.len + 15
+
 proc loadEntry*(window: Window; entry = "index.html"): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.loadEntry"))
@@ -1073,7 +1127,9 @@ proc loadEntry*(window: Window; entry = "index.html"): CoreResult =
       let fileUrl = prefix & encodeUrl(
         if prefix == "file:///": normalized[0 .. ^1] else: normalized, false)
       return window.loadUrl(fileUrl)
-    let content = readFile(path)
+    var content = readFile(path)
+    if window.app.backend == wslBackend:
+      content = inlineWslAssets(root, content)
     window.loadHtml(content)
   except CatchableError:
     coreFailure(coreError(nativeFailure, "window.loadEntry",

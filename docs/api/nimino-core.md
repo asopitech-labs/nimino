@@ -127,8 +127,9 @@ WebViewエンジン内部のCookie/cache/localStorageは対象外です。
 `loadAssets`はrootディレクトリを正規化してWindowへ固定します。`loadEntry`はroot外の
 絶対パス、`..`による脱出、存在しないファイルを拒否してからHTMLを読み込みます。
 native backendではentryをroot内の`file:` URLとして読み込み、相対CSS/JavaScript/画像を
-WebView自身に解決させます。WSLではWindows hostへローカルrootを転送できないため、従来の
-HTML本文転送を使用します。外部URLからのasset fetchやMIME配信は未実装です。
+WebView自身に解決させます。WSLではWindows hostへローカルrootを転送できないため、HTML本文を
+転送し、root内の相対`<script src="…">`とstylesheet`<link href="…">`を本文へインライン化します。
+画像・フォントなど任意MIMEの配信、外部URLからのasset fetch、複雑なHTML属性形式は未実装です。
 
 `setNavigationRules`はallow/denyの宣言的URL ruleを設定します。denyが優先され、
 設定後に未一致のURLは拒否します。nativeはUI callback内で同期評価し、WSLはUI loop
