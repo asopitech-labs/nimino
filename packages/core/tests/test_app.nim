@@ -42,6 +42,9 @@ block profilePathsAreContainedAndSafe:
     "example.com", "sid")
   doAssert loadedCookie.isOk
   doAssert loadedCookie.value.value == "abc"
+  let matchingCookies = profileCookiesForDomain("tech.asopi.profile-test", "work", "sub.example.com")
+  doAssert matchingCookies.isOk
+  doAssert matchingCookies.value.len == 1
   doAssert listProfileCookies("tech.asopi.profile-test", "work").value == "example.com__sid"
   doAssert deleteProfileCookie("tech.asopi.profile-test", "work", "example.com", "sid").isOk
 

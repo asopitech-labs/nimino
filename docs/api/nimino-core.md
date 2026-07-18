@@ -105,7 +105,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
   deny()
 ```
 
-プロファイルは`app id / profile`をキーにcookie、local storage、cache、permission、download、settingの永続化ディレクトリを分離します。`ensureProfileLayout`で冪等に領域を作成でき、`writeProfileSetting` / `readProfileSetting`でJSON設定、`writeProfileCookie` / `readProfileCookie`でCookieを安全に保存・読込できます。各WebViewエンジンへのCookie/cache自動接続は未実装です。無処理の権限要求はdenyです。
+プロファイルは`app id / profile`をキーにcookie、local storage、cache、permission、download、settingの永続化ディレクトリを分離します。`ensureProfileLayout`で冪等に領域を作成でき、`writeProfileSetting` / `readProfileSetting`でJSON設定、`writeProfileCookie` / `readProfileCookie`でCookieを安全に保存・読込できます。最初のHTTP(S)読込では、対象domainに一致する非HttpOnly Cookieをdocument-startで復元します。WebViewエンジンのCookieManager/cacheへの完全な自動接続とHttpOnly Cookie復元は未実装です。無処理の権限要求はdenyです。
 
 `loadAssets`はrootディレクトリを正規化してWindowへ固定します。`loadEntry`はroot外の
 絶対パス、`..`による脱出、存在しないファイルを拒否してからHTMLを読み込みます。

@@ -320,10 +320,32 @@ proc documentStartBridgeSource(url: string): string =
   except CatchableError:
     ""
 
+proc documentStartCookieSource(window: Window; url: string): string =
+  if window.isNil or window.app.isNil:
+    return ""
+  try:
+    let parsed = parseUri(url)
+    if parsed.scheme.toLowerAscii() notin ["http", "https"] or parsed.hostname.len == 0:
+      return ""
+    let cookies = profileCookiesForDomain(window.app.id, window.profileName, parsed.hostname)
+    if not cookies.isOk or cookies.value.len == 0:
+      return ""
+    var source = "(() => { if (typeof document === 'undefined') return;"
+    for cookie in cookies.value:
+      if cookie.secure and parsed.scheme.toLowerAscii() != "https":
+        continue
+      let value = cookie.name & "=" & cookie.value & "; path=" &
+        (if cookie.path.len == 0: "/" else: cookie.path)
+      source.add("document.cookie = " & $(%value) & ";")
+    source.add("})();")
+    source
+  except CatchableError:
+    ""
+
 proc configureDocumentStartBridge(window: Window; url: string): CoreResult =
   if window.documentStartBridgeConfigured:
     return coreSuccess()
-  let source = url.documentStartBridgeSource()
+  let source = window.documentStartCookieSource(url) & url.documentStartBridgeSource()
   if source.len == 0:
     return coreSuccess()
   var configured: CoreResult

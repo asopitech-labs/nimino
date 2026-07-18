@@ -200,6 +200,26 @@ proc listProfileCookies*(appId, profile: string): ProfilePathResult =
   except OSError:
     profileFailure("unable to list profile cookies")
 
+proc profileCookiesForDomain*(appId, profile, domain: string): ProfileResult[seq[ProfileCookie]] =
+  if domain.len == 0:
+    return ProfileResult[seq[ProfileCookie]](isOk: false, error: "cookie domain is empty")
+  let listed = listProfileCookies(appId, profile)
+  if not listed.isOk:
+    return ProfileResult[seq[ProfileCookie]](isOk: true, value: @[])
+  let requested = domain.toLowerAscii().strip(chars = {'.'})
+  for key in listed.value.splitLines():
+    let separator = key.find("__")
+    if separator <= 0:
+      continue
+    let cookieDomain = key[0 ..< separator]
+    let cookieName = key[separator + 2 .. ^1]
+    let loaded = readProfileCookie(appId, profile, cookieDomain, cookieName)
+    if loaded.isOk:
+      let stored = loaded.value.domain.toLowerAscii().strip(chars = {'.'})
+      if requested == stored or requested.endsWith("." & stored):
+        result.value.add(loaded.value)
+  result.isOk = true
+
 proc deleteProfileCookie*(appId, profile, domain, name: string): ProfilePathResult =
   let path = cookiePath(appId, profile, ProfileCookie(domain: domain, name: name))
   if not path.isOk:
