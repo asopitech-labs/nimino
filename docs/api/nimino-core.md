@@ -121,3 +121,6 @@ WSLでは認証済みIPCでWindows hostへ中継します。close後の操作と
 
 `window.reload()`は最後に成功したURLを再読込します。URL未読込、close後、または
 不正状態では`invalidState`を返します。
+
+`app.windows()`はcloseされていないWindowのsnapshotを返し、`app.windowCount()`は
+同じ集合の件数を返します。App終了後は空集合・0です。

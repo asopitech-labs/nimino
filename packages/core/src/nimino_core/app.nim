@@ -579,6 +579,16 @@ proc newWindow*(app: App; title = ""; width = 1200; height = 800;
   app.newWindow(CoreWindowOptions(title: title, width: width, height: height,
     profile: profile))
 
+proc windows*(app: App): seq[Window] =
+  if app.isNil or app.state == coreFinished:
+    return @[]
+  for window in app.windows:
+    if not window.isNil and not window.closed:
+      result.add(window)
+
+proc windowCount*(app: App): int =
+  app.windows().len
+
 proc typescriptDeclarations*(window: Window): CoreResultOf[string] =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailureOf[string](coreError(invalidState,

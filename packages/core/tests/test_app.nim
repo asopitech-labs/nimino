@@ -63,6 +63,8 @@ block windowsOwnIndependentRpcAllowLists:
   let second = app.newWindow(title = "Second")
   doAssert first.isOk
   doAssert second.isOk
+  doAssert app.windowCount() == 2
+  doAssert app.windows().len == 2
   doAssert first.value.setTitle("Updated first").isOk
   doAssert first.value.setSize(640, 480).isOk
   doAssert not first.value.setSize(0, 480).isOk
@@ -77,6 +79,7 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert not first.value.reload().isOk
   doAssert first.value.close().isOk
   doAssert not first.value.close().isOk
+  doAssert app.windowCount() == 1
   doAssert first.value.rpc.registerSync("only.first", proc(params: JsonNode): RpcResult =
     rpcSuccess(newJNull())
   )
