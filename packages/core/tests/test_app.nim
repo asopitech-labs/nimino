@@ -47,6 +47,10 @@ block profilePathsAreContainedAndSafe:
   let reservedPath = profileDownloadPath("tech.asopi.profile-test", "work", "CON.txt")
   doAssert reservedPath.isOk
   doAssert reservedPath.value.endsWith("downloads" / "_CON.txt")
+  let storedPath = storeProfileDownload("tech.asopi.profile-test", "work", "payload.txt", "hello")
+  doAssert storedPath.isOk
+  doAssert readFile(storedPath.value) == "hello"
+  removeFile(storedPath.value)
   let cookie = ProfileCookie(name: "sid", value: "abc", domain: "example.com",
     path: "/", secure: true, expires: int64(epochTime()) + 3600)
   doAssert writeProfileCookie("tech.asopi.profile-test", "work", cookie).isOk

@@ -746,6 +746,15 @@ proc downloadPath*(window: Window; suggestedName: string): CoreResultOf[string] 
   else:
     coreFailureOf[string](coreError(invalidArgument, "window.downloadPath", detail = path.error))
 
+proc saveDownload*(window: Window; suggestedName, content: string): CoreResultOf[string] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[string](coreError(invalidState, "window.saveDownload"))
+  let stored = storeProfileDownload(window.app.id, window.profileName, suggestedName, content)
+  if stored.isOk:
+    coreSuccessOf(stored.value)
+  else:
+    coreFailureOf[string](coreError(osError, "window.saveDownload", detail = stored.error))
+
 proc clearPermissions*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.clearPermissions"))

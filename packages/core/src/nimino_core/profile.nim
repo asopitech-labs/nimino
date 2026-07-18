@@ -89,6 +89,20 @@ proc profileDownloadPath*(appId, profile, suggestedName: string): ProfilePathRes
     inc suffix
   profileSuccess(candidate)
 
+proc storeProfileDownload*(appId, profile, suggestedName, content: string): ProfilePathResult =
+  let destination = profileDownloadPath(appId, profile, suggestedName)
+  if not destination.isOk:
+    return destination
+  try:
+    createDir(parentDir(destination.value))
+    let temporary = destination.value & ".part"
+    if fileExists(temporary): removeFile(temporary)
+    writeFile(temporary, content)
+    moveFile(temporary, destination.value)
+    profileSuccess(destination.value)
+  except OSError:
+    profileFailure("unable to store profile download")
+
 proc ensureProfileLayout*(appId, profile: string): ProfilePathResult =
   ## Create the complete persistent profile layout in an idempotent manner.
   let root = profilePath(appId, profile)
