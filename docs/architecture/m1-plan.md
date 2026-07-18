@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | Linux | GTK 4/ WebKitGTK 6.0 Window、WebView、URL/HTML、title、終了 | `make test`、`make linux-smoke` | 実表示の拡張機能はM2以降 |
 | Windows | Win32 Window、STA、WebView2 Environment/Controller/Core、Bounds、URL/HTML、COM明示解放 | `make windows-cross`でx64 PEとFFI/COM callback ABIを検査。`make wsl-host-smoke`で導入済みRuntime上の実WebView生成、HTML/URL、navigation完了、title/resize、JavaScript評価、message、終了を検査 | 実ユーザー操作によるnew-windowと通常Windows GUI CIは未確認 |
-| WSL | CSPRNG token、`WSLENV`転送、constant-time認証、stdio frame、Windows host、object table、URL/HTML要求、shutdown | `make test`、`make wsl-host-cross`、`make wsl-host-smoke`、`make wsl-client-smoke`、`make wsl-core-rpc-async-smoke`（通常core APIでWindows childを起動し、hello→Window→WebView→async RPC→timeout→shutdown） | WSL clientによる同期navigation判定は未実装 |
+| WSL | CSPRNG token、`WSLENV`転送、constant-time認証、stdio frame、Windows host、object table、URL/HTML要求、shutdown、permission/download同期decision relay | `make test`、`make wsl-host-cross`、`make wsl-host-smoke`、`make wsl-client-smoke`、`make wsl-core-rpc-async-smoke`（通常core APIでWindows childを起動し、hello→Window→WebView→async RPC→timeout→shutdown） | WSL clientによるnavigation callbackの任意同期判定は未実装 |
 
 M1の対象（Window/WebView生成、URL読込、resize、title、正常終了）は3ターゲットで確認済みである。architecture-matched `WebView2Loader.dll`を成果物へ同梱したWindows開発機で、Window→WebView→HTML/URL→resize→title→message→closeを確認し、WSL clientもWindows hostへのURL要求を確認する。実ユーザー操作によるnew-windowと通常Windows GUI CIはM2以降の未完了項目として管理する。WebView2 Evergreen RuntimeはWindowsの前提であり、開発WindowsではRegistry検出済みである。
 

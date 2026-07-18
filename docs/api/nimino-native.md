@@ -1,6 +1,6 @@
 # `nimino-native` 公開API案
 
-**状態: M2部分実装。`evalJavaScript`、文字列 `onMessage`、`onNavigationStarting`/`onNavigationCompleted`、基本`onError`、`onNewWindowRequested` は native Windows/Linux と WSL host adapter に実装済みです。Windows/Linuxの開始callbackは同期中止を実装し、新規Windowは暗黙生成せず拒否します。WSL hostは開始/error/new-window eventを中継します。WSL clientで任意callbackを同期評価するIPCは未実装です。Linuxの通常実WebView経路と、導入済みWindows WebView2 Runtime上のhost経路（HTML/URL/評価/message/title/resize）は確認済みです。実ユーザー操作での新規Window要求と通常Windows GUI CIは未完了です。その他の M2 以降の操作は設計案です。**
+**状態: M2部分実装。`evalJavaScript`、文字列 `onMessage`、`onNavigationStarting`/`onNavigationCompleted`、基本`onError`、`onNewWindowRequested` は native Windows/Linux と WSL host adapter に実装済みです。Windows/Linuxの開始callbackは同期中止を実装し、新規Windowは暗黙生成せず拒否します。WSL host/client間のpermission/download decision relayは同期request/response、5秒timeout、deny defaultまで実装済みです。Linuxの通常実WebView経路と、導入済みWindows WebView2 Runtime上のhost経路（HTML/URL/評価/message/title/resize）は確認済みです。実ユーザー操作での新規Window要求と通常Windows GUI CIは未完了です。その他の M2 以降の操作は設計案です。**
 
 このAPIはWindow/WebViewと低水準イベントだけを提供します。RPC、プロファイル、権限ポリシー、アセット配信、URL包装、WSL通信を含めません。
 
