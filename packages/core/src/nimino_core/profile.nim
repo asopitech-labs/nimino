@@ -148,6 +148,18 @@ proc ensureProfileLayout*(appId, profile: string): ProfilePathResult =
   except OSError:
     profileFailure("unable to create profile storage")
 
+proc clearDirectoryContents(path: string) =
+  ## Remove files and nested directories while preserving the profile root.
+  for kind, entry in walkDir(path):
+    case kind
+    of pcFile, pcLinkToFile:
+      removeFile(entry)
+    of pcDir:
+      clearDirectoryContents(entry)
+      removeDir(entry)
+    else:
+      discard
+
 proc validSettingKey(key: string): bool =
   if key.len == 0 or key in [".", ".."]:
     return false
@@ -312,11 +324,7 @@ proc clearAllProfileData*(appId, profile: string): ProfilePathResult =
   if not dirExists(root.value):
     return profileSuccess(root.value)
   try:
-    for directory in ProfileDirectory:
-      let path = root.value / $directory
-      if dirExists(path):
-        for entry in walkFiles(path / "*"):
-          if fileExists(entry): removeFile(entry)
+    clearDirectoryContents(root.value)
     profileSuccess(root.value)
   except OSError:
     profileFailure("unable to clear profile data")
