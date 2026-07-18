@@ -698,6 +698,17 @@ proc windowsConfigureNavigationStarting(view: NativeWebView): NativeResult =
   view.navigationStartingRegistered = true
   success()
 
+proc windowsConfigurePermissionRequested(view: NativeWebView): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.permissionRequested"))
+  let handler = newPermissionRequestedHandler()
+  var token: EventRegistrationToken
+  let status = coreAddPermissionRequested(view.platformView, cast[pointer](handler), addr token)
+  discard permissionRelease(cast[pointer](handler))
+  if not succeeded(status):
+    return failure(hresultError("webview.permissionRequested", status))
+  success()
+
 proc windowsConfigureNewWindowRequested(view: NativeWebView): NativeResult =
   if view.platformView.isNil:
     return failure(nativeError(invalidState, "webview.onNewWindowRequested"))
@@ -854,6 +865,10 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
   let navigationStarting = view.windowsConfigureNavigationStarting()
   if not navigationStarting.isOk:
     view.window.app.windowsFail(navigationStarting.failure)
+    return S_OK
+  let permissionEvents = view.windowsConfigurePermissionRequested()
+  if not permissionEvents.isOk:
+    view.window.app.windowsFail(permissionEvents.failure)
     return S_OK
   let newWindowEvents = view.windowsConfigureNewWindowRequested()
   if not newWindowEvents.isOk:
