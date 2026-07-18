@@ -627,6 +627,32 @@ proc deleteCookie*(window: Window; domain, name: string): CoreResult =
   if deleted.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.deleteCookie", detail = deleted.error))
 
+proc close*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.close"))
+  case window.app.backend
+  of nativeBackend:
+    if window.nativeWindow.isNil:
+      return coreFailure(coreError(invalidState, "window.close"))
+    let closed = native.close(window.nativeWindow).fromNative()
+    if closed.isOk:
+      window.closed = true
+      window.rpc.close()
+    closed
+  of wslBackend:
+    when defined(linux):
+      let closed = window.app.wslCall("native.window.close", $(%*{
+        "windowId": $window.windowId
+      }))
+      if closed.isOk:
+        window.closed = true
+        window.rpc.close()
+        coreSuccess()
+      else:
+        coreFailure(closed.failure)
+    else:
+      coreFailure(coreError(platformUnavailable, "window.close"))
+
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setTitle"))

@@ -208,6 +208,19 @@ proc handleWindowSetSize(adapter: HostAdapter; payload: JsonNode): ProtocolResul
     return nativeFailure("native.window.setSize", updated)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
+proc handleWindowClose(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  let closed = adapter.windows[windowId.value].close()
+  if not closed.isOk:
+    return nativeFailure("native.window.close", closed)
+  adapter.windows.del(windowId.value)
+  adapter.windowViewCounts.del(windowId.value)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
   if adapter.uiStartRequested:
     return errorAction("webview creation is closed after the UI loop starts")
@@ -439,6 +452,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowSetTitle(payload.value)
   of "native.window.setSize":
     adapter.handleWindowSetSize(payload.value)
+  of "native.window.close":
+    adapter.handleWindowClose(payload.value)
   of "native.webview.create":
     adapter.handleWebViewCreate(payload.value)
   of "native.webview.setDocumentStartScript":

@@ -301,6 +301,18 @@ proc setSize*(window: NativeWindow; width, height: int): NativeResult =
   else:
     return success()
 
+proc close*(window: NativeWindow): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.close"))
+  when defined(linux) and not defined(niminoWsl):
+    linuxDisposeWindow(window)
+    return success()
+  elif defined(windows):
+    windowsDisposeWindow(window)
+    return success()
+  else:
+    failure(nativeError(unsupported, "window.close"))
+
 proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.loadUrl"))
