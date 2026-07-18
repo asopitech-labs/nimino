@@ -698,6 +698,13 @@ proc deleteCookie*(window: Window; domain, name: string): CoreResult =
   if deleted.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.deleteCookie", detail = deleted.error))
 
+proc clearCookies*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.clearCookies"))
+  let cleared = clearProfileCookies(window.app.id, window.profileName)
+  if cleared.isOk: coreSuccess()
+  else: coreFailure(coreError(invalidArgument, "window.clearCookies", detail = cleared.error))
+
 proc close*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.close"))

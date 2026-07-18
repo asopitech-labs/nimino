@@ -232,3 +232,16 @@ proc deleteProfileCookie*(appId, profile, domain, name: string): ProfilePathResu
     profileSuccess(path.value)
   except OSError:
     profileFailure("unable to delete profile cookie")
+
+proc clearProfileCookies*(appId, profile: string): ProfilePathResult =
+  let directory = profileDirectoryPath(appId, profile, cookies)
+  if not directory.isOk:
+    return directory
+  if not dirExists(directory.value):
+    return profileSuccess(directory.value)
+  try:
+    for path in walkFiles(directory.value / "*.json"):
+      removeFile(path)
+    profileSuccess(directory.value)
+  except OSError:
+    profileFailure("unable to clear profile cookies")
