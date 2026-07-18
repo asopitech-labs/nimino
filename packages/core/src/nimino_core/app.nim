@@ -627,6 +627,12 @@ proc windows*(app: App): seq[Window] =
 proc windowCount*(app: App): int =
   app.windows().len
 
+proc isRunning*(app: App): bool =
+  not app.isNil and app.state == coreRunning
+
+proc isClosed*(window: Window): bool =
+  window.isNil or window.closed
+
 proc typescriptDeclarations*(window: Window): CoreResultOf[string] =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailureOf[string](coreError(invalidState,

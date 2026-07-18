@@ -52,6 +52,7 @@ block windowsOwnIndependentRpcAllowLists:
   let created = newApp(id = "tech.asopi.core-test", name = "Core test")
   doAssert created.isOk
   let app = created.value
+  doAssert not app.isRunning()
   let multipleViews = app.supports(multipleWebViews)
   doAssert multipleViews.isOk
 
@@ -79,6 +80,7 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert not first.value.reload().isOk
   doAssert first.value.close().isOk
   doAssert not first.value.close().isOk
+  doAssert first.value.isClosed()
   doAssert app.windowCount() == 1
   doAssert first.value.rpc.registerSync("only.first", proc(params: JsonNode): RpcResult =
     rpcSuccess(newJNull())
