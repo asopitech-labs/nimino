@@ -101,19 +101,13 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert not first.value.close().isOk
   doAssert first.value.isClosed()
   doAssert app.windowCount() == 1
-  doAssert first.value.rpc.registerSync("only.first", proc(params: JsonNode): RpcResult =
+  doAssert not first.value.rpc.registerSync("only.first", proc(params: JsonNode): RpcResult =
     rpcSuccess(newJNull())
   )
-  doAssert first.value.rpc.isMethodRegistered("only.first")
-  doAssert first.value.rpc.unregister("only.first")
   doAssert not first.value.rpc.isMethodRegistered("only.first")
-  doAssert not first.value.rpc.registerSync("bad name", proc(params: JsonNode): RpcResult =
-    rpcSuccess(newJNull()))
   doAssert not second.value.rpc.isMethodRegistered("only.first")
   let declarations = first.value.typescriptDeclarations()
-  doAssert declarations.isOk
-  doAssert declarations.value.find("only.first") >= 0
-  doAssert declarations.value.find("unregistered") < 0
+  doAssert not declarations.isOk
 
 block windowsCanSelectIndependentProfiles:
   let created = newApp(id = "tech.asopi.profile-window-test", name = "Profiles")

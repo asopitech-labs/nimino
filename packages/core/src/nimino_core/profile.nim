@@ -325,6 +325,9 @@ proc clearAllProfileData*(appId, profile: string): ProfilePathResult =
     return profileSuccess(root.value)
   try:
     clearDirectoryContents(root.value)
+    let recreated = ensureProfileLayout(appId, profile)
+    if not recreated.isOk:
+      return profileFailure(recreated.error)
     profileSuccess(root.value)
   except OSError:
     profileFailure("unable to clear profile data")
