@@ -886,6 +886,13 @@ proc windowsRestoreWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     discard showWindow(window.platformWindow, SwRestore)
 
+proc windowsFocusWindow(window: NativeWindow): NativeResult =
+  if window.platformWindow == nil:
+    return failure(nativeError(invalidState, "window.focus"))
+  if setForegroundWindow(window.platformWindow) == 0:
+    return failure(windowsError("window.focus", getLastError()))
+  success()
+
 proc windowsCreateWindow(window: NativeWindow): NativeResult =
   let className = newWideCString(window.app.windowClassName)
   let title = newWideCString(window.title)

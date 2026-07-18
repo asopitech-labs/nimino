@@ -146,3 +146,5 @@ WSLでは認証済みIPCでWindows hostへ中継します。close後の操作と
 `app.windows()`はcloseされていないWindowのsnapshotを返し、`app.windowCount()`は
 同じ集合の件数を返します。App終了後は空集合・0です。
 `app.isRunning()`と`window.isClosed()`でライフサイクル状態を照会できます。
+`window.focus()`はWindowを表示して前面化します。LinuxではGTK present、Windowsでは
+Win32 `SetForegroundWindow`、WSLではWindows hostへ中継します。

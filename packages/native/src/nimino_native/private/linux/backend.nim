@@ -21,6 +21,9 @@ proc linuxHideWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     gtk_widget_hide(window.platformWindow)
 
+proc linuxFocusWindow(window: NativeWindow) =
+  linuxShowWindow(window)
+
 proc linuxMinimizeWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     gtk_window_minimize(cast[ptr GtkWindow](window.platformWindow))

@@ -70,6 +70,7 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert first.value.setSize(640, 480).isOk
   doAssert not first.value.setSize(0, 480).isOk
   doAssert first.value.show().isOk
+  doAssert first.value.focus().isOk
   doAssert first.value.hide().isOk
   doAssert first.value.minimize().isOk
   doAssert first.value.maximize().isOk

@@ -215,6 +215,8 @@ proc showWindow*(window: HWND; command: int32): WinBool
   {.stdcall, importc: "ShowWindow", dynlib: "user32.dll".}
 proc updateWindow*(window: HWND): WinBool
   {.stdcall, importc: "UpdateWindow", dynlib: "user32.dll".}
+proc setForegroundWindow*(window: HWND): WinBool
+  {.stdcall, importc: "SetForegroundWindow", dynlib: "user32.dll".}
 proc getClientRect*(window: HWND; rectangle: ptr WinRect): WinBool
   {.stdcall, importc: "GetClientRect", dynlib: "user32.dll".}
 proc getMessageW*(message: ptr WinMessage; window: HWND; minimum, maximum: uint32): int32

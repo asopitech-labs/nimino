@@ -633,6 +633,18 @@ proc isRunning*(app: App): bool =
 proc isClosed*(window: Window): bool =
   window.isNil or window.closed
 
+proc focus*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.focus"))
+  case window.app.backend
+  of nativeBackend:
+    native.focus(window.nativeWindow).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let response = window.app.wslCall("native.window.focus", $(%*{"windowId": $window.windowId}))
+      if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else: coreFailure(coreError(platformUnavailable, "window.focus"))
+
 proc typescriptDeclarations*(window: Window): CoreResultOf[string] =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailureOf[string](coreError(invalidState,

@@ -393,6 +393,17 @@ proc setPosition*(window: NativeWindow; x, y: int): NativeResult =
     failure(nativeError(unsupported, "window.setPosition",
       detail = "the current Linux backend cannot move GTK4 windows"))
 
+proc focus*(window: NativeWindow): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.focus"))
+  when defined(windows):
+    windowsFocusWindow(window)
+  elif defined(linux) and not defined(niminoWsl):
+    linuxFocusWindow(window)
+    success()
+  else:
+    failure(nativeError(unsupported, "window.focus"))
+
 proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.loadUrl"))
