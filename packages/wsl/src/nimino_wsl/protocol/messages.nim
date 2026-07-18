@@ -51,6 +51,38 @@ type
     error*: string
     timeoutMs*: uint32
 
+  ## Synchronous policy relay payloads.  These are embedded in a normal
+  ## request/response pair so the Windows host can fail closed on timeout.
+  PolicyKind* = enum
+    permissionPolicy
+    downloadPolicy
+
+  PolicyRequest* = object
+    kind*: PolicyKind
+    webViewId*: uint64
+    url*: string
+    suggestedName*: string
+
+  PolicyResponse* = object
+    allow*: bool
+    error*: string
+
+proc `$`*(kind: PolicyKind): string =
+  case kind
+  of permissionPolicy: "permission"
+  of downloadPolicy: "download"
+
+proc policyRequestJson*(request: PolicyRequest): string =
+  $(%*{
+    "kind": $request.kind,
+    "webViewId": $request.webViewId,
+    "url": request.url,
+    "suggestedName": request.suggestedName
+  })
+
+proc policyResponseJson*(response: PolicyResponse): string =
+  $(%*{"allow": response.allow, "error": response.error})
+
 proc protocolError*(kind: ProtocolErrorKind; detail: string): ProtocolError =
   ProtocolError(kind: kind, detail: detail)
 
@@ -65,6 +97,21 @@ proc successOf*[T](value: T): ProtocolResultOf[T] {.inline.} =
 
 proc failureOf*[T](error: ProtocolError): ProtocolResultOf[T] {.inline.} =
   ProtocolResultOf[T](isOk: false, failure: error)
+
+proc parsePolicyResponse*(payload: string): ProtocolResultOf[PolicyResponse] =
+  try:
+    let node = parseJson(payload)
+    if node.kind != JObject or not node.hasKey("allow") or
+        node["allow"].kind != JBool:
+      return failureOf[PolicyResponse](protocolError(invalidMessage,
+        "policy response must contain boolean allow"))
+    let error = if node.hasKey("error") and node["error"].kind == JString:
+      node["error"].getStr()
+    else: ""
+    successOf(PolicyResponse(allow: node["allow"].getBool(), error: error))
+  except CatchableError:
+    failureOf[PolicyResponse](protocolError(invalidMessage,
+      "malformed policy response"))
 
 proc `$`*(kind: ProtocolMessageKind): string =
   case kind
