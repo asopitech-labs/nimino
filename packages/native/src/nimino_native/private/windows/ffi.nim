@@ -149,6 +149,10 @@ const
     data1: 0xd4c185fe'u32, data2: 0xc81c'u16, data3: 0x4989'u16,
     data4: [0x97'u8, 0xaf'u8, 0x2d'u8, 0x3f'u8, 0xa7'u8, 0xab'u8, 0x56'u8, 0x51'u8]
   )
+  IidPermissionRequestedEventHandler* = WinGuid(
+    data1: 0x15e1c6a3'u32, data2: 0xc72a'u16, data3: 0x4df3'u16,
+    data4: [0x91'u8, 0xd7'u8, 0xd0'u8, 0x97'u8, 0xfb'u8, 0xec'u8, 0x6b'u8, 0xfd'u8]
+  )
 
 proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
   {.stdcall, importc: "CoInitializeEx", dynlib: "ole32.dll".}
