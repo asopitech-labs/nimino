@@ -28,6 +28,11 @@ block profilePathsAreContainedAndSafe:
   let loaded = readProfileSetting("tech.asopi.profile-test", "work", "theme")
   doAssert loaded.isOk
   doAssert parseJson(loaded.value)["dark"].getBool()
+  let listed = listProfileSettings("tech.asopi.profile-test", "work")
+  doAssert listed.isOk
+  doAssert listed.value == "theme"
+  doAssert deleteProfileSetting("tech.asopi.profile-test", "work", "theme").isOk
+  doAssert not readProfileSetting("tech.asopi.profile-test", "work", "theme").isOk
   doAssert not writeProfileSetting("tech.asopi.profile-test", "work", "../escape",
     newJNull()).isOk
 

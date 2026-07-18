@@ -1,4 +1,4 @@
-import std/[json, os, strutils]
+import std/[algorithm, json, os, strutils]
 
 type
   ProfilePathResult* = object
@@ -98,3 +98,30 @@ proc readProfileSetting*(appId, profile, key: string): ProfilePathResult =
     profileSuccess(readFile(path.value))
   except CatchableError:
     profileFailure("profile setting is not valid JSON")
+
+proc listProfileSettings*(appId, profile: string): ProfilePathResult =
+  let directory = profileDirectoryPath(appId, profile, settings)
+  if not directory.isOk:
+    return directory
+  if not dirExists(directory.value):
+    return profileFailure("profile settings directory does not exist")
+  try:
+    var keys: seq[string]
+    for path in walkFiles(directory.value / "*.json"):
+      keys.add(path.lastPathPart[0 ..< path.lastPathPart.len - 5])
+    keys.sort()
+    profileSuccess(keys.join("\n"))
+  except OSError:
+    profileFailure("unable to list profile settings")
+
+proc deleteProfileSetting*(appId, profile, key: string): ProfilePathResult =
+  let path = profileSettingPath(appId, profile, key)
+  if not path.isOk:
+    return path
+  if not fileExists(path.value):
+    return profileFailure("profile setting does not exist")
+  try:
+    removeFile(path.value)
+    profileSuccess(path.value)
+  except OSError:
+    profileFailure("unable to delete profile setting")
