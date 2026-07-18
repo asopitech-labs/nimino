@@ -1,0 +1,76 @@
+param(
+  [Parameter(Mandatory = $true)]
+  [string]$HostExecutable
+)
+
+$tokenBytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($tokenBytes)
+$token = -join ($tokenBytes | ForEach-Object { $_.ToString("x2") })
+$startInfo = New-Object System.Diagnostics.ProcessStartInfo
+$startInfo.FileName = $HostExecutable
+$startInfo.UseShellExecute = $false
+$startInfo.RedirectStandardInput = $true
+$startInfo.RedirectStandardOutput = $true
+$startInfo.RedirectStandardError = $true
+$startInfo.CreateNoWindow = $true
+$startInfo.EnvironmentVariables["NIMINO_WSL_HOST_TOKEN"] = $token
+$process = New-Object System.Diagnostics.Process
+$process.StartInfo = $startInfo
+
+function Write-Frame([hashtable]$message) {
+  $json = [System.Text.Encoding]::UTF8.GetBytes(($message | ConvertTo-Json -Compress))
+  $length = [System.BitConverter]::GetBytes([uint32]$json.Length)
+  if ([System.BitConverter]::IsLittleEndian) { [System.Array]::Reverse($length) }
+  $stream = $process.StandardInput.BaseStream
+  $stream.Write($length, 0, $length.Length)
+  $stream.Write($json, 0, $json.Length)
+  $stream.Flush()
+}
+
+function Read-Exactly([int]$count) {
+  $buffer = New-Object byte[] $count
+  $offset = 0
+  while ($offset -lt $count) {
+    $read = $process.StandardOutput.BaseStream.Read($buffer, $offset, $count - $offset)
+    if ($read -le 0) { throw "Interactive host closed stdout" }
+    $offset += $read
+  }
+  return ,$buffer
+}
+
+function Read-Frame {
+  $lengthBytes = Read-Exactly 4
+  if ([System.BitConverter]::IsLittleEndian) { [System.Array]::Reverse($lengthBytes) }
+  $length = [System.BitConverter]::ToUInt32($lengthBytes, 0)
+  if ($length -gt 1048576) { throw "Interactive host returned an oversized frame" }
+  [System.Text.Encoding]::UTF8.GetString((Read-Exactly ([int]$length))) | ConvertFrom-Json
+}
+
+try {
+  if (-not $process.Start()) { throw "Unable to start nimino-wsl-host.exe" }
+  Write-Frame @{ version = 1; kind = "hello"; sessionId = ""; authenticationToken = $token; requestId = "1"; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000 }
+  $ready = Read-Frame
+  if ($ready.kind -ne "ready") { throw "Host handshake failed" }
+  Write-Frame @{ version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "2"; eventId = "0"; method = "native.window.create"; payload = '{"title":"Nimino interactive WebView2","width":1000,"height":700}'; error = ""; timeoutMs = 5000 }
+  $window = Read-Frame
+  $windowId = ($window.payload | ConvertFrom-Json).windowId
+  Write-Frame @{ version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "3"; eventId = "0"; method = "native.webview.create"; payload = (ConvertTo-Json -Compress @{ windowId = $windowId }); error = ""; timeoutMs = 5000 }
+  $view = Read-Frame
+  $webViewId = ($view.payload | ConvertFrom-Json).webViewId
+  Write-Frame @{ version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "4"; eventId = "0"; method = "native.webview.setNavigationRules"; payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; allow = @("**"); deny = @() }); error = ""; timeoutMs = 5000 }
+  [void](Read-Frame)
+  $html = '<!doctype html><meta charset="utf-8"><h1>Nimino WebView2 interactive test</h1><p>Click the control below.</p><a id="popup" href="https://example.com/popup" target="_blank" onclick="chrome.webview.postMessage(''clicked-link'')">OPEN POPUP LINK</a><br><button onclick="chrome.webview.postMessage(''clicked-button'');window.open(''https://example.com/button'', ''_blank'')">OPEN POPUP BUTTON</button>'
+  Write-Frame @{ version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "5"; eventId = "0"; method = "native.webview.loadHtml"; payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; html = $html }); error = ""; timeoutMs = 5000 }
+  [void](Read-Frame)
+  Write-Host "Window opened. Click the link or button; Ctrl+C closes the interactive host." -ForegroundColor Green
+  while ($true) {
+    $message = Read-Frame
+    if ($message.kind -eq "event") {
+      Write-Host ("EVENT {0}: {1}" -f $message.method, $message.payload)
+    }
+  }
+}
+finally {
+  if ($process -and -not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
+  if ($process) { $process.Dispose() }
+}
