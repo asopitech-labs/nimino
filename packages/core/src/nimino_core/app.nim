@@ -692,8 +692,9 @@ when defined(linux):
       ## retained as a host lifecycle event but requires no post-load script.
       discard
     else:
-      ## M4 navigation, permission, and download policies have no core event
-      ## surface yet.  The host has already applied its safe native defaults.
+      ## Permission and download policy events are currently enforced by the
+      ## native host's explicit-deny defaults; core-level decision relay is a
+      ## future extension.
       discard
     for window in app.windows:
       if not window.closed:

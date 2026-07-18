@@ -1,6 +1,6 @@
 # `nimino-core` 最小公開API案
 
-**状態: M4部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrap、profile path、local asset root/entry境界を実装した。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録できる。Linuxでは実WebViewのrequest/response/notification往復、URLの最初期scriptからのRPCを確認済みで、Windowsはx64クロスコンパイル済みです。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、Linux GUI FFIをリンクしません。Windows WebView2 Runtime上でWSL coreの読込、評価、async response、timeout、URL document-start RPCを確認済みです。型抽出register macro、TypeScript生成、Cookie/session、permission、download、desktop統合は未実装です。**
+**状態: M4部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrap、profile path、local asset root/entry境界を実装した。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録できる。Linuxでは実WebViewのrequest/response/notification往復、URLの最初期scriptからのRPCを確認済みで、Windowsはx64クロスコンパイル済みです。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、Linux GUI FFIをリンクしません。Windows WebView2 Runtime上でWSL coreの読込、評価、async response、timeout、URL document-start RPCを確認済みです。permission/downloadは既定deny/cancelのnative実装まで完了し、core-level decision relay、型抽出register macro、TypeScript生成、Cookie/session、desktop統合は未実装です。**
 
 `nimino-core`は通常の利用者向けの高水準APIです。`nimino-native`を内包してもFFI型を公開せず、`nimino-pack`へはこの公開面だけを提供します。
 
