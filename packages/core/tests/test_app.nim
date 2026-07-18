@@ -1,4 +1,4 @@
-import std/[json, os, strutils]
+import std/[json, os, strutils, times]
 
 import nimino_core
 
@@ -36,7 +36,7 @@ block profilePathsAreContainedAndSafe:
   doAssert not writeProfileSetting("tech.asopi.profile-test", "work", "../escape",
     newJNull()).isOk
   let cookie = ProfileCookie(name: "sid", value: "abc", domain: "example.com",
-    path: "/", secure: true, expires: 123)
+    path: "/", secure: true, expires: int64(epochTime()) + 3600)
   doAssert writeProfileCookie("tech.asopi.profile-test", "work", cookie).isOk
   let loadedCookie = readProfileCookie("tech.asopi.profile-test", "work",
     "example.com", "sid")
