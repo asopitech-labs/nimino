@@ -5,6 +5,9 @@ type
     invalidArgument
     invalidState
     platformUnavailable
+    permissionDenied
+    osError
+    webViewError
     nativeFailure
 
   CoreError* = object

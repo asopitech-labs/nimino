@@ -40,7 +40,7 @@ proc quit*(app: App): CoreResult
 proc run*(app: App): CoreResult
 ```
 
-`CoreError`はnative FFI型を公開せず、`invalidArgument`、`invalidState`、`platformUnavailable`、`nativeFailure`を返す。Windows/Linux facadeはnative App/Window/WebViewを内部所有する。WSL buildではcoreが`nimino-wsl`の公開client APIだけを使い、Windows hostがnative App/Window/WebViewを所有する。hostは配布物で隣接またはPATHへ置く。`NIMINO_WSL_HOST_EXE`は開発・CIの明示上書きであり、通常利用者にplatform指定を要求するものではない。
+`CoreError`はnative FFI型を公開せず、`invalidArgument`、`invalidState`、`platformUnavailable`、`permissionDenied`、`osError`、`webViewError`、`nativeFailure`を返す。Windows/Linux facadeはnative App/Window/WebViewを内部所有する。WSL buildではcoreが`nimino-wsl`の公開client APIだけを使い、Windows hostがnative App/Window/WebViewを所有する。hostは配布物で隣接またはPATHへ置く。`NIMINO_WSL_HOST_EXE`は開発・CIの明示上書きであり、通常利用者にplatform指定を要求するものではない。
 
 `onReady`は`run()`がUIイベントループを開始する直前に、`onBeforeQuit`は明示的な`app.quit()`の前に、`onExit`はネイティブ資源の破棄時に呼び出されます。`onBeforeQuit`が`false`を返した場合は終了を拒否します。コールバックの例外はイベントループへ伝播させず、終了処理を継続します。WSLでも同じ順序で通知されます。
 

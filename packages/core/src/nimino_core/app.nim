@@ -194,7 +194,10 @@ proc mapNativeError(error: native.NativeError): CoreError =
   let kind = case error.kind
     of native.unsupported: platformUnavailable
     of native.invalidState: invalidState
-    else: nativeFailure
+    of native.permissionDenied: permissionDenied
+    of native.osError: osError
+    of native.webViewError: webViewError
+  
   coreError(kind, error.operation, error.platformCode, error.detail)
 
 proc fromNative(nativeResult: native.NativeResult): CoreResult =
