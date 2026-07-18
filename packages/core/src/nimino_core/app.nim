@@ -154,6 +154,7 @@ type
 
   DownloadState* = enum
     downloadStarted
+    downloadProgress
     downloadCompleted
     downloadFailed
     downloadCancelled
@@ -507,7 +508,7 @@ proc configureWindow(window: Window): CoreResult =
           request: DownloadRequest(url: url, suggestedName: "download"),
           state: case state
             of native.nativeDownloadStarted: downloadStarted
-            of native.nativeDownloadProgress: downloadStarted
+            of native.nativeDownloadProgress: downloadProgress
             of native.nativeDownloadCompleted: downloadCompleted
             of native.nativeDownloadFailed: downloadFailed
             of native.nativeDownloadCancelled: downloadCancelled,
