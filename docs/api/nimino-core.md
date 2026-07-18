@@ -120,6 +120,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 
 プロファイルは`app id / profile`をキーにcookie、local storage、cache、permission、download、settingの永続化ディレクトリを分離します。`ensureProfileLayout`で冪等に領域を作成でき、`writeProfileSetting` / `readProfileSetting`でJSON設定、`writeProfileCookie` / `readProfileCookie`でCookieを安全に保存・読込できます。最初のHTTP(S)読込では、対象domainとrequest pathに一致する非HttpOnly Cookieをdocument-startで復元します。LinuxはWebKitNetworkSession、Windows/WSLはWebView2 UserDataFolderをprofileへ接続するため、エンジン管理のCookie・HttpOnly Cookie・localStorageもprofile単位で永続化されます。無処理の権限要求はdenyです。
 `window.clearCookies()`で現在のprofileに保存したCookieを全削除できます。
+`window.cookiesForDomain(domain)`では、指定hostに可視な期限切れでないCookieをprofileから取得できます。
 `window.clearSettings()`では同じprofileのJSON設定を全削除できます。
 `window.clearCache()`ではNimino管理のprofile cacheファイルを削除できます。WebView
 Linux WebKitのcacheはprofileのcacheディレクトリへ接続され、Windows WebView2の既知のcacheディレクトリは`clearCache()`で削除されます。

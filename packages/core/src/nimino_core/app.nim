@@ -842,6 +842,19 @@ proc readCookie*(window: Window; domain, name: string): CoreResultOf[ProfileCook
   else:
     coreFailureOf[ProfileCookie](coreError(invalidArgument, "window.readCookie", detail = loaded.error))
 
+proc cookiesForDomain*(window: Window; domain: string): CoreResultOf[seq[ProfileCookie]] =
+  ## Return non-expired cookies visible to `domain` from the window profile.
+  ## The profile layer applies normalized host matching and expiry filtering;
+  ## this facade keeps the storage implementation private to nimino-core.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[seq[ProfileCookie]](coreError(invalidState, "window.cookiesForDomain"))
+  let loaded = profileCookiesForDomain(window.app.id, window.profileName, domain)
+  if loaded.isOk:
+    coreSuccessOf(loaded.value)
+  else:
+    coreFailureOf[seq[ProfileCookie]](coreError(invalidArgument,
+      "window.cookiesForDomain", detail = loaded.error))
+
 proc listCookies*(window: Window): CoreResultOf[seq[string]] =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailureOf[seq[string]](coreError(invalidState, "window.listCookies"))

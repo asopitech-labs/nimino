@@ -160,6 +160,10 @@ block windowsCanSelectIndependentProfiles:
   let readCookie = direct.value.readCookie("example.com", "sid")
   doAssert readCookie.isOk
   doAssert readCookie.value.value == "window"
+  let visibleCookies = direct.value.cookiesForDomain("sub.example.com")
+  doAssert visibleCookies.isOk
+  doAssert visibleCookies.value.len == 1
+  doAssert visibleCookies.value[0].name == "sid"
   doAssert direct.value.listCookies().value.len >= 1
   doAssert direct.value.deleteCookie("example.com", "sid").isOk
   doAssert direct.value.writeCookie(sessionCookie).isOk
