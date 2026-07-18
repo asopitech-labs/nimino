@@ -38,6 +38,12 @@ block profilePathsAreContainedAndSafe:
   let downloadPath = profileDownloadPath("tech.asopi.profile-test", "work", "../report.txt")
   doAssert downloadPath.isOk
   doAssert downloadPath.value.endsWith("downloads" / "_report.txt")
+  createDir(parentDir(downloadPath.value))
+  writeFile(downloadPath.value, "existing")
+  let collisionPath = profileDownloadPath("tech.asopi.profile-test", "work", "../report.txt")
+  doAssert collisionPath.isOk
+  doAssert collisionPath.value.endsWith("downloads" / "_report (1).txt")
+  removeFile(downloadPath.value)
   let cookie = ProfileCookie(name: "sid", value: "abc", domain: "example.com",
     path: "/", secure: true, expires: int64(epochTime()) + 3600)
   doAssert writeProfileCookie("tech.asopi.profile-test", "work", cookie).isOk

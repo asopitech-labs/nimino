@@ -62,7 +62,7 @@ proc profileDirectoryPath*(appId, profile: string;
 
 proc profileDownloadPath*(appId, profile, suggestedName: string): ProfilePathResult =
   ## Return a safe path inside the profile download directory.  The caller
-  ## still owns the actual write and may choose a unique suffix on collision.
+  ## still owns the actual write; an existing file is never selected.
   let directory = profileDirectoryPath(appId, profile, downloads)
   if not directory.isOk:
     return directory
@@ -74,7 +74,13 @@ proc profileDownloadPath*(appId, profile, suggestedName: string): ProfilePathRes
     name = name[1 .. ^1]
   if name.len == 0 or name in [".", ".."]:
     name = "download"
-  profileSuccess(directory.value / name)
+  let parts = splitFile(name)
+  var candidate = directory.value / name
+  var suffix = 1
+  while fileExists(candidate):
+    candidate = directory.value / (parts.name & " (" & $suffix & ")" & parts.ext)
+    inc suffix
+  profileSuccess(candidate)
 
 proc ensureProfileLayout*(appId, profile: string): ProfilePathResult =
   ## Create the complete persistent profile layout in an idempotent manner.
