@@ -47,6 +47,20 @@ function Read-Frame {
   [System.Text.Encoding]::UTF8.GetString((Read-Exactly ([int]$length))) | ConvertFrom-Json
 }
 
+function Close-InteractiveHost {
+  if (-not $process -or $process.HasExited) { return }
+  try {
+    Write-Frame @{ version = 1; kind = "shutdown"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "99"; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 2000 }
+    [void]$process.WaitForExit(2000)
+  } catch {
+    # Fall through to the hard cleanup below.
+  }
+  if (-not $process.HasExited) {
+    $process.Kill()
+    $process.WaitForExit()
+  }
+}
+
 try {
   if (-not $process.Start()) { throw "Unable to start nimino-wsl-host.exe" }
   Write-Frame @{ version = 1; kind = "hello"; sessionId = ""; authenticationToken = $token; requestId = "1"; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000 }
@@ -88,6 +102,6 @@ try {
   }
 }
 finally {
-  if ($process -and -not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
+  Close-InteractiveHost
   if ($process) { $process.Dispose() }
 }

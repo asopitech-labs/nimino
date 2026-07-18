@@ -3,7 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test pack-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -38,6 +38,10 @@ shell: image ## コンテナ内の対話shellを開く
 test: image ## M1以降のNimbleテストをコンテナ内で実行する
 
 	$(COMPOSE) run --rm $(SERVICE) nimble test
+
+pack-test: image ## nimino-packのmanifest解析テストをコンテナ内で実行する
+
+	$(COMPOSE) run --rm $(SERVICE) nimble testPackManifest
 
 linux-smoke: image ## Xvfb上でLinux GTK/WebKitGTKのM1 smoke testを実行する
 
