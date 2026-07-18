@@ -239,6 +239,14 @@ proc comRelease*(instance: pointer): uint32 {.inline.} =
   )
   dispatch(instance)
 
+proc comQueryInterface*(instance: pointer; iid: ptr WinGuid;
+                        outInstance: ptr pointer): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; iid: ptr WinGuid;
+                           outInstance: ptr pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](instance).vtable[0]
+  )
+  dispatch(instance, iid, outInstance)
+
 proc environmentCreateController*(environment: pointer; parent: HWND;
                                   handler: pointer): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; parent: HWND; handler: pointer): HResult {.stdcall.}](
