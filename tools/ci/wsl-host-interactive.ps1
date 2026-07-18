@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string]$HostExecutable
+  [string]$HostExecutable,
+  [switch]$WaitForPopupMessage
 )
 
 $tokenBytes = New-Object byte[] 32
@@ -59,10 +60,26 @@ try {
   $webViewId = ($view.payload | ConvertFrom-Json).webViewId
   Write-Frame @{ version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "4"; eventId = "0"; method = "native.webview.setNavigationRules"; payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; allow = @("**"); deny = @() }); error = ""; timeoutMs = 5000 }
   [void](Read-Frame)
-  $html = '<!doctype html><meta charset="utf-8"><h1>Nimino WebView2 interactive test</h1><p>Click the control below.</p><a id="popup" href="https://example.com/popup" target="_blank" onclick="chrome.webview.postMessage(''clicked-link'')">OPEN POPUP LINK</a><br><button onclick="chrome.webview.postMessage(''clicked-button'');window.open(''https://example.com/button'', ''_blank'')">OPEN POPUP BUTTON</button>'
+  $popupDocument = '<!doctype html><script>window.opener.postMessage("nimino-popup-message", "*");</script><p>popup ready</p>'
+  $popupUrl = "data:text/html," + [System.Uri]::EscapeDataString($popupDocument)
+  $html = '<!doctype html><meta charset="utf-8"><script>window.addEventListener("message", function(event) { if (event.data === "nimino-popup-message") chrome.webview.postMessage("popup-message-received"); });</script><h1>Nimino WebView2 interactive test</h1><p>Click the control below.</p><a id="popup" href="' + $popupUrl + '" target="_blank" onclick="chrome.webview.postMessage(''clicked-link'')">OPEN POPUP LINK</a><br><button onclick="window.open(''' + $popupUrl + ''', ''_blank'')">OPEN POPUP BUTTON</button>'
   Write-Frame @{ version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "5"; eventId = "0"; method = "native.webview.loadHtml"; payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; html = $html }); error = ""; timeoutMs = 5000 }
   [void](Read-Frame)
   Write-Host "Window opened. Click the link or button; Ctrl+C closes the interactive host." -ForegroundColor Green
+  if ($WaitForPopupMessage) {
+    Write-Host "Popup message test is armed; click once and wait for automatic result." -ForegroundColor Yellow
+    for ($attempt = 0; $attempt -lt 60; $attempt++) {
+      $message = Read-Frame
+      if ($message.kind -eq "event" -and $message.method -eq "native.webview.message") {
+        $payload = $message.payload | ConvertFrom-Json
+        if ($payload.message -eq "popup-message-received") {
+          Write-Output "WSL popup message smoke passed"
+          return
+        }
+      }
+    }
+    throw "Popup message was not received within 60 protocol frames"
+  }
   while ($true) {
     $message = Read-Frame
     if ($message.kind -eq "event") {

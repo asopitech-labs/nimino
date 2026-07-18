@@ -3,7 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -81,6 +81,11 @@ wsl-host-interactive: image ## WebView2実Windowを開き、ユーザー操作�
 
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-interactive.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)"
+
+wsl-host-popup-smoke: image ## popupクリック後のpopup message受信を自動判定する
+
+	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-interactive.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -WaitForPopupMessage
 
 wsl-client-smoke: image ## WSL clientからWindows hostを起動しWindow/WebView/shutdownを実機確認する
 
