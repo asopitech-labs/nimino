@@ -91,6 +91,11 @@ block windowsCanSelectIndependentProfiles:
   let launch = direct.value.readSetting("launch")
   doAssert launch.isOk
   doAssert launch.value["count"].getInt() == 1
+  let sessionCookie = ProfileCookie(name: "sid", value: "window", domain: "example.com")
+  doAssert direct.value.writeCookie(sessionCookie).isOk
+  let readCookie = direct.value.readCookie("example.com", "sid")
+  doAssert readCookie.isOk
+  doAssert readCookie.value.value == "window"
 
 block localAssetRootRejectsTraversal:
   let created = newApp(id = "tech.asopi.assets-test", name = "Assets test")

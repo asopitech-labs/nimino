@@ -542,6 +542,22 @@ proc readSetting*(window: Window; key: string): CoreResultOf[JsonNode] =
   except CatchableError:
     coreFailureOf[JsonNode](coreError(nativeFailure, "window.readSetting"))
 
+proc writeCookie*(window: Window; cookie: ProfileCookie): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.writeCookie"))
+  let written = writeProfileCookie(window.app.id, window.profileName, cookie)
+  if written.isOk: coreSuccess()
+  else: coreFailure(coreError(invalidArgument, "window.writeCookie", detail = written.error))
+
+proc readCookie*(window: Window; domain, name: string): CoreResultOf[ProfileCookie] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[ProfileCookie](coreError(invalidState, "window.readCookie"))
+  let loaded = readProfileCookie(window.app.id, window.profileName, domain, name)
+  if loaded.isOk:
+    coreSuccessOf(loaded.value)
+  else:
+    coreFailureOf[ProfileCookie](coreError(invalidArgument, "window.readCookie", detail = loaded.error))
+
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setTitle"))
