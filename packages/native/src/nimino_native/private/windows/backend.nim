@@ -364,7 +364,8 @@ proc downloadInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
           view.downloadOperationHandlerPointer = cast[pointer](operationHandler)
           view.downloadBytesToken = bytesToken.value
           view.downloadStateToken = stateToken.value
-        discard comRelease(operation)
+        else:
+          discard comRelease(operation)
   S_OK
 
 proc downloadOperationAddRef(self: pointer): uint32 {.stdcall.} =
@@ -404,7 +405,11 @@ proc downloadOperationInvoke(self: pointer; sender, args: pointer): HResult {.st
     if state == 2:
       view.dispatchDownloadEvent(handler.url, nativeDownloadCompleted, 1.0)
     elif state == 1:
-      view.dispatchDownloadEvent(handler.url, nativeDownloadFailed, -1.0)
+      var reason: int32
+      if succeeded(downloadOperationGetInterruptReason(sender, addr reason)) and reason == 26:
+        view.dispatchDownloadEvent(handler.url, nativeDownloadCancelled, -1.0)
+      else:
+        view.dispatchDownloadEvent(handler.url, nativeDownloadFailed, -1.0)
   S_OK
 
 proc environmentInvoke(self: pointer; errorCode: HResult;

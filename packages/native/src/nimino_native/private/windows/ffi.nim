@@ -369,6 +369,13 @@ proc downloadOperationGetState*(operation: pointer; value: ptr int32): HResult {
   )
   dispatch(operation, value)
 
+proc downloadOperationGetInterruptReason*(operation: pointer; value: ptr int32): HResult {.inline.} =
+  ## ICoreWebView2DownloadOperation::get_InterruptReason (slot 10).
+  let dispatch = cast[proc(self: pointer; value: ptr int32): HResult {.stdcall.}] (
+    cast[ptr ComInterface](operation).vtable[10]
+  )
+  dispatch(operation, value)
+
 proc downloadOperationAddBytesReceivedChanged*(operation, handler: pointer;
                                                 token: ptr EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; handler: pointer;
