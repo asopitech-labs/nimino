@@ -70,15 +70,22 @@ proc profileDownloadPath*(appId, profile, suggestedName: string): ProfilePathRes
   if name.len == 0:
     name = "download"
   name = name.replace('\\', '_').replace('/', '_')
+  while name.len > 0 and name[^1] in {' ', '.'}:
+    name.setLen(name.len - 1)
   while name.len > 1 and name.startsWith("."):
     name = name[1 .. ^1]
   if name.len == 0 or name in [".", ".."]:
     name = "download"
   let parts = splitFile(name)
+  if parts.name.toUpperAscii() in ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4",
+      "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5",
+      "LPT6", "LPT7", "LPT8", "LPT9"]:
+    name = "_" & name
+  let safeParts = splitFile(name)
   var candidate = directory.value / name
   var suffix = 1
   while fileExists(candidate):
-    candidate = directory.value / (parts.name & " (" & $suffix & ")" & parts.ext)
+    candidate = directory.value / (safeParts.name & " (" & $suffix & ")" & safeParts.ext)
     inc suffix
   profileSuccess(candidate)
 
