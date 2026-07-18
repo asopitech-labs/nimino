@@ -161,6 +161,7 @@ type
     quitRequested: bool
     wslUiStarted: bool
     readyHandler: proc()
+    beforeQuitHandler: proc(): bool
     exitHandler: proc()
     when defined(linux):
       wslClient: WslClient
@@ -530,6 +531,12 @@ proc onExit*(app: App; handler: proc()): CoreResult =
   if app.isNil or app.state == coreFinished:
     return coreFailure(coreError(invalidState, "app.onExit"))
   app.exitHandler = handler
+  coreSuccess()
+
+proc onBeforeQuit*(app: App; handler: proc(): bool): CoreResult =
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.onBeforeQuit"))
+  app.beforeQuitHandler = handler
   coreSuccess()
 
 proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
@@ -1478,6 +1485,12 @@ when defined(linux):
 proc quit*(app: App): CoreResult =
   if app.isNil or app.state == coreFinished:
     return coreFailure(coreError(invalidState, "app.quit"))
+  if not app.beforeQuitHandler.isNil:
+    try:
+      if not app.beforeQuitHandler():
+        return coreFailure(coreError(invalidState, "app.quit", detail = "quit request denied"))
+    except CatchableError:
+      return coreFailure(coreError(nativeFailure, "app.quit", detail = "before-quit handler failed"))
   case app.backend
   of nativeBackend:
     if app.nativeApp.isNil:
