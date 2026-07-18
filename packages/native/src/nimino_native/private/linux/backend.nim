@@ -191,7 +191,12 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
     webkit_policy_decision_ignore(decision)
   of 2: # WEBKIT_POLICY_DECISION_TYPE_RESPONSE
     if view.dispatchDownloadStarting(copiedUri):
-      webkit_policy_decision_use(decision)
+      ## A response policy is a download, not a navigable document.  Starting
+      ## it explicitly prevents WebKitGTK from treating the response as a
+      ## failed page navigation.  Destination/progress management remains a
+      ## higher-level Core concern.
+      discard webkit_web_view_download_uri(cast[ptr WebKitWebView](webView), copiedUri.cstring)
+      webkit_policy_decision_ignore(decision)
     else:
       webkit_policy_decision_ignore(decision)
   else:

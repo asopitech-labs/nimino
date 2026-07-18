@@ -124,7 +124,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 `window.clearCache()`ではNimino管理のprofile cacheファイルを削除できます。WebView
 エンジン内部cacheの自動接続・消去は別途未実装です。
 `window.clearDownloads()`ではprofile内のNimino管理downloadファイルを削除できます。
-WebViewエンジンの実ダウンロード保存・進捗管理は別途未実装です。
+Linux WebKitGTKでは許可したレスポンスのダウンロード開始まで実装しています。保存先指定・進捗・完了イベントは別途未実装です。
 `window.clearPermissions()`ではprofileに保存した権限判断履歴を削除できます。
 `window.clearLocalStorage()`ではNimino管理のprofile local-storage領域を削除できます。
 WebView内部localStorageへの自動接続・消去は別途未実装です。
