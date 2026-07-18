@@ -32,4 +32,8 @@ let invalid = parse("name = \"No URL\"\nid = \"app.example\"")
 doAssert not invalid.isOk
 doAssert invalid.error.kind == invalidManifest
 
+let unsafe = parse("name = \"Unsafe\"\nid = \"../escape\"\nurl = \"https://example.com\"")
+doAssert not unsafe.isOk
+doAssert unsafe.error.kind == invalidManifest
+
 echo "nimino-pack manifest tests passed"

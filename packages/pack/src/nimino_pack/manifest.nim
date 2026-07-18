@@ -86,6 +86,10 @@ proc validateUrl(value: string): bool =
 proc validate*(manifest: PackManifest): PackResult[PackManifest] =
   if manifest.name.len == 0 or manifest.id.len == 0:
     return failure[PackManifest](invalidManifest, "name and id are required")
+  for component in [manifest.id, manifest.profile]:
+    if component.len == 0 or component in [".", ".."] or component.contains('/') or
+        component.contains('\\') or component.contains('\0'):
+      return failure[PackManifest](invalidManifest, "id and profile must be safe path components")
   if manifest.url.len == 0 or not validateUrl(manifest.url):
     return failure[PackManifest](invalidManifest, "url must use http, https, file, or data")
   if manifest.window.width <= 0 or manifest.window.height <= 0:
