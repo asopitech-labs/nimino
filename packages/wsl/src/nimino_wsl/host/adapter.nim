@@ -29,6 +29,12 @@ type
     webViewId*: uint64
     url*: string
 
+  HostDownloadEvent* = object
+    webViewId*: uint64
+    url*: string
+    state*: NativeDownloadState
+    progress*: float
+
   NavigationRules = object
     allow: seq[string]
     deny: seq[string]
@@ -58,6 +64,7 @@ type
     pendingNewWindowRequests: seq[HostNewWindowRequested]
     pendingNavigationStarts: seq[HostNavigationStarting]
     pendingNavigationCompletions: seq[HostNavigationCompleted]
+    pendingDownloadEvents: seq[HostDownloadEvent]
     ## Optional synchronous decision hook owned by the transport layer.
     ## Returning false is the fail-closed default.
     policyDecision*: proc(request: PolicyRequest): bool {.closure.}
@@ -401,6 +408,15 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   )
   if not downloadConfigured.isOk:
     return nativeFailure("native.webview.onDownloadStarting", downloadConfigured)
+  let downloadEventsConfigured = created.value.onDownloadEvent(
+    proc(url: string; state: NativeDownloadState; progress: float) =
+      let owner = cast[HostAdapter](adapterPointer)
+      if owner != nil:
+        owner.pendingDownloadEvents.add(HostDownloadEvent(
+          webViewId: webViewId, url: url, state: state, progress: progress))
+  )
+  if not downloadEventsConfigured.isOk:
+    return nativeFailure("native.webview.onDownloadEvent", downloadEventsConfigured)
   adapter.webViews[webViewId] = created.value
   inc adapter.windowViewCounts[windowId.value]
   successOf(HostAction(kind: noHostAction, payload: encodedId("webViewId", webViewId)))
@@ -470,6 +486,12 @@ proc takeNavigationCompletions*(adapter: HostAdapter): seq[HostNavigationComplet
     return @[]
   result = adapter.pendingNavigationCompletions
   adapter.pendingNavigationCompletions.setLen(0)
+
+proc takeDownloadEvents*(adapter: HostAdapter): seq[HostDownloadEvent] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingDownloadEvents
+  adapter.pendingDownloadEvents.setLen(0)
 
 
 proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;

@@ -144,6 +144,24 @@ proc flushNavigationCompletions(state: HostState) =
       discard state.adapter.app.close()
       return
 
+proc flushDownloadEvents(state: HostState) =
+  for event in state.adapter.takeDownloadEvents():
+    let stateName = case event.state
+      of nativeDownloadStarted: "started"
+      of nativeDownloadProgress: "progress"
+      of nativeDownloadCompleted: "completed"
+      of nativeDownloadFailed: "failed"
+      of nativeDownloadCancelled: "cancelled"
+    let payload = $(%*{
+      "webViewId": $event.webViewId,
+      "url": event.url,
+      "state": stateName,
+      "progress": event.progress
+    })
+    if not state.writeEvent("native.webview.downloadEvent", payload, ""):
+      discard state.adapter.app.close()
+      return
+
 proc requestPolicy(state: HostState; request: PolicyRequest): bool =
   ## The native callback runs on the UI thread.  Keep the relay synchronous so
   ## WebView2/GTK receives a decision before the callback returns; every error
@@ -166,13 +184,6 @@ proc requestPolicy(state: HostState; request: PolicyRequest): bool =
   let decision = response.payload.parsePolicyResponse()
   if not decision.isOk or not decision.value.allow:
     return false
-  if request.kind == downloadPolicy:
-    discard state.writeEvent("native.webview.downloadEvent", $(%*{
-      "webViewId": $request.webViewId,
-      "url": request.url,
-      "state": "started",
-      "progress": 0.0
-    }), "")
   true
 
 proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
@@ -215,6 +226,7 @@ proc pollHost(state: HostState) =
   state.flushNewWindowRequests()
   state.flushNavigationStarts()
   state.flushNavigationCompletions()
+  state.flushDownloadEvents()
 
 proc runHost(): int =
   let expectedToken = getEnv("NIMINO_WSL_HOST_TOKEN")
@@ -318,6 +330,7 @@ proc runHost(): int =
       state.flushNewWindowRequests()
       state.flushNavigationStarts()
       state.flushNavigationCompletions()
+      state.flushDownloadEvents()
       if not finished.isOk:
         stderr.writeLine("nimino-wsl-host: native UI loop failed: " &
           finished.failure.operation & " (code=" & $finished.failure.platformCode & ")")
