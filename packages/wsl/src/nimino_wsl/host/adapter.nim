@@ -232,6 +232,23 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   inc adapter.windowViewCounts[windowId.value]
   successOf(HostAction(kind: noHostAction, payload: encodedId("webViewId", webViewId)))
 
+proc handleWebViewSetDocumentStartScript(adapter: HostAdapter;
+                                          payload: JsonNode): ProtocolResultOf[HostAction] =
+  if adapter.uiStartRequested:
+    return errorAction("document-start scripts are closed after the UI loop starts")
+  let webViewId = payload.requiredId("webViewId")
+  let script = payload.requiredString("script")
+  if not webViewId.isOk:
+    return failureOf[HostAction](webViewId.failure)
+  if not script.isOk:
+    return failureOf[HostAction](script.failure)
+  if not adapter.webViews.hasKey(webViewId.value):
+    return errorAction("unknown webViewId")
+  let configured = adapter.webViews[webViewId.value].setDocumentStartScript(script.value)
+  if not configured.isOk:
+    return nativeFailure("native.webview.setDocumentStartScript", configured)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc takeMessages*(adapter: HostAdapter): seq[HostWebMessage] =
   if adapter.isNil:
     return @[]
@@ -327,6 +344,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowSetSize(payload.value)
   of "native.webview.create":
     adapter.handleWebViewCreate(payload.value)
+  of "native.webview.setDocumentStartScript":
+    adapter.handleWebViewSetDocumentStartScript(payload.value)
   of "native.webview.loadUrl":
     adapter.handleLoadContent(payload.value, "url", message.methodName)
   of "native.webview.loadHtml":

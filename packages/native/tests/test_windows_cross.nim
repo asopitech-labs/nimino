@@ -13,5 +13,6 @@ doAssert view.value.onError(proc(error: NativeError) = discard).isOk
 doAssert view.value.onNewWindowRequested(proc(url: string) = discard).isOk
 doAssert view.value.onNavigationStarting(proc(url: string): bool = true).isOk
 doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
+doAssert view.value.setDocumentStartScript("globalThis.niminoDocumentStart = true;").isOk
 doAssert view.value.loadHtml("<main>Nimino Windows M1</main>").isOk
 discard view.value.evalJavaScript("document.title")

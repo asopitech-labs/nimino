@@ -65,6 +65,7 @@ type
     pendingContentKind: NativeContentKind
     pendingUrl: string
     pendingHtml: string
+    documentStartScript: string
     platformView: pointer
     platformEnvironment: pointer
     platformController: pointer
@@ -308,6 +309,20 @@ proc loadHtml*(view: NativeWebView; html: string): NativeResult =
     return windowsLoadPendingContent(view)
   else:
     return success()
+
+proc setDocumentStartScript*(view: NativeWebView; script: string): NativeResult =
+  ## Queue one replacement script for the first document creation.  It is a
+  ## low-level primitive; policy and origin checks belong to nimino-core.
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.setDocumentStartScript"))
+  if view.state != pending:
+    return failure(nativeError(invalidState, "webview.setDocumentStartScript",
+      detail = "document-start scripts must be configured before WebView creation"))
+  if script.len == 0:
+    return failure(nativeError(invalidState, "webview.setDocumentStartScript",
+      detail = "script must not be empty"))
+  view.documentStartScript = script
+  success()
 
 proc evalJavaScript*(view: NativeWebView; script: string): Future[NativeResultOf[string]] =
   let request = NativeScriptRequest(

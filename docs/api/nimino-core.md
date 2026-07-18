@@ -1,6 +1,6 @@
 # `nimino-core` 最小公開API案
 
-**状態: M3部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrapを実装した。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録できる。Linuxでは実WebViewのrequest/response/notification往復を確認済みで、Windowsはx64クロスコンパイル済みです。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、Linux GUI FFIをリンクしません。Windows WebView2 Runtime上でWSL coreの読込、評価、async response、timeoutを確認済みです。型抽出register macro、TypeScript生成、プロファイルは未実装です。**
+**状態: M3部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrapを実装した。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録できる。Linuxでは実WebViewのrequest/response/notification往復、URLの最初期scriptからのRPCを確認済みで、Windowsはx64クロスコンパイル済みです。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、Linux GUI FFIをリンクしません。Windows WebView2 Runtime上でWSL coreの読込、評価、async response、timeout、URL document-start RPCを確認済みです。型抽出register macro、TypeScript生成、プロファイルは未実装です。**
 
 `nimino-core`は通常の利用者向けの高水準APIです。`nimino-native`を内包してもFFI型を公開せず、`nimino-pack`へはこの公開面だけを提供します。
 
@@ -82,7 +82,9 @@ Web側には`window.nimino.invoke(method, params, { timeoutMs })`および`windo
 
 registryの`tick()`はWindows timerとLinux GLib timeout sourceからUI threadで呼ばれる。Linuxの実smokeは`invoke → 許可済みhandler → response → notify`に加え、通知で完了するFutureと許可済み未完了Futureのtimeout responseを確認している。WSLではcoreがhostの`native.webview.message` eventを同じWindow registryへ渡し、responseを`native.webview.evalJavaScript` requestとして中継する。WSL clientは10ms以下の待機ごとにregistryをtickするため、host eventが続かない無応答requestも期限切れになる。fake hostとWindows WebView2 Runtimeの実スモークでasync response/timeoutを確認済みである。Window close中の遅延Futureと通常Windows Runtime上のcore RPCは未確認である。
 
-`loadHtml`はbridgeを文書の先頭へ挿入する。URL読込では読込完了後にbridgeを入れるため、リモートURLの最初期scriptからの`invoke`はdocument-start script注入スパイクが完了するまで保証しない。この制約を隠して本番向けURL包装には利用しない。
+`loadHtml`はbridgeを文書の先頭へ挿入します。Viewが`pending`の間の最初の対象`loadUrl`では、native Viewにdocument-start scriptとしてbridgeを登録してから読込を開始します。このため許可されたURLの最初期scriptも`window.nimino.invoke`を利用できます。
+
+document-start scriptはframeと後続ナビゲーションにも適用され得るため、bridge自身が実行時にoriginを検査します。HTTP(S)では初回URLを正規化した同一originだけ、`data:`では初回URLと完全一致する文書だけで初期化します。`about:blank`は親originを継承し得るため対象外です。ほかのscheme、後続の別origin、cross-origin frameではRPCを公開しません。bridge設定は最初に成功した対象`loadUrl`で固定され、後から差し替えられません。これはURL包装向けの全ナビゲーションpolicyではなく、M3 RPCの最小安全境界です。M4のナビゲーションpolicyがこの境界を拡張する場合は、[ADR-0008](../adr/0008-document-start-rpc-bridge.md)を更新して全ターゲットで検証します。
 
 ## M4以降の面
 

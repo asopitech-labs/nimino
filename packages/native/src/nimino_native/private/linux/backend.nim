@@ -64,6 +64,28 @@ proc linuxConfigureMessageBridge(view: NativeWebView): NativeResult =
   view.messageRegistered = true
   success()
 
+proc linuxConfigureDocumentStartScript(view: NativeWebView): NativeResult =
+  if view.documentStartScript.len == 0:
+    return success()
+  let manager = webkit_web_view_get_user_content_manager(cast[ptr WebKitWebView](view.platformView))
+  if manager.isNil:
+    return failure(nativeError(webViewError, "webview.setDocumentStartScript",
+      detail = "WebKitGTK user content manager is unavailable"))
+  let source = view.documentStartScript
+  let script = webkit_user_script_new(
+    cstring(source),
+    WebKitUserContentInjectedFrames(WebKitUserContentInjectAllFrames),
+    WebKitUserScriptInjectionTime(WebKitUserScriptInjectAtDocumentStart),
+    nil,
+    nil
+  )
+  if script.isNil:
+    return failure(nativeError(webViewError, "webview.setDocumentStartScript",
+      detail = "WebKitGTK user script creation failed"))
+  webkit_user_content_manager_add_script(manager, script)
+  webkit_user_script_unref(script)
+  success()
+
 proc linuxLoadChanged(webView: pointer; loadEvent: cint; userData: pointer) {.cdecl.} =
   let view = cast[NativeWebView](userData)
   if view.isNil or view.state in {closing, closed}:
@@ -323,6 +345,9 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let messaging = view.linuxConfigureMessageBridge()
   if not messaging.isOk:
     return messaging
+  let documentStartScript = view.linuxConfigureDocumentStartScript()
+  if not documentStartScript.isOk:
+    return documentStartScript
   let navigationEvents = view.linuxConfigureLoadEvents()
   if not navigationEvents.isOk:
     return navigationEvents

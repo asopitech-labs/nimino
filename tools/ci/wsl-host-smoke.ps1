@@ -150,15 +150,28 @@ try {
   }
   $webViewId = ($webViewResponse.payload | ConvertFrom-Json).webViewId
 
+  $script:smokePhase = "document-start script registration"
+  Write-Frame @{
+    version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+    requestId = "4"; eventId = "0"; method = "native.webview.setDocumentStartScript"
+    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "globalThis.__niminoDocumentStart = 'ready';" })
+    error = ""; timeoutMs = 5000
+  }
+  $documentStartResponse = Read-Frame
+  if ($documentStartResponse.kind -ne "response" -or $documentStartResponse.requestId -ne "4" -or
+      -not [string]::IsNullOrEmpty($documentStartResponse.error)) {
+    throw "Host did not register the document-start script"
+  }
+
   $script:smokePhase = "HTML loading"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-    requestId = "4"; eventId = "0"; method = "native.webview.loadHtml"
-    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; html = "<title>Nimino WebView2 Runtime Smoke</title><main>ready</main>" })
+    requestId = "5"; eventId = "0"; method = "native.webview.loadHtml"
+    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; html = "<script>document.title = globalThis.__niminoDocumentStart === 'ready' ? 'Nimino WebView2 Runtime Smoke' : 'missing document-start script';</script><main>ready</main>" })
     error = ""; timeoutMs = 5000
   }
   $loadResponse = Read-Frame
-  if ($loadResponse.kind -ne "response" -or $loadResponse.requestId -ne "4" -or
+  if ($loadResponse.kind -ne "response" -or $loadResponse.requestId -ne "5" -or
       -not [string]::IsNullOrEmpty($loadResponse.error)) {
     throw "Host did not start WebView HTML loading"
   }
@@ -168,12 +181,12 @@ try {
   $script:smokePhase = "JavaScript evaluation"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-    requestId = "5"; eventId = "0"; method = "native.webview.evalJavaScript"
+    requestId = "6"; eventId = "0"; method = "native.webview.evalJavaScript"
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "document.title" })
     error = ""; timeoutMs = 5000
   }
   $evaluation = Read-Frame
-  if ($evaluation.kind -ne "response" -or $evaluation.requestId -ne "5" -or
+  if ($evaluation.kind -ne "response" -or $evaluation.requestId -ne "6" -or
       -not [string]::IsNullOrEmpty($evaluation.error)) {
     throw "Host did not evaluate JavaScript in the WebView"
   }
@@ -185,12 +198,12 @@ try {
   $script:smokePhase = "native window title"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-    requestId = "6"; eventId = "0"; method = "native.window.setTitle"
+    requestId = "7"; eventId = "0"; method = "native.window.setTitle"
     payload = (ConvertTo-Json -Compress @{ windowId = $windowId; title = "Nimino Window Updated" })
     error = ""; timeoutMs = 5000
   }
   $titleResponse = Read-Frame
-  if ($titleResponse.kind -ne "response" -or $titleResponse.requestId -ne "6" -or
+  if ($titleResponse.kind -ne "response" -or $titleResponse.requestId -ne "7" -or
       -not [string]::IsNullOrEmpty($titleResponse.error)) {
     throw "Host did not update the native window title"
   }
@@ -198,12 +211,12 @@ try {
   $script:smokePhase = "native window resize"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-    requestId = "7"; eventId = "0"; method = "native.window.setSize"
+    requestId = "8"; eventId = "0"; method = "native.window.setSize"
     payload = (ConvertTo-Json -Compress @{ windowId = $windowId; width = 1000; height = 700 })
     error = ""; timeoutMs = 5000
   }
   $sizeResponse = Read-Frame
-  if ($sizeResponse.kind -ne "response" -or $sizeResponse.requestId -ne "7" -or
+  if ($sizeResponse.kind -ne "response" -or $sizeResponse.requestId -ne "8" -or
       -not [string]::IsNullOrEmpty($sizeResponse.error)) {
     throw "Host did not resize the native window"
   }
@@ -211,12 +224,12 @@ try {
   $script:smokePhase = "resized viewport evaluation"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-    requestId = "8"; eventId = "0"; method = "native.webview.evalJavaScript"
+    requestId = "9"; eventId = "0"; method = "native.webview.evalJavaScript"
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "JSON.stringify({ width: innerWidth, height: innerHeight })" })
     error = ""; timeoutMs = 5000
   }
   $viewportEvaluation = Read-Frame
-  if ($viewportEvaluation.kind -ne "response" -or $viewportEvaluation.requestId -ne "8" -or
+  if ($viewportEvaluation.kind -ne "response" -or $viewportEvaluation.requestId -ne "9" -or
       -not [string]::IsNullOrEmpty($viewportEvaluation.error)) {
     throw "Host did not evaluate the resized WebView viewport"
   }
@@ -228,12 +241,12 @@ try {
   $script:smokePhase = "URL loading"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-    requestId = "9"; eventId = "0"; method = "native.webview.loadUrl"
+    requestId = "10"; eventId = "0"; method = "native.webview.loadUrl"
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; url = "about:blank" })
     error = ""; timeoutMs = 5000
   }
   $urlResponse = Read-Frame
-  if ($urlResponse.kind -ne "response" -or $urlResponse.requestId -ne "9" -or
+  if ($urlResponse.kind -ne "response" -or $urlResponse.requestId -ne "10" -or
       -not [string]::IsNullOrEmpty($urlResponse.error)) {
     throw "Host did not start WebView URL loading"
   }
@@ -243,12 +256,12 @@ try {
   $script:smokePhase = "WebView message"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-    requestId = "10"; eventId = "0"; method = "native.webview.evalJavaScript"
+    requestId = "11"; eventId = "0"; method = "native.webview.evalJavaScript"
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "chrome.webview.postMessage('nimino-native-message')" })
     error = ""; timeoutMs = 5000
   }
   $messageEvaluation = Read-Frame
-  if ($messageEvaluation.kind -ne "response" -or $messageEvaluation.requestId -ne "10" -or
+  if ($messageEvaluation.kind -ne "response" -or $messageEvaluation.requestId -ne "11" -or
       -not [string]::IsNullOrEmpty($messageEvaluation.error)) {
     throw "Host did not execute the WebView message script"
   }
@@ -257,10 +270,10 @@ try {
   $script:smokePhase = "shutdown"
   Write-Frame @{
     version = 1; kind = "shutdown"; sessionId = $ready.sessionId; authenticationToken = ""
-    requestId = "11"; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000
+    requestId = "12"; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000
   }
   $response = Read-Frame
-  if ($response.kind -ne "response" -or $response.requestId -ne "11" -or
+  if ($response.kind -ne "response" -or $response.requestId -ne "12" -or
       $response.sessionId -ne $ready.sessionId -or -not [string]::IsNullOrEmpty($response.error)) {
     throw "Host did not acknowledge shutdown"
   }

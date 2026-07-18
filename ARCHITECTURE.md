@@ -31,9 +31,9 @@ URL / manifest -- nimino-pack -- nimino-core public API -- nimino-native
 
 | ターゲット | Window/WebView | M0の決定 | M1状態 |
 | --- | --- | --- | --- |
-| Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2とM3 core facadeをx64クロスコンパイル済み。導入済みRuntimeを使うWSL hostでWindow/WebView、HTML/URL、title/resize、評価/messageを実行済み。通常Windows GUI CIは未整備 |
-| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1/M2評価/message/navigation開始/完了/errorとM3 RPC同期往復をXvfb実行済み |
-| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client/core setup smoke済み。M3 core adapterは`-d:niminoWsl`でLinux GUI FFIを除外し、hostを自動選択する。Windows WebView2 Runtime上のasync RPC/timeoutも実行済み |
+| Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2とM3 core facadeをx64クロスコンパイル済み。導入済みRuntimeを使うWSL hostでWindow/WebView、HTML/URL、document-start script、title/resize、評価/messageを実行済み。通常Windows GUI CIは未整備 |
+| Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1/M2評価/message/navigation開始/完了/errorとM3 RPC同期往復、URL document-start RPCをXvfb実行済み |
+| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client/core setup smoke済み。M3 core adapterは`-d:niminoWsl`でLinux GUI FFIを除外し、hostを自動選択する。Windows WebView2 Runtime上のasync RPC/timeoutとURL document-start RPCも実行済み |
 | macOS | Cocoa + WKWebView | 将来のprivate backendのみ。共通APIへ固有要件を入れない | 対象外 |
 
 ## 公開面とエラー
@@ -83,6 +83,7 @@ NativeApp (明示 close)
 
 - `nimino-native`は文字列メッセージを運ぶだけで、Nim関数・OS APIをWebへ公開しません。
 - `nimino-core`のRPCはWindow単位の許可リストを必要とし、M3でリクエストID、タイムアウト、キャンセル、JSONエラーを実装します。
+- URLのRPC bootstrapはViewが`pending`の間の最初の対象読込前にdocument-start scriptとして登録し、HTTP(S)では初回URLと同一origin、`data:`では完全一致URLでだけ初期化します。`about:`を含む後続の別originと未対応schemeへRPCを公開しません。詳細は[ADR-0008](docs/adr/0008-document-start-rpc-bridge.md)を参照してください。
 - ナビゲーション、権限、外部URL、ダウンロードはcoreの明示ポリシーで扱い、未処理要求は許可しません。
 - WSL hostはネットワークlistenerを開かず、起動元clientへ継承された標準入出力だけを制御面に使用します。token、cookie、認証情報をログへ出しません。
 - ローカルアセットはM4で正規化済みパスをアセットrootの配下に限定し、パストラバーサルを拒否します。

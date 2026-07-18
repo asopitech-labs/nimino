@@ -19,6 +19,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; errorCode: HResult; jsonResult: WideCString): HResult {.stdcall.}
 
+  AddScriptToExecuteOnDocumentCreatedCompletedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; errorCode: HResult; scriptId: WideCString): HResult {.stdcall.}
+
   WebMessageReceivedVTable = object
     queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
     addRef: proc(self: pointer): uint32 {.stdcall.}
@@ -58,6 +64,11 @@ type
     references: Atomic[int]
     request: pointer
 
+  AddScriptToExecuteOnDocumentCreatedCompletedHandler = object
+    vtable: ptr AddScriptToExecuteOnDocumentCreatedCompletedVTable
+    references: Atomic[int]
+    view: pointer
+
   WebMessageReceivedHandler = object
     vtable: ptr WebMessageReceivedVTable
     references: Atomic[int]
@@ -82,6 +93,7 @@ proc windowsDisposeWindow(window: NativeWindow)
 proc windowsFail(app: NativeApp; error: NativeError)
 proc windowsResize(window: NativeWindow): NativeResult
 proc windowsLoadUrl(view: NativeWebView): NativeResult
+proc windowsFinishWebViewInitialization(view: NativeWebView): NativeResult
 
 proc hresultError(operation: string; status: HResult): NativeError {.inline.} =
   nativeError(webViewError, operation, platformCode = status)
@@ -149,6 +161,22 @@ proc executeScriptRelease(self: pointer): uint32 {.stdcall.} =
 proc executeScriptQueryInterface(self: pointer; iid: ptr WinGuid;
                                  outInstance: ptr pointer): HResult {.stdcall.} =
   queryCallback(self, iid, outInstance, IidExecuteScriptCompletedHandler, executeScriptAddRef)
+
+proc addDocumentStartScriptAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc addDocumentStartScriptRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    dealloc(handler)
+  uint32(remaining)
+
+proc addDocumentStartScriptQueryInterface(self: pointer; iid: ptr WinGuid;
+                                           outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidAddScriptToExecuteOnDocumentCreatedCompletedHandler,
+    addDocumentStartScriptAddRef)
 
 proc webMessageAddRef(self: pointer): uint32 {.stdcall.} =
   let handler = cast[ptr WebMessageReceivedHandler](self)
@@ -219,6 +247,8 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
                       controller: pointer): HResult {.stdcall.}
 proc executeScriptInvoke(self: pointer; errorCode: HResult;
                          jsonResult: WideCString): HResult {.stdcall.}
+proc addDocumentStartScriptInvoke(self: pointer; errorCode: HResult;
+                                  scriptId: WideCString): HResult {.stdcall.}
 proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 proc navigationCompletedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 proc navigationStartingInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
@@ -243,6 +273,13 @@ var executeScriptCompletedVTable = ExecuteScriptCompletedVTable(
   addRef: executeScriptAddRef,
   release: executeScriptRelease,
   invoke: executeScriptInvoke
+)
+
+var addDocumentStartScriptCompletedVTable = AddScriptToExecuteOnDocumentCreatedCompletedVTable(
+  queryInterface: addDocumentStartScriptQueryInterface,
+  addRef: addDocumentStartScriptAddRef,
+  release: addDocumentStartScriptRelease,
+  invoke: addDocumentStartScriptInvoke
 )
 
 var webMessageReceivedVTable = WebMessageReceivedVTable(
@@ -290,6 +327,15 @@ proc newExecuteScriptCompletedHandler(request: NativeScriptRequest): ptr Execute
   result.vtable = addr executeScriptCompletedVTable
   result.references.store(1, moRelaxed)
   result.request = cast[pointer](request)
+
+proc newAddDocumentStartScriptCompletedHandler(view: NativeWebView):
+    ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler =
+  result = cast[ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler](
+    alloc0(sizeof(AddScriptToExecuteOnDocumentCreatedCompletedHandler))
+  )
+  result.vtable = addr addDocumentStartScriptCompletedVTable
+  result.references.store(1, moRelaxed)
+  result.view = cast[pointer](view)
 
 proc newWebMessageReceivedHandler(view: NativeWebView): ptr WebMessageReceivedHandler =
   result = cast[ptr WebMessageReceivedHandler](alloc0(sizeof(WebMessageReceivedHandler)))
@@ -525,6 +571,33 @@ proc windowsLoadPendingContent(view: NativeWebView): NativeResult =
   of noContent:
     success()
 
+proc windowsFinishWebViewInitialization(view: NativeWebView): NativeResult =
+  let resized = view.window.windowsResize()
+  if not resized.isOk:
+    return resized
+  let loaded = view.windowsLoadPendingContent()
+  if not loaded.isOk:
+    return loaded
+  view.dispatchPendingScripts()
+  success()
+
+proc windowsConfigureDocumentStartScript(view: NativeWebView): NativeResult =
+  if view.documentStartScript.len == 0:
+    return success()
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.setDocumentStartScript"))
+  let handler = newAddDocumentStartScriptCompletedHandler(view)
+  let script = newWideCString(view.documentStartScript)
+  let status = coreAddScriptToExecuteOnDocumentCreated(
+    view.platformView,
+    script,
+    cast[pointer](handler)
+  )
+  discard addDocumentStartScriptRelease(handler)
+  if not succeeded(status):
+    return failure(hresultError("webview.setDocumentStartScript", status))
+  success()
+
 proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult =
   if view.platformView.isNil:
     return failure(nativeError(invalidState, "webview.evalJavaScript"))
@@ -752,15 +825,14 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
   if not messaging.isOk:
     view.window.app.windowsFail(messaging.failure)
     return S_OK
-  let resized = view.window.windowsResize()
-  if not resized.isOk:
-    view.window.app.windowsFail(resized.failure)
+  let documentStartScript = view.windowsConfigureDocumentStartScript()
+  if not documentStartScript.isOk:
+    view.window.app.windowsFail(documentStartScript.failure)
     return S_OK
-  let loaded = view.windowsLoadPendingContent()
-  if not loaded.isOk:
-    view.window.app.windowsFail(loaded.failure)
-    return S_OK
-  view.dispatchPendingScripts()
+  if view.documentStartScript.len == 0:
+    let initialized = view.windowsFinishWebViewInitialization()
+    if not initialized.isOk:
+      view.window.app.windowsFail(initialized.failure)
   S_OK
 
 proc executeScriptInvoke(self: pointer; errorCode: HResult;
@@ -781,6 +853,20 @@ proc executeScriptInvoke(self: pointer; errorCode: HResult;
     let serialized = if jsonResult.isNil: "null" else: $jsonResult
     view.completeScriptRequest(request, successOf(serialized))
   GC_unref(request)
+  S_OK
+
+proc addDocumentStartScriptInvoke(self: pointer; errorCode: HResult;
+                                  scriptId: WideCString): HResult {.stdcall.} =
+  let handler = cast[ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler](self)
+  let view = cast[NativeWebView](handler.view)
+  if view.isNil or view.window.app.state != running or view.state in {closing, closed}:
+    return S_OK
+  if not succeeded(errorCode):
+    view.window.app.windowsFail(hresultError("webview.setDocumentStartScript", errorCode))
+    return S_OK
+  let initialized = view.windowsFinishWebViewInitialization()
+  if not initialized.isOk:
+    view.window.app.windowsFail(initialized.failure)
   S_OK
 
 proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =

@@ -1,9 +1,9 @@
 ## M3 application facade.  Native object types remain private to this module.
 
-import std/[asyncfutures, strutils]
+import std/[asyncfutures, json, strutils, uri]
 
 when defined(linux):
-  import std/[json, options, os]
+  import std/[options, os]
   import nimino_wsl
 
 import nimino_native as native
@@ -118,6 +118,7 @@ type
     windowId: uint64
     webViewId: uint64
     rpc*: RpcRegistry
+    documentStartBridgeConfigured: bool
     closed: bool
 
 proc mapNativeError(error: native.NativeError): CoreError =
@@ -192,10 +193,68 @@ when defined(linux):
         detail = "host response is malformed"))
 
 proc bridgeDocument(html: string): string =
-  ## `loadHtml` is the one M3 content source where the bridge can be made
-  ## available before application scripts.  URL document-start injection needs
-  ## a dedicated native API and remains a separately tracked spike.
+  ## Local HTML is supplied by the application, so the bridge is part of the
+  ## document before its scripts execute.
   "<script>" & RpcBootstrapSource & "</script>" & html
+
+proc documentStartBridgeSource(url: string): string =
+  ## The native API runs a script in every future document and child frame.
+  ## Keep the bridge unavailable unless the initial URL itself identifies a
+  ## narrow, serializable origin (or exact application-supplied data URL).
+  try:
+    let parsed = parseUri(url)
+    let scheme = parsed.scheme.toLowerAscii()
+    var guard = ""
+    case scheme
+    of "http", "https":
+      if parsed.hostname.len == 0:
+        return ""
+      let host = if parsed.isIpv6: "[" & parsed.hostname.toLowerAscii() & "]"
+                 else: parsed.hostname.toLowerAscii()
+      var origin = scheme & "://" & host
+      if parsed.port.len > 0 and not
+          ((scheme == "http" and parsed.port == "80") or
+           (scheme == "https" and parsed.port == "443")):
+        origin.add(":" & parsed.port)
+      guard = "globalThis.location.origin === " & $(%origin)
+    of "data":
+      ## Data origins serialize as `null`, so match the complete URL rather
+      ## than authorizing every data document in this WebView. `about:blank`
+      ## is deliberately excluded: it can inherit a parent document's origin.
+      guard = "globalThis.location.href === " & $(%url)
+    else:
+      return ""
+    "(() => { if (!(" & guard & ")) return;\n" & RpcBootstrapSource & "\n})();"
+  except CatchableError:
+    ""
+
+proc configureDocumentStartBridge(window: Window; url: string): CoreResult =
+  if window.documentStartBridgeConfigured:
+    return coreSuccess()
+  let source = url.documentStartBridgeSource()
+  if source.len == 0:
+    return coreSuccess()
+  var configured: CoreResult
+  case window.app.backend
+  of nativeBackend:
+    if window.nativeView.isNil:
+      return coreFailure(coreError(invalidState, "window.loadUrl"))
+    configured = native.setDocumentStartScript(window.nativeView, source).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let response = window.app.wslCall("native.webview.setDocumentStartScript", $(%*{
+        "webViewId": $window.webViewId,
+        "script": source
+      }))
+      if response.isOk:
+        configured = coreSuccess()
+      else:
+        configured = coreFailure(response.failure)
+    else:
+      configured = coreFailure(coreError(platformUnavailable, "window.loadUrl"))
+  if configured.isOk:
+    window.documentStartBridgeConfigured = true
+  configured
 
 proc sendRpcReply(window: Window; message: string) =
   if window.isNil or window.closed or window.app.isNil:
@@ -216,21 +275,6 @@ proc sendRpcReply(window: Window; message: string) =
           "script": script
         }))
 
-proc installBridge(window: Window) =
-  if window.isNil or window.closed or window.app.isNil:
-    return
-  case window.app.backend
-  of nativeBackend:
-    if not window.nativeView.isNil:
-      discard native.evalJavaScript(window.nativeView, RpcBootstrapSource)
-  of wslBackend:
-    when defined(linux):
-      if window.webViewId != 0:
-        discard window.app.wslCall("native.webview.evalJavaScript", $(%*{
-          "webViewId": $window.webViewId,
-          "script": RpcBootstrapSource
-        }))
-
 proc configureWindow(window: Window): CoreResult =
   let messageConfigured = native.onMessage(window.nativeView, proc(message: string) =
     if window != nil and not window.closed:
@@ -239,13 +283,6 @@ proc configureWindow(window: Window): CoreResult =
   if not messageConfigured.isOk:
     return coreFailure(messageConfigured.failure.mapNativeError())
 
-  let navigationConfigured = native.onNavigationCompleted(window.nativeView,
-    proc(url: string; succeeded: bool) =
-      if succeeded:
-        window.installBridge()
-  )
-  if not navigationConfigured.isOk:
-    return coreFailure(navigationConfigured.failure.mapNativeError())
   coreSuccess()
 
 proc newApp*(options: AppOptions): CoreResultOf[App] =
@@ -394,6 +431,9 @@ proc setSize*(window: Window; width, height: int): CoreResult =
 proc loadUrl*(window: Window; url: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.loadUrl"))
+  let bridge = window.configureDocumentStartBridge(url)
+  if not bridge.isOk:
+    return bridge
   case window.app.backend
   of nativeBackend:
     if window.nativeView.isNil:
@@ -511,22 +551,9 @@ when defined(linux):
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "WebView message event is malformed"))
     of "native.webview.navigationCompleted":
-      try:
-        let payload = parseJson(event.payload)
-        if payload.kind != JObject or not payload.hasKey("webViewId") or
-            not payload.hasKey("succeeded") or payload["webViewId"].kind != JString or
-            payload["succeeded"].kind != JBool:
-          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
-            detail = "navigation completion event is malformed"))
-        if payload["succeeded"].getBool():
-          let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
-          for window in app.windows:
-            if not window.closed and window.webViewId == webViewId:
-              window.installBridge()
-              break
-      except CatchableError:
-        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
-          detail = "navigation completion event is malformed"))
+      ## The bridge is installed before the initial navigation.  Completion is
+      ## retained as a host lifecycle event but requires no post-load script.
+      discard
     else:
       ## M4 navigation, permission, and download policies have no core event
       ## surface yet.  The host has already applied its safe native defaults.

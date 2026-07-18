@@ -85,6 +85,7 @@ proc newWebView*(window: NativeWindow, bounds: Option[Rect] = none(Rect)):
 proc close*(view: NativeWebView): NativeResult
 proc loadUrl*(view: NativeWebView, url: string): NativeResult
 proc loadHtml*(view: NativeWebView, html: string): NativeResult
+proc setDocumentStartScript*(view: NativeWebView, script: string): NativeResult
 proc evalJavaScript*(view: NativeWebView, script: string): Future[NativeResultOf[string]]
 proc onMessage*(view: NativeWebView, callback: proc(message: string) {.gcsafe.})
 proc onNavigationStarting*(view: NativeWebView,
@@ -97,6 +98,8 @@ proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.}
 ```
 
 `newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。HTMLのbase URL指定は未実装で、将来の拡張候補です。
+
+`setDocumentStartScript`は`pending`のViewに一つだけscriptを設定・置換する低水準操作です。ready後の追加・変更は`invalidState`で拒否し、次のナビゲーションへ黙って適用しません。WindowsはWebView2の非同期`AddScriptToExecuteOnDocumentCreated`完了を待ってから保留中の最初の読込を開始し、LinuxはWebKitGTKの`WebKitUserScript`をdocument-startで登録します。どちらも以後のframe/ナビゲーションへ影響し得るため、URL・origin・注入ポリシーはこの層で判断しません。`nimino-core`がその制約を用いてRPC bridgeを限定します。
 
 `evalJavaScript` は pending の View へも要求でき、ready 後に一度だけ実行します。成功値は JavaScript の評価値を JSON 化した UTF-8 文字列です（文字列値なら JSON の引用符を含みます）。Linux は WebKitGTK の `evaluate_javascript`、Windows は WebView2 の `ExecuteScript` で UI thread 上の完了 callback から Future を完了します。WSL host は完了済み Future を Win32 timer 上で polling し、同じ request ID の response として `{"result":"…"}` を返します。Linux実行スモーク、Windows Runtime上のhost実行、WSLの評価往復を確認済みです。
 

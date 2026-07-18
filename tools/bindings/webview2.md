@@ -79,6 +79,21 @@ The vtable slot order and callback signatures were checked against the header
 above.  Later features must be checked against a recorded SDK version before
 adding a new slot.
 
+## M3 document-start surface copied into Nimino
+
+* `ICoreWebView2::AddScriptToExecuteOnDocumentCreated` (vtable slot 27)
+* `ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler` and IID
+  `b99369f3-9b11-47b5-bc6f-8e7895fcea17`
+
+The operation is asynchronous. Nimino defers the first pending load until its
+completion callback succeeds, so a caller that configured a script while the
+View was `pending` does not race the first navigation. Nimino releases its
+initial callback reference immediately after registration; WebView2 retains
+the callback until completion and controls the final release. The returned
+script ID is deliberately not retained because the low-level API does not
+support mutation after the View is ready. The Core layer owns URL and origin
+policy; the native API only registers a prepared string.
+
 ## Distribution boundary
 
 The application must distribute the architecture-matched `WebView2Loader.dll`

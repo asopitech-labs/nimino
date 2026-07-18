@@ -52,6 +52,15 @@ block windowAndViewRemainSeparate:
   doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
   doAssert not window.value.newWebView().isOk
 
+block documentStartScriptIsConfiguredBeforeNativeCreation:
+  let app = newNativeApp()
+  let window = app.newWindow("Document start", 320, 200)
+  doAssert window.isOk
+  let view = window.value.newWebView()
+  doAssert view.isOk
+  doAssert view.value.setDocumentStartScript("globalThis.niminoDocumentStart = true;").isOk
+  doAssert view.value.setDocumentStartScript("globalThis.niminoDocumentStart = 'updated';").isOk
+
 block javascriptEvaluationRejectsInvalidView:
   let view = NativeWebView(nil)
   let evaluation = view.evalJavaScript("document.title")

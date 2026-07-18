@@ -14,6 +14,7 @@ type
   GtkWindow* {.incompleteStruct.} = object
   WebKitWebView* {.incompleteStruct.} = object
   WebKitUserContentManager* {.incompleteStruct.} = object
+  WebKitUserScript* {.incompleteStruct.} = object
   WebKitPolicyDecision* {.incompleteStruct.} = object
   WebKitNavigationPolicyDecision* {.incompleteStruct.} = object
   WebKitNavigationAction* {.incompleteStruct.} = object
@@ -27,6 +28,13 @@ type
   GAsyncReadyCallback* = proc(sourceObject: pointer; asyncResult: ptr GAsyncResult;
                               userData: pointer) {.cdecl.}
   GSourceFunc* = proc(data: pointer): cint {.cdecl.}
+
+  WebKitUserContentInjectedFrames* = cint
+  WebKitUserScriptInjectionTime* = cint
+
+const
+  WebKitUserContentInjectAllFrames* = 0.cint
+  WebKitUserScriptInjectAtDocumentStart* = 0.cint
 
 proc gtk_application_new*(applicationId: cstring; flags: cint): ptr GtkApplication
   {.cdecl, importc, dynlib: LibGtk.}
@@ -91,6 +99,16 @@ proc webkit_user_content_manager_register_script_message_handler*(manager: ptr W
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_user_content_manager_unregister_script_message_handler*(manager: ptr WebKitUserContentManager;
                                                                      name, worldName: cstring)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_content_manager_add_script*(manager: ptr WebKitUserContentManager;
+                                             script: ptr WebKitUserScript)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_script_new*(source: cstring;
+                             injectedFrames: WebKitUserContentInjectedFrames;
+                             injectionTime: WebKitUserScriptInjectionTime;
+                             allowList, blockList: ptr cstring): ptr WebKitUserScript
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_script_unref*(script: ptr WebKitUserScript)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_navigation_policy_decision_get_navigation_action*(decision: ptr WebKitNavigationPolicyDecision): ptr WebKitNavigationAction
   {.cdecl, importc, dynlib: LibWebKit.}

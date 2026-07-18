@@ -24,6 +24,10 @@ block createsWindowViewAndUrlBeforeStartingUi:
   doAssert view.isOk
   let webViewId = parseJson(view.value.payload)["webViewId"].getStr()
 
+  let script = adapter.handleRequest(requestMessage("native.webview.setDocumentStartScript",
+    $(%*{"webViewId": webViewId, "script": "globalThis.niminoTest = true;"})))
+  doAssert script.isOk
+
   let loaded = adapter.handleRequest(requestMessage("native.webview.loadUrl",
     $(%*{"webViewId": webViewId, "url": "https://example.com"})))
   doAssert loaded.isOk

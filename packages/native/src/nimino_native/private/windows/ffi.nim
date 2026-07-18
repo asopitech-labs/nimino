@@ -125,6 +125,10 @@ const
     data1: 0x6c4819f3'u32, data2: 0xc9b7'u16, data3: 0x4260'u16,
     data4: [0x81'u8, 0x27'u8, 0xc9'u8, 0xf5'u8, 0xbd'u8, 0xe7'u8, 0xf6'u8, 0x8c'u8]
   )
+  IidAddScriptToExecuteOnDocumentCreatedCompletedHandler* = WinGuid(
+    data1: 0xb99369f3'u32, data2: 0x9b11'u16, data3: 0x47b5'u16,
+    data4: [0xbc'u8, 0x6f'u8, 0x8e'u8, 0x78'u8, 0x95'u8, 0xfc'u8, 0xea'u8, 0x17'u8]
+  )
   IidExecuteScriptCompletedHandler* = WinGuid(
     data1: 0x49511172'u32, data2: 0xcc67'u16, data3: 0x4bca'u16,
     data4: [0x99'u8, 0x23'u8, 0x13'u8, 0x71'u8, 0x12'u8, 0xf4'u8, 0xc4'u8, 0xcc'u8]
@@ -292,6 +296,14 @@ proc coreNavigateToString*(core: pointer; html: WideCString): HResult {.inline.}
     cast[ptr ComInterface](core).vtable[6]
   )
   dispatch(core, html)
+
+proc coreAddScriptToExecuteOnDocumentCreated*(core: pointer; script: WideCString;
+                                               handler: pointer): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; script: WideCString;
+                           handler: pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[27]
+  )
+  dispatch(core, script, handler)
 
 proc coreAddNavigationCompleted*(core: pointer; handler: pointer;
                                  token: ptr EventRegistrationToken): HResult {.inline.} =

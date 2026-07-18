@@ -28,6 +28,10 @@ task testCoreLinuxRpcSmoke, "Run the Linux core RPC smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_smoke.nim"
   exec "xvfb-run -a /tmp/nimino-core-linux-rpc-smoke"
 
+task testCoreLinuxRpcUrlSmoke, "Run the Linux URL document-start RPC smoke test under Xvfb":
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-url-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-url-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_url_smoke.nim"
+  exec "xvfb-run -a /tmp/nimino-core-linux-rpc-url-smoke"
+
 task testCoreLinuxRpcAsyncSmoke, "Run the Linux async and timeout core RPC smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-async-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-async-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_async_smoke.nim"
   exec "xvfb-run -a /tmp/nimino-core-linux-rpc-async-smoke"
@@ -62,3 +66,7 @@ task buildWslCoreClientArtifact, "Build a disposable WSL core adapter smoke-test
 task buildWslCoreRpcAsyncClientArtifact, "Build a disposable WSL core async RPC smoke-test artifact":
   exec "mkdir -p /workspace/.tmp"
   exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-core-rpc-async-client-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-core-rpc-async-client-smoke --path:packages/core --path:packages/wsl --path:packages/native tools/ci/wsl_core_rpc_async_client_smoke.nim"
+
+task buildWslCoreRpcUrlClientArtifact, "Build a disposable WSL core URL document-start RPC smoke-test artifact":
+  exec "mkdir -p /workspace/.tmp"
+  exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-core-rpc-url-client-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-core-rpc-url-client-smoke --path:packages/core --path:packages/wsl --path:packages/native tools/ci/wsl_core_rpc_url_client_smoke.nim"
