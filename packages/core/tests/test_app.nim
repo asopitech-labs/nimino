@@ -132,6 +132,7 @@ block navigationRulesAreExplicit:
   let window = created.value.newWindow(title = "Navigation").value
   doAssert window.setNavigationRules(NavigationRules(
     allow: @["https://example.com/**"], deny: @["https://example.com/private/**"])).isOk
+  doAssert window.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
   doAssert not window.setNavigationRules(NavigationRules(allow: @[""], deny: @[])).isOk
   var externalUrl = ""
   doAssert window.onExternalNavigation(proc(request: NavigationRequest) =

@@ -179,6 +179,7 @@ type
     navigationRules: NavigationRules
     navigationRulesConfigured: bool
     navigationPolicy*: proc(request: NavigationRequest): NavigationDecision
+    navigationCompletedHandler*: proc(url: string; succeeded: bool)
     externalNavigationHandler*: proc(request: NavigationRequest)
     newWindowHandler*: proc(request: NewWindowRequest): bool
     errorHandler*: proc(error: WindowError)
@@ -450,6 +451,14 @@ proc configureWindow(window: Window): CoreResult =
       window.applyNavigationDecision(NavigationRequest(url: url)))
   if not navigationConfigured.isOk:
     return coreFailure(navigationConfigured.failure.mapNativeError())
+
+  let completionConfigured = native.onNavigationCompleted(window.nativeView,
+    proc(url: string; succeeded: bool) =
+      if not window.navigationCompletedHandler.isNil:
+        try: window.navigationCompletedHandler(url, succeeded)
+        except CatchableError: discard)
+  if not completionConfigured.isOk:
+    return coreFailure(completionConfigured.failure.mapNativeError())
 
   let permissionConfigured = native.onPermissionRequested(window.nativeView,
     proc(url: string): bool = window.decidePermission(PermissionRequest(
@@ -879,6 +888,13 @@ proc setNavigationPolicy*(window: Window;
   window.navigationPolicy = policy
   coreSuccess()
 
+proc onNavigationCompleted*(window: Window;
+                            handler: proc(url: string; succeeded: bool)): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onNavigationCompleted"))
+  window.navigationCompletedHandler = handler
+  coreSuccess()
+
 proc onExternalNavigation*(window: Window;
                            handler: proc(request: NavigationRequest)): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -1114,9 +1130,23 @@ when defined(linux):
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "WebView message event is malformed"))
     of "native.webview.navigationCompleted":
-      ## The bridge is installed before the initial navigation.  Completion is
-      ## retained as a host lifecycle event but requires no post-load script.
-      discard
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("webViewId") or
+            not payload.hasKey("url") or not payload.hasKey("succeeded"):
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "navigation completed event is malformed"))
+        let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
+        for window in app.windows:
+          if not window.closed and window.webViewId == webViewId and
+              not window.navigationCompletedHandler.isNil:
+            try: window.navigationCompletedHandler(payload["url"].getStr(),
+              payload["succeeded"].getBool())
+            except CatchableError: discard
+            break
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "navigation completed event is malformed"))
     of "native.webview.newWindowRequested":
       try:
         let payload = parseJson(event.payload)

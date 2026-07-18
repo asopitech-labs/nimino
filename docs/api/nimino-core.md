@@ -104,6 +104,9 @@ window.navigationPolicy = proc(request: NavigationRequest): NavigationDecision =
 window.onExternalNavigation proc(request: NavigationRequest) =
   echo "open externally: " & request.url
 
+window.onNavigationCompleted proc(url: string; succeeded: bool) =
+  echo url & " loaded=" & $succeeded
+
 window.onPermission proc(request: PermissionRequest): PermissionDecision =
   deny()
 ```
