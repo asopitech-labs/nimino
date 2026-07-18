@@ -3,7 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env shell test pack-test pack-cli-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header shell test pack-test pack-cli-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -30,6 +30,10 @@ webkit-version: image ## コンテナ内のWebKitGTK 6.0開発環境を確認す
 	$(COMPOSE) run --rm $(SERVICE) pkg-config --modversion webkitgtk-6.0
 
 verify-env: nim-version nimble-version gtk-version webkit-version ## M0のDocker開発環境を検証する
+
+verify-webview2-header: image ## WebView2 permission/download APIの公式ヘッダーを検証する
+
+	$(COMPOSE) run --rm $(SERVICE) bash -lc 'curl --fail --silent --show-error -L -o /tmp/webview2.nupkg https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3967.48/microsoft.web.webview2.1.0.3967.48.nupkg && unzip -p /tmp/webview2.nupkg build/native/include/WebView2.h | grep -q ICoreWebView2PermissionRequestedEventHandler && unzip -p /tmp/webview2.nupkg build/native/include/WebView2.h | grep -q ICoreWebView2DownloadStartingEventHandler'
 
 shell: image ## コンテナ内の対話shellを開く
 
