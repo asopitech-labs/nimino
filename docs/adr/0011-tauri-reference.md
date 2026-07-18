@@ -8,7 +8,9 @@
 
 公式Tauriリポジトリを`reference/tauri`へ浅いcloneし、Niminoの実装前に同等機能の制御方式を確認する。
 
-参照コードは調査用であり、Niminoのビルド依存・実行時依存・公開API依存にはしない。`reference/tauri/`は`.gitignore`で除外し、リポジトリ本体へ取り込まない。
+WebサイトをTauriアプリとしてラップして配布するPake（`tw93/Pake`）も`reference/pake`へ浅いcloneし、`nimino-pack`のURL包装、マニフェスト、ビルド、配布制御の比較対象とする。
+
+参照コードは調査用であり、Niminoのビルド依存・実行時依存・公開API依存にはしない。`reference/tauri/`と`reference/pake/`は`.gitignore`で除外し、リポジトリ本体へ取り込まない。
 
 各機能の実装前に、Tauri側の該当コード、境界条件、エラー処理、ライフサイクル制御を確認し、Nimino側の設計判断を記録する。Tauriの抽象化をそのまま移植せず、Niminoの責務分離（native/core/wsl/pack）に合わせて必要な制御だけを再設計する。
 
@@ -19,6 +21,7 @@
 - 権限・ダウンロード要求の許可判定
 - IPCのrequest/response、エラー、タイムアウト
 - ネイティブ資源の所有権と解放順序
+- PakeのURL包装、設定、アイコン、ビルド・配布フロー
 
 ## 初回確認結果（2026-07-18）
 

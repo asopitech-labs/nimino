@@ -4,3 +4,4 @@ htmldocs/
 .tmp/
 .spec-workflow/
 reference/tauri/
+reference/pake/
