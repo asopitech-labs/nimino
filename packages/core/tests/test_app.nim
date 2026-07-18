@@ -87,6 +87,10 @@ block windowsOwnIndependentRpcAllowLists:
     rpcSuccess(newJNull())
   )
   doAssert first.value.rpc.isMethodRegistered("only.first")
+  doAssert first.value.rpc.unregister("only.first")
+  doAssert not first.value.rpc.isMethodRegistered("only.first")
+  doAssert not first.value.rpc.registerSync("bad name", proc(params: JsonNode): RpcResult =
+    rpcSuccess(newJNull()))
   doAssert not second.value.rpc.isMethodRegistered("only.first")
   let declarations = first.value.typescriptDeclarations()
   doAssert declarations.isOk
