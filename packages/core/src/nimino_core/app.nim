@@ -8,7 +8,7 @@ when defined(linux):
 
 import nimino_native as native
 
-import ./[errors, rpc]
+import ./[errors, profile, rpc]
 
 const RpcBootstrapSource = """
 (() => {
@@ -98,6 +98,7 @@ type
     title*: string
     width*: int
     height*: int
+    profile*: string
 
   NavigationRules* = object
     allow*: seq[string]
@@ -145,6 +146,7 @@ type
     nativeView: native.NativeWebView
     windowId: uint64
     webViewId: uint64
+    profilePath*: string
     rpc*: RpcRegistry
     documentStartBridgeConfigured: bool
     assetRoot: string
@@ -413,6 +415,11 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if options.width <= 0 or options.height <= 0:
     return coreFailureOf[Window](coreError(invalidArgument, "window.create",
       detail = "size must be positive"))
+  let profileName = if options.profile.len == 0: "default" else: options.profile
+  let profile = ensureProfileLayout(app.id, profileName)
+  if not profile.isOk:
+    return coreFailureOf[Window](coreError(invalidArgument, "window.create",
+      detail = profile.error))
 
   let title = if options.title.len == 0: app.name else: options.title
   if app.backend == wslBackend:
@@ -435,7 +442,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
       let webViewId = remoteView.value.responseId("webViewId")
       if not webViewId.isOk:
         return coreFailureOf[Window](webViewId.failure)
-      let window = Window(app: app, windowId: windowId.value, webViewId: webViewId.value)
+      let window = Window(app: app, windowId: windowId.value, webViewId: webViewId.value,
+                          profilePath: profile.value)
       window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
       app.windows.add(window)
       return coreSuccessOf(window)
@@ -450,7 +458,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     return coreFailureOf[Window](nativeView.failure.mapNativeError())
 
   let window = Window(app: app, nativeWindow: nativeWindow.value,
-                      nativeView: nativeView.value)
+                      nativeView: nativeView.value, profilePath: profile.value)
   window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
   let configured = window.configureWindow()
   if not configured.isOk:
@@ -460,7 +468,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   coreSuccessOf(window)
 
 proc newWindow*(app: App; title = ""; width = 1200; height = 800): CoreResultOf[Window] =
-  app.newWindow(CoreWindowOptions(title: title, width: width, height: height))
+  app.newWindow(CoreWindowOptions(title: title, width: width, height: height,
+    profile: "default"))
 
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:

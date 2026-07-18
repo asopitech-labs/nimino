@@ -45,6 +45,18 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert first.value.rpc.isMethodRegistered("only.first")
   doAssert not second.value.rpc.isMethodRegistered("only.first")
 
+block windowsCanSelectIndependentProfiles:
+  let created = newApp(id = "tech.asopi.profile-window-test", name = "Profiles")
+  doAssert created.isOk
+  let work = created.value.newWindow(CoreWindowOptions(width: 1200, height: 800,
+    profile: "work"))
+  let personal = created.value.newWindow(CoreWindowOptions(width: 1200, height: 800,
+    profile: "personal"))
+  doAssert work.isOk, work.failure.detail
+  doAssert personal.isOk, personal.failure.detail
+  doAssert work.value.profilePath != personal.value.profilePath
+  doAssert work.value.profilePath.endsWith("/work") or work.value.profilePath.endsWith("\\work")
+
 block localAssetRootRejectsTraversal:
   let created = newApp(id = "tech.asopi.assets-test", name = "Assets test")
   doAssert created.isOk
