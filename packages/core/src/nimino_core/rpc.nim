@@ -94,6 +94,15 @@ proc register*(registry: RpcRegistry; methodName: string; handler: RpcHandler): 
   registry.handlers[methodName] = handler
   true
 
+proc unregister*(registry: RpcRegistry; methodName: string): bool =
+  ## Remove one explicitly registered method. Pending requests are not
+  ## cancelled here; they retain their original handler until completion.
+  if registry.isNil or registry.closed or methodName.len == 0 or
+      not registry.handlers.hasKey(methodName):
+    return false
+  registry.handlers.del(methodName)
+  true
+
 proc registerSync*(registry: RpcRegistry; methodName: string;
                    handler: RpcSyncHandler): bool =
   if handler.isNil:
