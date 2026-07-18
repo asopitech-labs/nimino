@@ -123,6 +123,8 @@ block localAssetRootRejectsTraversal:
   doAssert created.isOk
   let window = created.value.newWindow(title = "Assets").value
   doAssert not window.loadAssets("/path/that/does/not/exist").isOk
+  doAssert window.loadHtml("<p>local</p>").isOk
+  doAssert not window.reload().isOk
 
 block navigationRulesAreExplicit:
   doAssert matchesNavigationPattern("https://*.discord.com/**", "https://canary.discord.com/channels")

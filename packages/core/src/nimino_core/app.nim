@@ -1007,6 +1007,7 @@ proc loadEntry*(window: Window; entry = "index.html"): CoreResult =
 proc loadHtml*(window: Window; html: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.loadHtml"))
+  window.lastUrl.setLen(0)
   let document = bridgeDocument(html)
   case window.app.backend
   of nativeBackend:
