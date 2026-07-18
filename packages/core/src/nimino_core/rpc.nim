@@ -353,6 +353,9 @@ proc handleMessage*(registry: RpcRegistry; message: string;
 proc close*(registry: RpcRegistry) =
   if registry.isNil or registry.closed:
     return
+  for requestId in registry.pending.keys:
+    registry.emitError(requestId, rpcError(requestCancelled,
+      "RPC request was cancelled because the window closed"))
   registry.closed = true
   registry.handlers.clear()
   registry.pending.clear()

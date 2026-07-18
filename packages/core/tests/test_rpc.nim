@@ -67,6 +67,16 @@ block timeoutAndCancelSuppressLateReplies:
   pending.complete(rpcSuccess(%"late again"))
   doAssert messages.len == 2
 
+block closeCancelsPendingRequests:
+  var messages: seq[string]
+  let registry = newRpcRegistry(proc(message: string) = messages.add(message))
+  doAssert registry.register("slow", proc(params: JsonNode): Future[RpcResult] =
+    newFuture[RpcResult]("nimino.rpc.test.close"))
+  doAssert registry.handleMessage(request("close-one", "slow"), 3_000)
+  registry.close()
+  doAssert messages.len == 1
+  doAssert messages.response()["error"]["code"].getStr() == "cancelled"
+
 block notificationsAndMalformedMessagesDoNotExposeHandlers:
   var notifications = 0
   let registry = newRpcRegistry()
