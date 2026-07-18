@@ -34,6 +34,11 @@ task testPackManifest, "Run nimino-pack manifest tests":
 task buildPackCli, "Build the nimino-pack validation CLI":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"
 
+task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
+  exec "mkdir -p /tmp/nimino-pack-cli-test && printf 'name = \"Demo\"\\nid = \"app.nimino.demo\"\\nurl = \"https://example.com\"\\n' > /tmp/nimino-pack-cli-test/input.toml"
+  exec "/tmp/nimino pack /tmp/nimino-pack-cli-test/input.toml --out /tmp/nimino-pack-cli-test/out"
+  exec "test -s /tmp/nimino-pack-cli-test/out/nimino-manifest.json && test -x /tmp/nimino-pack-cli-test/out/run-nimino.sh"
+
 task testCoreLinuxRpcUrlSmoke, "Run the Linux URL document-start RPC smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-url-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-url-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_url_smoke.nim"
   exec "xvfb-run -a /tmp/nimino-core-linux-rpc-url-smoke"
