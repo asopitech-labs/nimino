@@ -737,6 +737,15 @@ proc clearDownloads*(window: Window): CoreResult =
   if cleared.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.clearDownloads", detail = cleared.error))
 
+proc downloadPath*(window: Window; suggestedName: string): CoreResultOf[string] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[string](coreError(invalidState, "window.downloadPath"))
+  let path = profileDownloadPath(window.app.id, window.profileName, suggestedName)
+  if path.isOk:
+    coreSuccessOf(path.value)
+  else:
+    coreFailureOf[string](coreError(invalidArgument, "window.downloadPath", detail = path.error))
+
 proc clearPermissions*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.clearPermissions"))
