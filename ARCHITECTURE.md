@@ -90,7 +90,7 @@ NativeApp (明示 close)
 
 ## リポジトリ配置
 
-M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registry、WSL client adapterを追加しています。WSL adapterはM1 setup、fake host RPC relay、実WebView2 Runtime上の読込/評価、async response/timeoutを確認済みです。型抽出macro、プロファイルは未実装です。`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
+M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registry、WSL client adapterを追加しています。WSL adapterはM1 setup、fake host RPC relay、実WebView2 Runtime上の読込/評価、async response/timeoutを確認済みです。M4ではprofile path、local asset境界、navigation policy、既定拒否のpermission/download policy契約を追加しました。OSイベント接続、型抽出macro、デスクトップ統合、バイナリ包装は未実装です。`pack`にはTOMLマニフェスト解析・検証と正規化JSON CLIを追加しています。最終配置は次です。
 
 ```text
 packages/
