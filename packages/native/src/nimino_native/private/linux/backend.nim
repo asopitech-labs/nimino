@@ -161,6 +161,9 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
   of 1: # WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION
     view.dispatchNewWindowRequested(copiedUri)
     webkit_policy_decision_ignore(decision)
+  of 2: # WEBKIT_POLICY_DECISION_TYPE_RESPONSE
+    ## Download policy is not bridged yet; deny response handling explicitly.
+    webkit_policy_decision_ignore(decision)
   else:
     return 0
   ## The decision was handled explicitly above.
