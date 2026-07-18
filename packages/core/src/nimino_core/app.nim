@@ -511,9 +511,10 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   app.windows.add(window)
   coreSuccessOf(window)
 
-proc newWindow*(app: App; title = ""; width = 1200; height = 800): CoreResultOf[Window] =
+proc newWindow*(app: App; title = ""; width = 1200; height = 800;
+                profile = "default"): CoreResultOf[Window] =
   app.newWindow(CoreWindowOptions(title: title, width: width, height: height,
-    profile: "default"))
+    profile: profile))
 
 proc typescriptDeclarations*(window: Window): CoreResultOf[string] =
   if window.isNil or window.closed or window.app.isNil:

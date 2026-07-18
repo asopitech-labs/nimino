@@ -75,6 +75,9 @@ block windowsCanSelectIndependentProfiles:
   doAssert personal.isOk, personal.failure.detail
   doAssert work.value.profilePath != personal.value.profilePath
   doAssert work.value.profilePath.endsWith("/work") or work.value.profilePath.endsWith("\\work")
+  let direct = created.value.newWindow(profile = "direct", width = 1200, height = 800)
+  doAssert direct.isOk
+  doAssert direct.value.profilePath.endsWith("/direct") or direct.value.profilePath.endsWith("\\direct")
 
 block localAssetRootRejectsTraversal:
   let created = newApp(id = "tech.asopi.assets-test", name = "Assets test")
