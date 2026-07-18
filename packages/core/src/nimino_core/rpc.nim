@@ -4,7 +4,7 @@
 ## does not reflect Nim symbols, expose OS APIs, or infer a callable surface
 ## from arbitrary types.
 
-import std/[algorithm, asyncfutures, json, jsonutils, strutils, tables, times]
+import std/[algorithm, asyncfutures, json, jsonutils, strutils, tables, times, typetraits]
 
 const
   DefaultRpcTimeoutMs* = 30_000'i64
@@ -40,6 +40,7 @@ type
 
   RpcRegistry* = ref object
     handlers: Table[string, RpcHandler]
+    typeScriptSchemas: Table[string, tuple[paramsType, resultType: string]]
     pending: Table[string, PendingRequest]
     sink: RpcReplySink
     closed: bool
@@ -58,6 +59,19 @@ proc nowMilliseconds*(): int64 {.inline.} =
 
 proc newRpcRegistry*(sink: RpcReplySink = nil): RpcRegistry =
   RpcRegistry(sink: sink)
+
+proc typeScriptType[T](): string =
+  let name = name(T).toLowerAscii()
+  case name
+  of "string", "cstring": "string"
+  of "bool": "boolean"
+  of "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16",
+     "uint32", "uint64", "float", "float32", "float64": "number"
+  else: "unknown"
+
+proc setTypeScriptSchema(registry: RpcRegistry; methodName, paramsType, resultType: string) =
+  if registry != nil:
+    registry.typeScriptSchemas[methodName] = (paramsType, resultType)
 
 proc setReplySink*(registry: RpcRegistry; sink: RpcReplySink) =
   if registry != nil and not registry.closed:
@@ -88,9 +102,12 @@ proc typescriptDeclarations*(registry: RpcRegistry): string =
   result = "declare global {\n  interface Window {\n    nimino: {\n"
   for methodName in registry.registeredMethods():
     let escaped = methodName.replace("\\", "\\\\").replace("'", "\\'")
+    let schema = registry.typeScriptSchemas.getOrDefault(methodName,
+      (paramsType: "unknown", resultType: "unknown"))
     result.add("      invoke(method: '")
     result.add(escaped)
-    result.add("', params?: unknown, options?: { timeoutMs?: number }): Promise<unknown>;\n")
+    result.add("', params?: " & schema.paramsType &
+      ", options?: { timeoutMs?: number }): Promise<" & schema.resultType & ">;\n")
   result.add("      notify(method: string, params?: unknown): void;\n")
   result.add("    };\n  }\n}\nexport {};\n")
 
@@ -149,29 +166,33 @@ proc registerTyped*[R](registry: RpcRegistry; methodName: string;
                        handler: proc(): R {.closure.}): bool =
   if handler.isNil:
     return false
-  registry.registerSync(methodName, proc(params: JsonNode): RpcResult =
+  result = registry.registerSync(methodName, proc(params: JsonNode): RpcResult =
     try:
       rpcSuccess(handler().toJson())
     except CatchableError:
       typedFailure()
   )
+  if result:
+    registry.setTypeScriptSchema(methodName, "void", typeScriptType[R]())
 
 proc registerTyped*[T, R](registry: RpcRegistry; methodName: string;
                           handler: proc(params: T): R {.closure.}): bool =
   if handler.isNil:
     return false
-  registry.registerSync(methodName, proc(params: JsonNode): RpcResult =
+  result = registry.registerSync(methodName, proc(params: JsonNode): RpcResult =
     try:
       rpcSuccess(handler(params.jsonTo(T)).toJson())
     except CatchableError:
       typedFailure()
   )
+  if result:
+    registry.setTypeScriptSchema(methodName, typeScriptType[T](), typeScriptType[R]())
 
 proc registerTypedAsync*[R](registry: RpcRegistry; methodName: string;
                             handler: proc(): Future[R] {.closure.}): bool =
   if handler.isNil:
     return false
-  registry.register(methodName, proc(params: JsonNode): Future[RpcResult] =
+  result = registry.register(methodName, proc(params: JsonNode): Future[RpcResult] =
     try:
       handler().encodeTypedFuture()
     except CatchableError:
@@ -179,12 +200,14 @@ proc registerTypedAsync*[R](registry: RpcRegistry; methodName: string;
       failed.complete(rpcFailure(rpcError(handlerFailed, "RPC handler raised an exception")))
       failed
   )
+  if result:
+    registry.setTypeScriptSchema(methodName, "void", typeScriptType[R]())
 
 proc registerTypedAsync*[T, R](registry: RpcRegistry; methodName: string;
                                handler: proc(params: T): Future[R] {.closure.}): bool =
   if handler.isNil:
     return false
-  registry.register(methodName, proc(params: JsonNode): Future[RpcResult] =
+  result = registry.register(methodName, proc(params: JsonNode): Future[RpcResult] =
     try:
       handler(params.jsonTo(T)).encodeTypedFuture()
     except CatchableError:
@@ -193,6 +216,8 @@ proc registerTypedAsync*[T, R](registry: RpcRegistry; methodName: string;
         "RPC parameters do not match the registered type")))
       failed
   )
+  if result:
+    registry.setTypeScriptSchema(methodName, typeScriptType[T](), typeScriptType[R]())
 
 proc errorCodeName(code: RpcErrorCode): string =
   case code
