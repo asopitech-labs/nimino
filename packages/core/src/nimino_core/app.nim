@@ -1,6 +1,6 @@
 ## M3 application facade.  Native object types remain private to this module.
 
-import std/[asyncfutures, json, os, strutils, uri]
+import std/[asyncfutures, json, os, sequtils, strutils, uri]
 
 when defined(linux):
   import std/options
@@ -557,6 +557,22 @@ proc readCookie*(window: Window; domain, name: string): CoreResultOf[ProfileCook
     coreSuccessOf(loaded.value)
   else:
     coreFailureOf[ProfileCookie](coreError(invalidArgument, "window.readCookie", detail = loaded.error))
+
+proc listCookies*(window: Window): CoreResultOf[seq[string]] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[seq[string]](coreError(invalidState, "window.listCookies"))
+  let listed = listProfileCookies(window.app.id, window.profileName)
+  if not listed.isOk:
+    return coreFailureOf[seq[string]](coreError(invalidArgument, "window.listCookies", detail = listed.error))
+  let lines = listed.value.splitLines()
+  coreSuccessOf(lines.filterIt(it.len > 0))
+
+proc deleteCookie*(window: Window; domain, name: string): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.deleteCookie"))
+  let deleted = deleteProfileCookie(window.app.id, window.profileName, domain, name)
+  if deleted.isOk: coreSuccess()
+  else: coreFailure(coreError(invalidArgument, "window.deleteCookie", detail = deleted.error))
 
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:

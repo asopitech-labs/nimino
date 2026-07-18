@@ -96,6 +96,8 @@ block windowsCanSelectIndependentProfiles:
   let readCookie = direct.value.readCookie("example.com", "sid")
   doAssert readCookie.isOk
   doAssert readCookie.value.value == "window"
+  doAssert direct.value.listCookies().value.len >= 1
+  doAssert direct.value.deleteCookie("example.com", "sid").isOk
 
 block localAssetRootRejectsTraversal:
   let created = newApp(id = "tech.asopi.assets-test", name = "Assets test")
