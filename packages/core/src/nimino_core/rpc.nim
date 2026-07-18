@@ -4,7 +4,7 @@
 ## does not reflect Nim symbols, expose OS APIs, or infer a callable surface
 ## from arbitrary types.
 
-import std/[asyncfutures, json, jsonutils, strutils, tables, times]
+import std/[algorithm, asyncfutures, json, jsonutils, strutils, tables, times]
 
 const
   DefaultRpcTimeoutMs* = 30_000'i64
@@ -65,6 +65,26 @@ proc setReplySink*(registry: RpcRegistry; sink: RpcReplySink) =
 
 proc isMethodRegistered*(registry: RpcRegistry; methodName: string): bool =
   registry != nil and registry.handlers.hasKey(methodName)
+
+proc registeredMethods*(registry: RpcRegistry): seq[string] =
+  ## Return only explicitly registered names; handler closures never escape.
+  if registry.isNil or registry.closed:
+    return @[]
+  for methodName in registry.handlers.keys:
+    result.add(methodName)
+  result.sort()
+
+proc typescriptDeclarations*(registry: RpcRegistry): string =
+  ## Generate a conservative declaration surface. Runtime codecs may carry
+  ## richer types later; unknown keeps this output sound today.
+  result = "declare global {\n  interface Window {\n    nimino: {\n"
+  for methodName in registry.registeredMethods():
+    let escaped = methodName.replace("\\", "\\\\").replace("'", "\\'")
+    result.add("      invoke(method: '")
+    result.add(escaped)
+    result.add("', params?: unknown, options?: { timeoutMs?: number }): Promise<unknown>;\n")
+  result.add("      notify(method: string, params?: unknown): void;\n")
+  result.add("    };\n  }\n}\nexport {};\n")
 
 proc register*(registry: RpcRegistry; methodName: string; handler: RpcHandler): bool =
   if registry.isNil or registry.closed or methodName.len == 0 or handler.isNil:

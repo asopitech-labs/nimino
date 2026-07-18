@@ -1,4 +1,4 @@
-import std/[asyncfutures, json]
+import std/[asyncfutures, json, strutils]
 
 import nimino_core
 
@@ -98,3 +98,15 @@ block typedHandlersRemainExplicitAndSerializeJson:
     %*{"theme": "light"}), 2_000)
   registry.tick(2_000)
   doAssert messages.response(1)["result"]["theme"].getStr() == "light"
+
+block typescriptDeclarationsExposeOnlyRegisteredNames:
+  let registry = newRpcRegistry()
+  doAssert registry.registerSync("settings.load", proc(params: JsonNode): RpcResult =
+    rpcSuccess(newJNull()))
+  doAssert registry.registerSync("files.save", proc(params: JsonNode): RpcResult =
+    rpcSuccess(newJNull()))
+  doAssert registry.registeredMethods() == @["files.save", "settings.load"]
+  let declarations = registry.typescriptDeclarations()
+  doAssert declarations.find("method: 'files.save'") >= 0
+  doAssert declarations.find("method: 'settings.load'") >= 0
+  doAssert declarations.find("method: 'unregistered'") < 0
