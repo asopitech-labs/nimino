@@ -158,6 +158,10 @@ const
     data1: 0xefedc989'u32, data2: 0xc396'u16, data3: 0x41ca'u16,
     data4: [0x83'u8, 0xf7'u8, 0x07'u8, 0xf8'u8, 0x45'u8, 0xa5'u8, 0x57'u8, 0x24'u8]
   )
+  IidCoreWebView2_4* = WinGuid(
+    data1: 0x20d02d59'u32, data2: 0x6df2'u16, data3: 0x42dc'u16,
+    data4: [0xbd'u8, 0x06'u8, 0xf9'u8, 0x8a'u8, 0x69'u8, 0x4b'u8, 0x13'u8, 0x02'u8]
+  )
 
 proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
   {.stdcall, importc: "CoInitializeEx", dynlib: "ole32.dll".}
