@@ -69,7 +69,7 @@ proc profileDownloadPath*(appId, profile, suggestedName: string): ProfilePathRes
   var name = suggestedName
   if name.len == 0:
     name = "download"
-  name = name.replace('\\', '_').replace('/', '_')
+  name = name.replace('\\', '_').replace('/', '_').replace(':', '_')
   while name.len > 0 and name[^1] in {' ', '.'}:
     name.setLen(name.len - 1)
   while name.len > 1 and name.startsWith("."):
