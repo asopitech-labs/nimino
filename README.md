@@ -2,7 +2,7 @@
 
 Nimをホスト言語に、OS公式APIの薄いFFIでネイティブWindowとWebViewを扱う、軽量なクロスプラットフォームWeb UIデスクトップアプリケーション基盤です。
 
-> M0（調査・設計）は完了し、M2とM3を部分実装中です。Linux GTK 4/WebKitGTK 6.0ではWindow/WebView、URL/HTML、JavaScript評価、文字列message、ナビゲーション開始/完了、基本エラー通知をXvfb smokeで確認済みです。`nimino-core`はWindows/Linux向けApp/Window facade、明示許可リストJSON RPC、型付き`registerTyped`/`registerTypedAsync`を実装し、Linuxで同期往復に加えて非同期Future完了とtimeout responseを実WebViewで確認しました。WSL向けcore build（`-d:niminoWsl`）はLinux GUI FFIをリンクせず、通常の`newApp`からWindows hostを起動してWindow/WebView setup・shutdownまで実機確認済みです。新規Window要求はWindows/Linuxで明示拒否しWSL hostがeventを中継しますが、実ユーザー操作による要求eventはGUI CIで未確認です。Windowsは同じnative/core機能のWin32/WebView2 direct FFIとx64クロスコンパイル済みです。現在の開発機にはWebView2 Loader/Runtimeがないため、Windows/WSLでの実WebView表示、JavaScript評価、message受信、ナビゲーションeventは未検証です。WSL側で任意のナビゲーション開始callbackによる同期中止、WSLのasync/timeout実行、パッケージ生成は未実装です。
+> M0（調査・設計）は完了し、M2とM3を部分実装中です。Linux GTK 4/WebKitGTK 6.0ではWindow/WebView、URL/HTML、JavaScript評価、文字列message、ナビゲーション開始/完了、基本エラー通知をXvfb smokeで確認済みです。`nimino-core`はWindows/Linux向けApp/Window facade、明示許可リストJSON RPC、型付き`registerTyped`/`registerTypedAsync`を実装し、Linuxで同期往復に加えて非同期Future完了とtimeout responseを実WebViewで確認しました。WSL向けcore build（`-d:niminoWsl`）はLinux GUI FFIをリンクせず、通常の`newApp`からWindows hostを起動してWindow/WebView setup・shutdownまで実機確認済みです。新規Window要求はWindows/Linuxで明示拒否しWSL hostがeventを中継しますが、実ユーザー操作による要求eventはGUI CIで未確認です。Windowsは同じnative/core機能のWin32/WebView2 direct FFIとx64クロスコンパイル済みで、固定SDKから取得・検証したx64 `WebView2Loader.dll` と導入済みRuntimeを用いるWSL hostで、実WebView生成、HTML読込、navigation完了、JavaScript評価、正常終了まで確認済みです。WSL側で任意のナビゲーション開始callbackによる同期中止、WSLのasync/timeout実行、パッケージ生成は未実装です。
 
 ## 目標
 
@@ -41,15 +41,15 @@ make verify-env
 
 Linuxの実ネイティブスモークは`make linux-smoke`で実行します。これはDockerのnamespace制限を回避するため、そのテストコンテナだけでWebKit sandboxを無効にします。アプリの本番実行設定にはこの環境変数を含めません。
 
-Dockerデーモンが利用できない環境では、コンテナ内ビルド・テストは実行できません。`make wsl-host-smoke`はWSLとWindows Interop、PowerShellを必要とします。WebView2 Runtimeを含むWindowsの実GUI確認はWindows CIまたはWindows開発機で行います。
+Dockerデーモンが利用できない環境では、コンテナ内ビルド・テストは実行できません。`make wsl-host-smoke`はWSL、Windows Interop、PowerShell、およびWindowsのWebView2 Evergreen Runtimeを必要とします。LoaderはDocker image内で固定SDKから取り出すため、ローカルのNim開発ツールやSDK導入は不要です。
 
 ## 現在の状態と次の段階
 
 M0の責務境界、公開API案、所有権、イベントループ、WSL IPC、Capability、技術リスク、M1計画は文書化済みです。M1のWindow/WebView/URL/HTML/タイトル/終了、M2のJavaScript評価、文字列message、ナビゲーション開始/完了、基本エラー通知、新規Window要求を、Windows・Linux・WSLの共通API形状で実装しています。Windows/Linuxでは開始callbackが同期的に許可/中止を決めます。新規Windowは暗黙生成せず拒否します。WSL hostは開始/error/new-window eventを中継しますが、WSL client側による同期判定は未実装です。M3ではcore facadeがnative型を隠し、JSON RPCのみを明示登録する。WSL buildは`nimino-wsl` clientを選び、Linux GUI backendをリンク・起動しない。
 
 - Linux: `make linux-smoke` が URL/HTML、JavaScript評価、文字列message、ナビゲーション開始/完了、明示解放を実行します。`make core-linux-rpc-smoke` はcoreの`invoke → response → notification`を実行します。
-- Windows: `make windows-cross` と `make core-windows-cross` が Win32/WebView2/native-core のx64 PEとCOM callback ABIを検査します。WebView2 Runtimeを備えた実機実行は未検証です。
-- WSL: `make wsl-host-smoke`、`make wsl-client-smoke`、`make wsl-core-smoke` が認証、host起動、Window/WebView、shutdownを検証します。`make test`はfake hostでcoreのWebView event/RPC response relayを検証します。Windows Runtimeを要するURL/HTML後の評価/message往復は未検証です。
+- Windows: `make windows-cross` と `make core-windows-cross` が Win32/WebView2/native-core のx64 PEとCOM callback ABIを検査します。`make wsl-host-smoke` は導入済みRuntime上でWindows hostのHTML読込、navigation完了、JavaScript評価、終了を実行します。URL読込、resize、title変更、message受信は別途実機確認が必要です。
+- WSL: `make wsl-host-smoke`、`make wsl-client-smoke`、`make wsl-core-smoke` が認証、host起動、Window/WebView、shutdownを検証し、前者は実WebViewのHTML/JavaScript経路も検証します。`make test`はfake hostでcoreのWebView event/RPC response relayを検証します。Runtimeを要するURL/message/RPC async・timeout往復は未検証です。
 
 次はWindows/WSLでのRPC async/timeout実行、URL向けdocument-start bridge、WSLナビゲーション制御スパイクです。型抽出マクロ、プロファイル、権限、パッケージングは未実装です。
 

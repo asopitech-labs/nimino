@@ -83,9 +83,24 @@ adding a new slot.
 
 The application must distribute the architecture-matched `WebView2Loader.dll`
 next to a Windows executable, or statically link the loader in a future
-packaging implementation.  `nimino-native` deliberately does not bundle a
-Chromium runtime.  At startup it asks the loader for an available WebView2
-runtime and returns `webViewError` if it is unavailable.
+packaging implementation. `tools/docker/Dockerfile` downloads the above
+fixed SDK from NuGet, verifies its recorded SHA-256, and extracts only the x64
+loader plus its `LICENSE.txt` and `NOTICE.txt` into the Docker image. The WSL
+host artifact copies all three files beside `nimino-wsl-host.exe`; this keeps
+the Loader architecture-matched and preserves its distribution notices. The
+Windows backend loads that exact sibling path instead of relying on DLL search
+order.
+
+`nimino-native` deliberately does not bundle a Chromium runtime. At startup it
+asks the loader for an available WebView2 runtime and returns `webViewError` if
+it is unavailable. The Evergreen Runtime is a Windows prerequisite, separate
+from the SDK loader. Future package targets must reuse this owned Loader
+staging path rather than fetch an unpinned SDK during packaging.
+
+The Windows backend passes a writable, local User Data Folder to environment
+creation. Its temporary native fallback is documented in
+[ADR-0007](../../docs/adr/0007-windows-native-user-data-folder.md); `nimino-core`
+will replace it with an app-ID/profile-specific path in M4.
 
 Microsoft's distribution guidance:
 

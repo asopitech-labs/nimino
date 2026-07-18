@@ -44,6 +44,9 @@ task buildWslHost, "Cross-compile the Windows WSL host executable":
 task buildWslHostArtifact, "Build a disposable Windows WSL host smoke-test artifact":
   exec "mkdir -p /workspace/.tmp"
   exec "nim c --os:windows --cpu:amd64 --threads:on --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-wsl-host-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-host.exe --path:packages/wsl --path:packages/native packages/wsl/src/nimino_wsl/host/main.nim"
+  exec "install -m 0644 /opt/nimino/webview2/x64/WebView2Loader.dll /workspace/.tmp/WebView2Loader.dll"
+  exec "install -m 0644 /opt/nimino/webview2/LICENSE.txt /workspace/.tmp/WebView2Loader.LICENSE.txt"
+  exec "install -m 0644 /opt/nimino/webview2/NOTICE.txt /workspace/.tmp/WebView2Loader.NOTICE.txt"
 
 task buildWslClientArtifact, "Build a disposable WSL client smoke-test artifact":
   exec "mkdir -p /workspace/.tmp"

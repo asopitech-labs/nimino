@@ -1,4 +1,4 @@
-import std/[atomics, widestrs]
+import std/[atomics, os, widestrs]
 
 type
   EnvironmentCompletedVTable = object
@@ -409,7 +409,12 @@ proc windowsLoadLoader(app: NativeApp): NativeResult =
   if app.webView2CreateEnvironment != nil:
     return success()
 
-  let loaderName = newWideCString("WebView2Loader.dll")
+  let executableDirectory = splitFile(getAppFilename()).dir
+  if executableDirectory.len == 0:
+    return failure(nativeError(webViewError, "webview.loader",
+      detail = "application executable directory is unavailable"))
+  let loaderPath = executableDirectory / "WebView2Loader.dll"
+  let loaderName = newWideCString(loaderPath)
   let loader = loadLibraryW(loaderName)
   if loader.isNil:
     return failure(nativeError(webViewError, "webview.loader", platformCode = cast[int32](getLastError()),
@@ -440,6 +445,27 @@ proc windowsCheckRuntime(app: NativeApp): NativeResult =
     coTaskMemFree(cast[pointer](version))
   if not succeeded(status) or version == nil:
     return failure(hresultError("webview.runtime", status))
+  success()
+
+proc windowsConfigureUserDataFolder(app: NativeApp): NativeResult =
+  if app.webView2UserDataFolder.len > 0:
+    return success()
+
+  let localAppData = getEnv("LOCALAPPDATA")
+  if localAppData.len == 0:
+    return failure(nativeError(osError, "webview.userDataFolder",
+      detail = "LOCALAPPDATA is unavailable"))
+  let executableName = splitFile(getAppFilename()).name
+  if executableName.len == 0:
+    return failure(nativeError(osError, "webview.userDataFolder",
+      detail = "application executable name is unavailable"))
+  let folder = localAppData / "Nimino" / "Native" / executableName
+  try:
+    createDir(folder)
+  except OSError:
+    return failure(nativeError(osError, "webview.userDataFolder",
+      detail = "cannot create the local WebView2 user data folder"))
+  app.webView2UserDataFolder = folder
   success()
 
 proc windowsResize(window: NativeWindow): NativeResult =
@@ -571,12 +597,16 @@ proc windowsStartWebView(view: NativeWebView): NativeResult =
   let runtime = view.window.app.windowsCheckRuntime()
   if not runtime.isOk:
     return runtime
+  let userDataFolder = view.window.app.windowsConfigureUserDataFolder()
+  if not userDataFolder.isOk:
+    return userDataFolder
 
   let handler = newEnvironmentCompletedHandler(view)
   let createEnvironment = cast[WebView2CreateEnvironmentWithOptions](
     view.window.app.webView2CreateEnvironment
   )
-  let status = createEnvironment(nil, nil, nil, cast[pointer](handler))
+  let folder = newWideCString(view.window.app.webView2UserDataFolder)
+  let status = createEnvironment(nil, folder, nil, cast[pointer](handler))
   discard environmentRelease(handler)
   if not succeeded(status):
     return failure(hresultError("webview.environment", status))

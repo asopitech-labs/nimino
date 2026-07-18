@@ -37,6 +37,7 @@ type
     platformApp: pointer
     platformLoader: pointer
     webView2CreateEnvironment: pointer
+    webView2UserDataFolder: string
     platformInstance: pointer
     windowClassName: string
     windowClassRegistered: bool

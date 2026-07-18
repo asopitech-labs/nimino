@@ -280,7 +280,10 @@ proc runHost(): int =
       state.flushNavigationStarts()
       state.flushNavigationCompletions()
       if not finished.isOk:
-        discard state.writeEvent("app.error", "", finished.failure.operation)
+        stderr.writeLine("nimino-wsl-host: native UI loop failed: " &
+          finished.failure.operation & " (code=" & $finished.failure.platformCode & ")")
+        if not state.writeEvent("app.error", "", finished.failure.operation):
+          stderr.writeLine("nimino-wsl-host: cannot report native UI loop failure")
         return 2
       discard state.writeEvent("app.closed", "{}", "")
       return 0
