@@ -960,9 +960,17 @@ proc windowsStartWebView(view: NativeWebView): NativeResult =
   let runtime = view.window.app.windowsCheckRuntime()
   if not runtime.isOk:
     return runtime
-  let userDataFolder = view.window.app.windowsConfigureUserDataFolder()
-  if not userDataFolder.isOk:
-    return userDataFolder
+  if view.window.profilePath.len == 0:
+    let userDataFolder = view.window.app.windowsConfigureUserDataFolder()
+    if not userDataFolder.isOk:
+      return userDataFolder
+  else:
+    view.window.app.webView2UserDataFolder = view.window.profilePath / "webview2"
+    try:
+      createDir(view.window.app.webView2UserDataFolder)
+    except OSError:
+      return failure(nativeError(osError, "webview.userDataFolder",
+        detail = "cannot create the profile WebView2 user data folder"))
 
   let handler = newEnvironmentCompletedHandler(view)
   let createEnvironment = cast[WebView2CreateEnvironmentWithOptions](

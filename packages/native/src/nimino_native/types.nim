@@ -66,6 +66,7 @@ type
     title: string
     width: int
     height: int
+    profilePath*: string
     platformWindow: pointer
     views: seq[NativeWebView]
 
@@ -273,7 +274,8 @@ proc newNativeApp*(): NativeApp =
 proc supports*(app: NativeApp; capability: Capability): bool {.inline.} =
   app.capabilities.supports(capability)
 
-proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800):
+proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
+                profilePath = ""):
     NativeResultOf[NativeWindow] =
   if app.isNil or app.state == finished:
     return failureOf[NativeWindow](nativeError(invalidState, "window.create"))
@@ -285,7 +287,8 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800):
     state: pending,
     title: title,
     width: width,
-    height: height
+    height: height,
+    profilePath: profilePath
   )
   app.windows.add(window)
   successOf(window)

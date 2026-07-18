@@ -655,7 +655,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     else:
       return coreFailureOf[Window](coreError(platformUnavailable, "window.create"))
 
-  let nativeWindow = native.newWindow(app.nativeApp, title, options.width, options.height)
+  let nativeWindow = native.newWindow(app.nativeApp, title, options.width, options.height,
+    profile.value)
   if not nativeWindow.isOk:
     return coreFailureOf[Window](nativeWindow.failure.mapNativeError())
   let nativeView = native.newWebView(nativeWindow.value)
