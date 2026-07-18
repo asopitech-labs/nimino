@@ -114,6 +114,8 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 プロファイルは`app id / profile`をキーにcookie、local storage、cache、permission、download、settingの永続化ディレクトリを分離します。`ensureProfileLayout`で冪等に領域を作成でき、`writeProfileSetting` / `readProfileSetting`でJSON設定、`writeProfileCookie` / `readProfileCookie`でCookieを安全に保存・読込できます。最初のHTTP(S)読込では、対象domainに一致する非HttpOnly Cookieをdocument-startで復元します。WebViewエンジンのCookieManager/cacheへの完全な自動接続とHttpOnly Cookie復元は未実装です。無処理の権限要求はdenyです。
 `window.clearCookies()`で現在のprofileに保存したCookieを全削除できます。
 `window.clearSettings()`では同じprofileのJSON設定を全削除できます。
+`window.clearCache()`ではNimino管理のprofile cacheファイルを削除できます。WebView
+エンジン内部cacheの自動接続・消去は別途未実装です。
 
 `loadAssets`はrootディレクトリを正規化してWindowへ固定します。`loadEntry`はroot外の
 絶対パス、`..`による脱出、存在しないファイルを拒否してからHTMLを読み込みます。

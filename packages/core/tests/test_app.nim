@@ -113,6 +113,11 @@ block windowsCanSelectIndependentProfiles:
   doAssert direct.value.writeSetting("launch", %*{"count": 2}).isOk
   doAssert direct.value.clearSettings().isOk
   doAssert direct.value.listSettings().value.len == 0
+  let cachePath = profileDirectoryPath("tech.asopi.profile-window-test", "direct", ProfileDirectory.cache)
+  doAssert cachePath.isOk
+  writeFile(cachePath.value / "entry", "cache")
+  doAssert direct.value.clearCache().isOk
+  doAssert not fileExists(cachePath.value / "entry")
   let sessionCookie = ProfileCookie(name: "sid", value: "window", domain: "example.com")
   doAssert direct.value.writeCookie(sessionCookie).isOk
   let readCookie = direct.value.readCookie("example.com", "sid")

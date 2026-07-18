@@ -164,6 +164,19 @@ proc clearProfileSettings*(appId, profile: string): ProfilePathResult =
   except OSError:
     profileFailure("unable to clear profile settings")
 
+proc clearProfileCache*(appId, profile: string): ProfilePathResult =
+  let directory = profileDirectoryPath(appId, profile, cache)
+  if not directory.isOk:
+    return directory
+  if not dirExists(directory.value):
+    return profileSuccess(directory.value)
+  try:
+    for path in walkFiles(directory.value / "*"):
+      if fileExists(path): removeFile(path)
+    profileSuccess(directory.value)
+  except OSError:
+    profileFailure("unable to clear profile cache")
+
 proc cookieFileKey(cookie: ProfileCookie): string =
   cookie.domain & "__" & cookie.name
 
