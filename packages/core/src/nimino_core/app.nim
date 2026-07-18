@@ -113,6 +113,13 @@ type
     allow*: seq[string]
     deny*: seq[string]
 
+  NavigationDecision* = enum
+    navigationDeny
+    navigationAllow
+
+  NavigationRequest* = object
+    url*: string
+
   PermissionKind* = enum
     microphone
     camera
@@ -162,6 +169,7 @@ type
     assetRoot: string
     navigationRules: NavigationRules
     navigationRulesConfigured: bool
+    navigationPolicy*: proc(request: NavigationRequest): NavigationDecision
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
     closed: bool
@@ -359,7 +367,10 @@ proc configureWindow(window: Window): CoreResult =
     return coreFailure(messageConfigured.failure.mapNativeError())
 
   let navigationConfigured = native.onNavigationStarting(window.nativeView,
-    proc(url: string): bool = window.navigationAllowed(url))
+    proc(url: string): bool =
+      if not window.navigationPolicy.isNil:
+        return window.navigationPolicy(NavigationRequest(url: url)) == navigationAllow
+      window.navigationAllowed(url))
   if not navigationConfigured.isOk:
     return coreFailure(navigationConfigured.failure.mapNativeError())
 
@@ -661,6 +672,13 @@ proc setNavigationRules*(window: Window; rules: NavigationRules): CoreResult =
       return coreFailure(coreError(platformUnavailable, "window.setNavigationRules"))
   window.navigationRules = rules
   window.navigationRulesConfigured = true
+  coreSuccess()
+
+proc setNavigationPolicy*(window: Window;
+                          policy: proc(request: NavigationRequest): NavigationDecision): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setNavigationPolicy"))
+  window.navigationPolicy = policy
   coreSuccess()
 
 proc loadUrl*(window: Window; url: string): CoreResult =
