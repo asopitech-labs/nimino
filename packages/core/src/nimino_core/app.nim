@@ -1051,6 +1051,47 @@ proc loadAssets*(window: Window; directory: string): CoreResult =
     coreFailure(coreError(invalidArgument, "window.loadAssets",
       detail = "asset root could not be normalized"))
 
+proc assetMime(path: string): string =
+  case splitFile(path).ext.toLowerAscii()
+  of ".png": "image/png"
+  of ".jpg", ".jpeg": "image/jpeg"
+  of ".gif": "image/gif"
+  of ".svg": "image/svg+xml"
+  of ".webp": "image/webp"
+  of ".woff": "font/woff"
+  of ".woff2": "font/woff2"
+  of ".ttf": "font/ttf"
+  else: ""
+
+proc inlineWslCssUrls(root, baseDir, css: string): string =
+  result = css
+  var cursor = 0
+  while true:
+    let start = result.find("url(", cursor)
+    if start < 0: break
+    var valueStart = start + 4
+    while valueStart < result.len and result[valueStart].isSpaceAscii: inc valueStart
+    let quoted = valueStart < result.len and (result[valueStart] == '\'' or result[valueStart] == '"')
+    let quote = if quoted: result[valueStart] else: '\0'
+    if quoted: inc valueStart
+    let valueEnd = if quoted: result.find(quote, valueStart) else: result.find(')', valueStart)
+    if valueEnd < 0:
+      break
+    let relative = result[valueStart ..< valueEnd].strip()
+    let close = if quoted: result.find(')', valueEnd) else: valueEnd
+    if close < 0 or relative.len == 0 or relative.startsWith("data:") or relative.startsWith("#"):
+      cursor = valueEnd + 1
+      continue
+    let candidate = (baseDir / relative).absolutePath().normalizedPath()
+    let relativeCheck = relativePath(candidate, root)
+    let mime = assetMime(candidate)
+    if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or mime.len == 0 or not fileExists(candidate):
+      cursor = valueEnd + 1
+      continue
+    let dataUri = "data:" & mime & ";base64," & encode(readFile(candidate))
+    result = result[0 ..< valueStart] & dataUri & result[valueEnd .. ^1]
+    cursor = valueStart + dataUri.len
+
 proc inlineWslAssets(root, html: string): string =
   result = html
   var cursor = 0
@@ -1078,7 +1119,7 @@ proc inlineWslAssets(root, html: string): string =
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or closing < 0 or not fileExists(candidate):
       cursor = tagEnd + 1
       continue
-    let body = readFile(candidate)
+    let body = inlineWslCssUrls(root, splitFile(candidate).dir, readFile(candidate))
     let tail = if closing + 9 < result.len: result[closing + 9 .. ^1] else: ""
     result = result[0 ..< start] & "<script>" & body & "</script>" & tail
     cursor = start + body.len + 17

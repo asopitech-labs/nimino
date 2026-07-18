@@ -130,7 +130,8 @@ native backendではentryをroot内の`file:` URLとして読み込み、相対C
 WebView自身に解決させます。WSLではWindows hostへローカルrootを転送できないため、HTML本文を
 転送し、root内の相対`<script src="…">`とstylesheet`<link href="…">`を本文へインライン化します。
 一般的な画像形式（PNG/JPEG/GIF/SVG/WebP）の相対`<img src="…">`もdata URIへ変換します。
-フォント・CSS内の`url(...)`など任意MIMEの配信、外部URLからのasset fetchは未実装です。
+CSS内のローカル`url(...)`も画像・フォント（WOFF/WOFF2/TTF）をdata URIへ変換します。
+外部URLからのasset fetchとその他のMIME形式は未実装です。
 
 `setNavigationRules`はallow/denyの宣言的URL ruleを設定します。denyが優先され、
 設定後に未一致のURLは拒否します。nativeはUI callback内で同期評価し、WSLはUI loop
