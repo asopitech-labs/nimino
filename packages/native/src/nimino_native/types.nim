@@ -9,6 +9,8 @@ type
   NativeNewWindowRequestedHandler* = proc(url: string) {.closure.}
   NativeNavigationStartingHandler* = proc(url: string): bool {.closure.}
   NativeNavigationCompletedHandler* = proc(url: string; succeeded: bool) {.closure.}
+  NativePermissionRequestedHandler* = proc(url: string): bool {.closure.}
+  NativeDownloadStartingHandler* = proc(url: string): bool {.closure.}
 
   NativeState* = enum
     pending
@@ -90,6 +92,8 @@ type
     newWindowRequestedHandler: NativeNewWindowRequestedHandler
     navigationStartingHandler: NativeNavigationStartingHandler
     navigationCompletedHandler: NativeNavigationCompletedHandler
+    permissionRequestedHandler: NativePermissionRequestedHandler
+    downloadStartingHandler: NativeDownloadStartingHandler
     permissionHandlerPointer: pointer
     permissionRegistrationToken: int64
     permissionRegistered: bool
@@ -215,6 +219,18 @@ proc dispatchNavigationStarting(view: NativeWebView; url: string): bool =
   except CatchableError:
     ## A callback failure must not accidentally authorize a navigation.
     false
+
+proc dispatchPermissionRequested(view: NativeWebView; url: string): bool =
+  if view.isNil or view.permissionRequestedHandler.isNil:
+    return false
+  try: view.permissionRequestedHandler(url)
+  except CatchableError: false
+
+proc dispatchDownloadStarting(view: NativeWebView; url: string): bool =
+  if view.isNil or view.downloadStartingHandler.isNil:
+    return false
+  try: view.downloadStartingHandler(url)
+  except CatchableError: false
 
 when defined(linux) and not defined(niminoWsl):
   import ./private/linux/ffi
@@ -377,6 +393,20 @@ proc onNavigationStarting*(view: NativeWebView;
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.onNavigationStarting"))
   view.navigationStartingHandler = handler
+  success()
+
+proc onPermissionRequested*(view: NativeWebView;
+                            handler: NativePermissionRequestedHandler): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.onPermissionRequested"))
+  view.permissionRequestedHandler = handler
+  success()
+
+proc onDownloadStarting*(view: NativeWebView;
+                         handler: NativeDownloadStartingHandler): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.onDownloadStarting"))
+  view.downloadStartingHandler = handler
   success()
 
 proc quit*(app: NativeApp): NativeResult =

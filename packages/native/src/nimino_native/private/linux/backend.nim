@@ -162,8 +162,10 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
     view.dispatchNewWindowRequested(copiedUri)
     webkit_policy_decision_ignore(decision)
   of 2: # WEBKIT_POLICY_DECISION_TYPE_RESPONSE
-    ## Download policy is not bridged yet; deny response handling explicitly.
-    webkit_policy_decision_ignore(decision)
+    if view.dispatchDownloadStarting(copiedUri):
+      webkit_policy_decision_use(decision)
+    else:
+      webkit_policy_decision_ignore(decision)
   else:
     return 0
   ## The decision was handled explicitly above.
@@ -188,9 +190,10 @@ proc linuxConfigureNavigationStarting(view: NativeWebView): NativeResult =
 
 proc linuxPermissionRequested(webView: pointer; request: ptr WebKitPermissionRequest;
                               userData: pointer): cint {.cdecl.} =
-  ## Until core policy decisions are bridged into this native callback, deny
-  ## every request explicitly. Never leave WebKitGTK permission state implicit.
-  if not request.isNil:
+  let view = cast[NativeWebView](userData)
+  let uri = webkit_web_view_get_uri(cast[ptr WebKitWebView](webView))
+  let allowed = if uri.isNil: false else: view.dispatchPermissionRequested($uri)
+  if not allowed and not request.isNil:
     webkit_permission_request_deny(request)
   1
 
