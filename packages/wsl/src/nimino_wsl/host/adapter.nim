@@ -29,9 +29,6 @@ type
     webViewId*: uint64
     url*: string
 
-  HostPolicyRequest* = object
-    request*: PolicyRequest
-
   NavigationRules = object
     allow: seq[string]
     deny: seq[string]
@@ -61,7 +58,6 @@ type
     pendingNewWindowRequests: seq[HostNewWindowRequested]
     pendingNavigationStarts: seq[HostNavigationStarting]
     pendingNavigationCompletions: seq[HostNavigationCompleted]
-    pendingPolicyRequests: seq[HostPolicyRequest]
     ## Optional synchronous decision hook owned by the transport layer.
     ## Returning false is the fail-closed default.
     policyDecision*: proc(request: PolicyRequest): bool {.closure.}
@@ -280,7 +276,6 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
     let owner = cast[HostAdapter](adapterPointer)
     let request = PolicyRequest(kind: permissionPolicy, webViewId: webViewId, url: url)
     if owner != nil:
-      owner.pendingPolicyRequests.add(HostPolicyRequest(request: request))
       if not owner.policyDecision.isNil:
         return owner.policyDecision(request)
     false
@@ -291,7 +286,6 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
     let owner = cast[HostAdapter](adapterPointer)
     let request = PolicyRequest(kind: downloadPolicy, webViewId: webViewId, url: url)
     if owner != nil:
-      owner.pendingPolicyRequests.add(HostPolicyRequest(request: request))
       if not owner.policyDecision.isNil:
         return owner.policyDecision(request)
     false
@@ -368,11 +362,6 @@ proc takeNavigationCompletions*(adapter: HostAdapter): seq[HostNavigationComplet
   result = adapter.pendingNavigationCompletions
   adapter.pendingNavigationCompletions.setLen(0)
 
-proc takePolicyRequests*(adapter: HostAdapter): seq[HostPolicyRequest] =
-  if adapter.isNil:
-    return @[]
-  result = adapter.pendingPolicyRequests
-  adapter.pendingPolicyRequests.setLen(0)
 
 proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;
                        contentField, operation: string): ProtocolResultOf[HostAction] =

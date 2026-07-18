@@ -144,13 +144,6 @@ proc flushNavigationCompletions(state: HostState) =
       discard state.adapter.app.close()
       return
 
-proc flushPolicyRequests(state: HostState) =
-  for requested in state.adapter.takePolicyRequests():
-    if not state.writeEvent("native.webview.policyRequested",
-        requested.request.policyRequestJson(), ""):
-      discard state.adapter.app.close()
-      return
-
 proc requestPolicy(state: HostState; request: PolicyRequest): bool =
   ## The native callback runs on the UI thread.  Keep the relay synchronous so
   ## WebView2/GTK receives a decision before the callback returns; every error
