@@ -67,7 +67,7 @@ else:
 if not loaded.isOk:
   stderr.writeLine("nimino pack: " & loaded.error.detail)
   quit(1)
-let output = manifestJson(loaded.value).pretty()
+var output = manifestJson(loaded.value).pretty()
 var outputDirectory = ""
 var hostPath = ""
 var index = 3
@@ -87,6 +87,15 @@ else:
   if directory.len == 0:
     usage()
   createDir(directory)
+  if loaded.value.icon.len > 0 and fileExists(loaded.value.icon):
+    let iconName = extractFilename(loaded.value.icon)
+    if iconName.len == 0 or iconName in [".", ".."]:
+      stderr.writeLine("nimino pack: icon path has no usable filename")
+      quit(1)
+    copyFile(loaded.value.icon, directory / iconName)
+    var packaged = loaded.value
+    packaged.icon = iconName
+    output = manifestJson(packaged).pretty()
   let manifestPath = directory / "nimino-manifest.json"
   writeFile(manifestPath, output & "\n")
   let launcherPath = directory / "run-nimino.sh"
