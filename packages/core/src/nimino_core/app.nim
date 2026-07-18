@@ -152,6 +152,17 @@ type
     url*: string
     suggestedName*: string
 
+  DownloadState* = enum
+    downloadStarted
+    downloadCompleted
+    downloadFailed
+    downloadCancelled
+
+  DownloadEvent* = object
+    request*: DownloadRequest
+    state*: DownloadState
+    progress*: float
+
   App* = ref object
     state: CoreAppState
     backend: CoreBackend
@@ -188,7 +199,7 @@ type
     errorHandler*: proc(error: WindowError)
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
-    downloadEventHandler*: proc(request: DownloadRequest; succeeded: bool)
+    downloadEventHandler*: proc(event: DownloadEvent)
     closed: bool
 
 proc mapNativeError(error: native.NativeError): CoreError =
@@ -492,8 +503,10 @@ proc configureWindow(window: Window): CoreResult =
   let downloadEventsConfigured = native.onDownloadEvent(window.nativeView,
     proc(url: string; succeeded: bool) =
       if not window.downloadEventHandler.isNil:
-        try: window.downloadEventHandler(DownloadRequest(url: url,
-          suggestedName: "download"), succeeded)
+        try: window.downloadEventHandler(DownloadEvent(
+          request: DownloadRequest(url: url, suggestedName: "download"),
+          state: if succeeded: downloadStarted else: downloadFailed,
+          progress: if succeeded: 0.0 else: -1.0))
         except CatchableError: discard)
   if not downloadEventsConfigured.isOk:
     return coreFailure(downloadEventsConfigured.failure.mapNativeError())
@@ -1064,7 +1077,7 @@ proc onDownload*(window: Window;
   coreSuccess()
 
 proc onDownloadEvent*(window: Window;
-                      handler: proc(request: DownloadRequest; succeeded: bool)): CoreResult =
+                      handler: proc(event: DownloadEvent)): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.onDownloadEvent"))
   window.downloadEventHandler = handler
@@ -1467,9 +1480,11 @@ when defined(linux):
         for window in app.windows:
           if not window.closed and window.webViewId == webViewId and
               not window.downloadEventHandler.isNil:
-            try: window.downloadEventHandler(DownloadRequest(
-              url: payload["url"].getStr(), suggestedName: "download"),
-              payload["succeeded"].getBool())
+            try: window.downloadEventHandler(DownloadEvent(
+              request: DownloadRequest(url: payload["url"].getStr(),
+                suggestedName: "download"),
+              state: if payload["succeeded"].getBool(): downloadStarted else: downloadFailed,
+              progress: if payload["succeeded"].getBool(): 0.0 else: -1.0))
             except CatchableError: discard
             break
       except CatchableError:
