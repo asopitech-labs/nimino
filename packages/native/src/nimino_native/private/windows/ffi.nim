@@ -99,6 +99,7 @@ const
   ErrorClassAlreadyExists* = 1410'u32
 
   CwUseDefault* = -2147483648'i32
+  WebView2PermissionStateDeny* = 2'i32
   WsOverlappedWindow* = 0x00CF0000'u32
   SwShow* = 5'i32
   SwpNoSize* = 0x0001'u32
@@ -283,6 +284,20 @@ proc coreRemovePermissionRequested*(core: pointer; token: EventRegistrationToken
     cast[ptr ComInterface](core).vtable[24]
   )
   dispatch(core, token)
+
+proc permissionArgsPutState*(args: pointer; state: int32): HResult {.inline.} =
+  ## ICoreWebView2PermissionRequestedEventArgs::put_State (vtable slot 7).
+  let dispatch = cast[proc(self: pointer; state: int32): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[7]
+  )
+  dispatch(args, state)
+
+proc downloadArgsPutCancel*(args: pointer; cancel: WinBool): HResult {.inline.} =
+  ## ICoreWebView2DownloadStartingEventArgs::put_Cancel (vtable slot 6).
+  let dispatch = cast[proc(self: pointer; cancel: WinBool): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[6]
+  )
+  dispatch(args, cancel)
 
 proc coreRemoveNavigationStarting*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
