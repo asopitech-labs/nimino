@@ -44,6 +44,10 @@ block windowsOwnIndependentRpcAllowLists:
   )
   doAssert first.value.rpc.isMethodRegistered("only.first")
   doAssert not second.value.rpc.isMethodRegistered("only.first")
+  let declarations = first.value.typescriptDeclarations()
+  doAssert declarations.isOk
+  doAssert declarations.value.find("only.first") >= 0
+  doAssert declarations.value.find("unregistered") < 0
 
 block windowsCanSelectIndependentProfiles:
   let created = newApp(id = "tech.asopi.profile-window-test", name = "Profiles")

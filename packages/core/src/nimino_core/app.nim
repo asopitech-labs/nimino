@@ -471,6 +471,12 @@ proc newWindow*(app: App; title = ""; width = 1200; height = 800): CoreResultOf[
   app.newWindow(CoreWindowOptions(title: title, width: width, height: height,
     profile: "default"))
 
+proc typescriptDeclarations*(window: Window): CoreResultOf[string] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[string](coreError(invalidState,
+      "window.typescriptDeclarations"))
+  coreSuccessOf(window.rpc.typescriptDeclarations())
+
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setTitle"))
