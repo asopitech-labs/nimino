@@ -29,6 +29,8 @@ proc setTitle*(window: Window, title: string): CoreResult
 proc setSize*(window: Window, width, height: int): CoreResult
 proc loadUrl*(window: Window, url: string): CoreResult
 proc loadHtml*(window: Window, html: string): CoreResult
+proc loadAssets*(window: Window, directory: string): CoreResult
+proc loadEntry*(window: Window, entry = "index.html"): CoreResult
 proc evalJavaScript*(window: Window, script: string): Future[CoreResultOf[string]]
 proc quit*(app: App): CoreResult
 proc run*(app: App): CoreResult
@@ -89,8 +91,8 @@ document-start scriptはframeと後続ナビゲーションにも適用され得
 ## M4以降の面
 
 ```nim
-window.loadAssets("dist")
-window.loadEntry("index.html")
+discard window.loadAssets("dist")
+discard window.loadEntry("index.html")
 
 window.navigationPolicy = proc(request: NavigationRequest): NavigationDecision =
   if request.url.matches("https://example.com/**"):
@@ -103,3 +105,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 ```
 
 プロファイルは`app id / profile`をキーにcookie、local storage、cache、permission、download、settingを分離します。無処理の権限要求はdenyです。
+
+`loadAssets`はrootディレクトリを正規化してWindowへ固定します。`loadEntry`はroot外の
+絶対パス、`..`による脱出、存在しないファイルを拒否してからHTMLを読み込みます。
+これはM4のローカルアセット境界であり、外部URLからのasset fetchやMIME配信は未実装です。
