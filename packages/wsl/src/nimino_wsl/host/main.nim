@@ -24,6 +24,7 @@ type
     sessionId: string
     pendingEvaluations: seq[PendingEvaluation]
     nextEventId: uint64
+    nextPolicyRequestId: uint64
 
 proc sessionIdFromRandom(): string =
   let bytes = urandom(16)
@@ -150,6 +151,28 @@ proc flushPolicyRequests(state: HostState) =
       discard state.adapter.app.close()
       return
 
+proc requestPolicy(state: HostState; request: PolicyRequest): bool =
+  ## The native callback runs on the UI thread.  Keep the relay synchronous so
+  ## WebView2/GTK receives a decision before the callback returns; every error
+  ## path is deny-by-default.
+  let requestId = state.nextPolicyRequestId
+  inc state.nextPolicyRequestId
+  if not state.writeMessage(ProtocolMessage(
+      version: ProtocolVersion, kind: ProtocolMessageKind.request,
+      sessionId: state.sessionId, requestId: requestId,
+      methodName: "native.webview.policyRequested",
+      payload: request.policyRequestJson(), timeoutMs: 5_000)):
+    return false
+  let received = state.input.next(5_000)
+  if not received.isOk:
+    return false
+  let response = received.value
+  if response.kind != ProtocolMessageKind.response or
+      response.requestId != requestId or response.error.len != 0:
+    return false
+  let decision = response.payload.parsePolicyResponse()
+  decision.isOk and decision.value.allow
+
 proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
   let session = state.sessionId.validateSessionMessage(message)
   if not session.isOk:
@@ -185,7 +208,6 @@ proc pollHost(state: HostState) =
   for message in state.input.takePending():
     state.handleRunningMessage(message)
   state.flushEvaluations()
-  state.flushPolicyRequests()
   state.flushMessages()
   state.flushErrors()
   state.flushNewWindowRequests()
@@ -224,8 +246,11 @@ proc runHost(): int =
     input: input.value,
     output: output,
     sessionId: sessionId,
-    nextEventId: 1
+    nextEventId: 1,
+    nextPolicyRequestId: 1
   )
+  state.adapter.policyDecision = proc(request: PolicyRequest): bool =
+    state.requestPolicy(request)
   if not state.writeMessage(ProtocolMessage(
     version: ProtocolVersion,
     kind: ProtocolMessageKind.ready,
