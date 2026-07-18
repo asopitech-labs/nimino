@@ -2,7 +2,7 @@
 
 Nimをホスト言語に、OS公式APIの薄いFFIでネイティブWindowとWebViewを扱う、軽量なクロスプラットフォームWeb UIデスクトップアプリケーション基盤です。
 
-> M0〜M3とM4のprofile、local asset境界、navigation policy、明示的なpermission/download policy契約を実装済みです。Linux GTK 4/WebKitGTK 6.0ではWindow/WebView、URL/HTML、JavaScript評価、文字列message、ナビゲーション開始/完了、基本エラー通知をXvfb smokeで確認済みです。`nimino-core`はWindows/Linux向けApp/Window facade、明示許可リストJSON RPC、型付き`registerTyped`/`registerTypedAsync`、profile path、local asset root/entry境界を提供します。permission/downloadは既定拒否のポリシー層までで、OSイベント接続は未実装です。WSL向けcore build（`-d:niminoWsl`）はLinux GUI FFIをリンクせず、通常の`newApp`からWindows hostを起動します。`nimino-pack`はTOMLマニフェスト解析・検証と正規化JSON CLIを実装しました。popup message受信の自動テストはタイムアウト時にhost/windowを回収しますが、通常Windows GUI CIとバイナリ包装は未整備です。
+> M0〜M3とM4のprofile、local asset境界、navigation policy、明示的なpermission/download policy契約を実装済みです。Linux GTK 4/WebKitGTK 6.0ではWindow/WebView、URL/HTML、JavaScript評価、文字列message、ナビゲーション開始/完了、基本エラー通知をXvfb smokeで確認済みです。`nimino-core`はWindows/Linux向けApp/Window facade、明示許可リストJSON RPC、型付き`registerTyped`/`registerTypedAsync`、profile path、local asset root/entry境界を提供します。permission/downloadは既定拒否のポリシー層までで、OSイベント接続は未実装です。WSL向けcore build（`-d:niminoWsl`）はLinux GUI FFIをリンクせず、通常の`newApp`からWindows hostを起動します。`nimino-pack`はTOMLマニフェスト解析・検証、host同梱、Linux tar.gz／Windows zip形式のbundle生成を実装しました。popup message受信の自動テストはタイムアウト時にhost/windowを回収しますが、通常Windows GUI CI、正式インストーラ、OSデスクトップ統合は未整備です。
 
 ## 目標
 
