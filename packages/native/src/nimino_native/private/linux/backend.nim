@@ -1,3 +1,5 @@
+proc linuxTrackDownload(view: NativeWebView; download: pointer; url: string)
+
 proc linuxSetTitle(window: NativeWindow) =
   if window.platformWindow != nil:
     let title = window.title
@@ -195,7 +197,8 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
       ## it explicitly prevents WebKitGTK from treating the response as a
       ## failed page navigation.  Destination/progress management remains a
       ## higher-level Core concern.
-      discard webkit_web_view_download_uri(cast[ptr WebKitWebView](webView), copiedUri.cstring)
+      let download = webkit_web_view_download_uri(cast[ptr WebKitWebView](webView), copiedUri.cstring)
+      view.linuxTrackDownload(download, copiedUri)
       view.dispatchDownloadEvent(copiedUri, nativeDownloadStarted, 0.0)
       webkit_policy_decision_ignore(decision)
     else:
@@ -204,6 +207,52 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
     return 0
   ## The decision was handled explicitly above.
   1
+
+proc linuxClearDownloadSignals(view: NativeWebView) =
+  if view.isNil or view.platformView.isNil:
+    return
+  for handler in view.downloadSignalHandlers:
+    g_signal_handler_disconnect(view.activeDownload, handler)
+  view.downloadSignalHandlers.setLen(0)
+  view.activeDownload = nil
+  view.activeDownloadUrl.setLen(0)
+
+proc linuxDownloadProgress(download, pspec, userData: pointer) {.cdecl.} =
+  let view = cast[NativeWebView](userData)
+  if view.isNil or view.activeDownload != download:
+    return
+  let progress = float(webkit_download_get_estimated_progress(download))
+  view.dispatchDownloadEvent(view.activeDownloadUrl, nativeDownloadProgress, progress)
+
+proc linuxDownloadFinished(download, userData: pointer) {.cdecl.} =
+  let view = cast[NativeWebView](userData)
+  if view.isNil or view.activeDownload != download:
+    return
+  let url = view.activeDownloadUrl
+  view.linuxClearDownloadSignals()
+  view.dispatchDownloadEvent(url, nativeDownloadCompleted, 1.0)
+
+proc linuxDownloadFailed(download, error, userData: pointer) {.cdecl.} =
+  let view = cast[NativeWebView](userData)
+  if view.isNil or view.activeDownload != download:
+    return
+  let url = view.activeDownloadUrl
+  view.linuxClearDownloadSignals()
+  view.dispatchDownloadEvent(url, nativeDownloadFailed, -1.0)
+
+proc linuxTrackDownload(view: NativeWebView; download: pointer; url: string) =
+  if view.isNil or download.isNil:
+    return
+  view.linuxClearDownloadSignals()
+  view.activeDownload = download
+  view.activeDownloadUrl = url
+  view.downloadSignalHandlers.add(g_signal_connect_data(download,
+    "notify::estimated-progress", cast[pointer](linuxDownloadProgress),
+    cast[pointer](view), nil, 0))
+  view.downloadSignalHandlers.add(g_signal_connect_data(download, "finished",
+    cast[pointer](linuxDownloadFinished), cast[pointer](view), nil, 0))
+  view.downloadSignalHandlers.add(g_signal_connect_data(download, "failed",
+    cast[pointer](linuxDownloadFailed), cast[pointer](view), nil, 0))
 
 proc linuxConfigureNavigationStarting(view: NativeWebView): NativeResult =
   if view.platformView.isNil:
@@ -378,6 +427,7 @@ proc linuxDisposeWindow(window: NativeWindow) =
     view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
     view.linuxDisposeMessageBridge()
     view.linuxDisposeLoadEvents()
+    view.linuxClearDownloadSignals()
     view.releaseCallbackReferences()
     if view.platformView != nil:
       g_object_unref(view.platformView)

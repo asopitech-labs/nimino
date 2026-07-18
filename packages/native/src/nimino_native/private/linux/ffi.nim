@@ -94,6 +94,10 @@ proc webkit_web_view_load_html*(view: ptr WebKitWebView; content: cstring; baseU
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_download_uri*(view: ptr WebKitWebView; uri: cstring): pointer
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_download_get_estimated_progress*(download: pointer): cdouble
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_download_get_request*(download: pointer): ptr WebKitURIRequest
+  {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_get_uri*(view: ptr WebKitWebView): cstring
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_evaluate_javascript*(view: ptr WebKitWebView; script: cstring;

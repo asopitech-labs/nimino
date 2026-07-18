@@ -109,6 +109,9 @@ type
     downloadHandlerPointer: pointer
     downloadRegistrationToken: int64
     downloadRegistered: bool
+    downloadSignalHandlers: seq[culong]
+    activeDownload: pointer
+    activeDownloadUrl: string
     pendingScripts: seq[NativeScriptRequest]
     activeScripts: seq[NativeScriptRequest]
 
