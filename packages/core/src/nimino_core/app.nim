@@ -123,6 +123,10 @@ type
   NewWindowRequest* = object
     url*: string
 
+  WindowError* = object
+    operation*: string
+    detail*: string
+
   PermissionKind* = enum
     microphone
     camera
@@ -174,6 +178,7 @@ type
     navigationRulesConfigured: bool
     navigationPolicy*: proc(request: NavigationRequest): NavigationDecision
     newWindowHandler*: proc(request: NewWindowRequest): bool
+    errorHandler*: proc(error: WindowError)
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
     closed: bool
@@ -369,6 +374,15 @@ proc configureWindow(window: Window): CoreResult =
   )
   if not messageConfigured.isOk:
     return coreFailure(messageConfigured.failure.mapNativeError())
+
+  let errorConfigured = native.onError(window.nativeView,
+    proc(error: native.NativeError) =
+      if not window.errorHandler.isNil:
+        try: window.errorHandler(WindowError(operation: error.operation,
+          detail: error.detail))
+        except CatchableError: discard)
+  if not errorConfigured.isOk:
+    return coreFailure(errorConfigured.failure.mapNativeError())
 
   let newWindowConfigured = native.onNewWindowRequested(window.nativeView,
     proc(url: string) =
@@ -715,6 +729,12 @@ proc onNewWindow*(window: Window;
   window.newWindowHandler = handler
   coreSuccess()
 
+proc onError*(window: Window; handler: proc(error: WindowError)): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onError"))
+  window.errorHandler = handler
+  coreSuccess()
+
 proc loadUrl*(window: Window; url: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.loadUrl"))
@@ -931,6 +951,27 @@ when defined(linux):
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "new-window event is malformed"))
+    of "native.webview.error":
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("webViewId") or
+            not payload.hasKey("operation") or not payload.hasKey("detail") or
+            payload["webViewId"].kind != JString or
+            payload["operation"].kind != JString or
+            payload["detail"].kind != JString:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "WebView error event is malformed"))
+        let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
+        for window in app.windows:
+          if not window.closed and window.webViewId == webViewId and
+              not window.errorHandler.isNil:
+            try: window.errorHandler(WindowError(operation: payload["operation"].getStr(),
+              detail: payload["detail"].getStr()))
+            except CatchableError: discard
+            break
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "WebView error event is malformed"))
     of "native.webview.permissionRequested", "native.webview.downloadStarting",
        "native.webview.policyRequested":
       ## These events require a synchronous decision from the WSL client.  The
