@@ -115,6 +115,13 @@ proc requiredInteger(node: JsonNode; name: string): ProtocolResultOf[int] =
 proc safeWindowsPathComponent(value: string): bool =
   if value.len == 0 or value == "." or value == "..":
     return false
+  if value[^1] in {'.', ' '}:
+    return false
+  let device = value.toUpperAscii()
+  if device in ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4",
+                "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
+                "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"]:
+    return false
   for ch in value:
     if ch in {'/', '\\', ':', '*', '?', '"', '<', '>', '|'} or ord(ch) < 32:
       return false
