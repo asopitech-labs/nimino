@@ -129,7 +129,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 `window.listDownloads()`はprofile内の保存済みダウンロード実パスを返します。
 `window.deleteDownload(path)`はprofile内に限定して一つの保存済みファイルを削除します。
 `window.onDownloadEvent`は`DownloadEvent`（`downloadStarted` / `downloadProgress` / `downloadCompleted` / `downloadFailed` / `downloadCancelled`、進捗値）を通知します。バックエンドが取得できる状態だけを通知し、未対応状態を成功扱いにはしません。
-Linux WebKitGTKでは許可したレスポンスについて、開始・進捗・完了・失敗イベントを通知します。Windowsは開始時の進捗スナップショットまで対応し、継続通知はWebView2のイベント購読実装に続けて追加します。
+Linux WebKitGTKでは許可したレスポンスについて、開始・進捗・完了・失敗イベントを通知します。Windows WebView2でも`BytesReceivedChanged`と`StateChanged`を購読し、進捗・完了・失敗・キャンセルを通知します。
 `window.clearPermissions()`ではprofileに保存した権限判断履歴を削除できます。
 `window.clearLocalStorage()`ではNimino管理のprofile local-storage領域を削除できます。
 WebView内部localStorageへの自動接続・消去は別途未実装です。
