@@ -384,6 +384,15 @@ proc setResizable*(window: NativeWindow; resizable: bool): NativeResult =
   else:
     failure(nativeError(unsupported, "window.setResizable"))
 
+proc setPosition*(window: NativeWindow; x, y: int): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.setPosition"))
+  when defined(windows):
+    windowsSetPosition(window, x, y)
+  else:
+    failure(nativeError(unsupported, "window.setPosition",
+      detail = "the current Linux backend cannot move GTK4 windows"))
+
 proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.loadUrl"))

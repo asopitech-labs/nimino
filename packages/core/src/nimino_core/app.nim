@@ -724,6 +724,20 @@ proc setResizable*(window: Window; resizable: bool): CoreResult =
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else: coreFailure(coreError(platformUnavailable, "window.setResizable"))
 
+proc setPosition*(window: Window; x, y: int): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setPosition"))
+  case window.app.backend
+  of nativeBackend:
+    native.setPosition(window.nativeWindow, x, y).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let response = window.app.wslCall("native.window.setPosition", $(%*{
+        "windowId": $window.windowId, "x": x, "y": y
+      }))
+      if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else: coreFailure(coreError(platformUnavailable, "window.setPosition"))
+
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setTitle"))

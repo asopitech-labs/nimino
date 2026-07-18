@@ -70,6 +70,7 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert first.value.restore().isOk
   doAssert first.value.setResizable(false).isOk
   doAssert first.value.setResizable(true).isOk
+  doAssert not first.value.setPosition(10, 20).isOk
   doAssert first.value.close().isOk
   doAssert not first.value.close().isOk
   doAssert first.value.rpc.registerSync("only.first", proc(params: JsonNode): RpcResult =

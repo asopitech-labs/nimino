@@ -674,6 +674,14 @@ proc windowsSetResizable(window: NativeWindow; resizable: bool): NativeResult =
     SwpNoMove or SwpNoSize or SwpNoZOrder or 0x0020'u32)
   success()
 
+proc windowsSetPosition(window: NativeWindow; x, y: int): NativeResult =
+  if window.platformWindow == nil:
+    return failure(nativeError(invalidState, "window.setPosition"))
+  if setWindowPos(window.platformWindow, nil, int32(x), int32(y), 0, 0,
+      SwpNoSize or SwpNoZOrder) == 0:
+    return failure(windowsError("window.setPosition", getLastError()))
+  success()
+
 proc windowsLoadUrl(view: NativeWebView): NativeResult =
   if view.platformView == nil:
     return success()

@@ -97,6 +97,14 @@ proc requiredBool(node: JsonNode; name: string): ProtocolResultOf[bool] =
     return failureOf[bool](protocolError(invalidMessage, name & " must be a boolean"))
   successOf(node[name].getBool())
 
+proc requiredInteger(node: JsonNode; name: string): ProtocolResultOf[int] =
+  if not node.hasKey(name) or node[name].kind != JInt:
+    return failureOf[int](protocolError(invalidMessage, name & " must be an integer"))
+  let value = node[name].getInt()
+  if value < low(int) or value > high(int):
+    return failureOf[int](protocolError(invalidMessage, name & " is out of range"))
+  successOf(int(value))
+
 proc requiredId(node: JsonNode; name: string): ProtocolResultOf[uint64] =
   let encoded = node.requiredString(name)
   if not encoded.isOk:
@@ -264,6 +272,18 @@ proc handleWindowSetResizable(adapter: HostAdapter; payload: JsonNode): Protocol
   let updated = adapter.windows[windowId.value].setResizable(value.value)
   if not updated.isOk:
     return nativeFailure("native.window.setResizable", updated)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
+proc handleWindowSetPosition(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  if not windowId.isOk: return failureOf[HostAction](windowId.failure)
+  if not adapter.windows.hasKey(windowId.value): return errorAction("unknown windowId")
+  let x = payload.requiredInteger("x")
+  let y = payload.requiredInteger("y")
+  if not x.isOk: return failureOf[HostAction](x.failure)
+  if not y.isOk: return failureOf[HostAction](y.failure)
+  let updated = adapter.windows[windowId.value].setPosition(x.value, y.value)
+  if not updated.isOk: return nativeFailure("native.window.setPosition", updated)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
@@ -511,6 +531,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowState(payload.value, "restore")
   of "native.window.setResizable":
     adapter.handleWindowSetResizable(payload.value)
+  of "native.window.setPosition":
+    adapter.handleWindowSetPosition(payload.value)
   of "native.webview.create":
     adapter.handleWebViewCreate(payload.value)
   of "native.webview.setDocumentStartScript":
