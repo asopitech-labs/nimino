@@ -1,6 +1,6 @@
 ## M3 application facade.  Native object types remain private to this module.
 
-import std/[asyncfutures, json, os, sequtils, strutils, uri]
+import std/[asyncfutures, base64, json, os, sequtils, strutils, uri]
 
 when defined(linux):
   import std/options
@@ -1110,6 +1110,46 @@ proc inlineWslAssets(root, html: string): string =
     let tail = if tagEnd + 1 < result.len: result[tagEnd + 1 .. ^1] else: ""
     result = result[0 ..< start] & "<style>" & body & "</style>" & tail
     cursor = start + body.len + 15
+  cursor = 0
+  while true:
+    let start = result.find("<img", cursor)
+    if start < 0: break
+    let tagEnd = result.find('>', start)
+    if tagEnd < 0: break
+    let doubleSrcStart = result.find("src=\"", start)
+    let singleSrcStart = result.find("src='", start)
+    let useSingle = singleSrcStart >= 0 and (doubleSrcStart < 0 or singleSrcStart < doubleSrcStart)
+    let srcStart = if useSingle: singleSrcStart else: doubleSrcStart
+    if srcStart < 0 or srcStart > tagEnd:
+      cursor = tagEnd + 1
+      continue
+    let valueStart = srcStart + 5
+    let quote = if useSingle: '\'' else: '"'
+    let valueEnd = result.find(quote, valueStart)
+    if valueEnd < 0 or valueEnd > tagEnd:
+      cursor = tagEnd + 1
+      continue
+    let relative = result[valueStart ..< valueEnd]
+    let candidate = (root / relative).absolutePath().normalizedPath()
+    let relativeCheck = relativePath(candidate, root)
+    if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
+      cursor = tagEnd + 1
+      continue
+    let ext = splitFile(candidate).ext.toLowerAscii()
+    let mime = case ext
+      of ".png": "image/png"
+      of ".jpg", ".jpeg": "image/jpeg"
+      of ".gif": "image/gif"
+      of ".svg": "image/svg+xml"
+      of ".webp": "image/webp"
+      else: ""
+    if mime.len == 0:
+      cursor = tagEnd + 1
+      continue
+    let encoded = encode(readFile(candidate))
+    let dataUri = "data:" & mime & ";base64," & encoded
+    result = result[0 ..< valueStart] & dataUri & result[valueEnd .. ^1]
+    cursor = valueStart + dataUri.len + 1
 
 proc loadEntry*(window: Window; entry = "index.html"): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
