@@ -120,6 +120,9 @@ type
   NavigationRequest* = object
     url*: string
 
+  NewWindowRequest* = object
+    url*: string
+
   PermissionKind* = enum
     microphone
     camera
@@ -170,6 +173,7 @@ type
     navigationRules: NavigationRules
     navigationRulesConfigured: bool
     navigationPolicy*: proc(request: NavigationRequest): NavigationDecision
+    newWindowHandler*: proc(request: NewWindowRequest): bool
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
     closed: bool
@@ -365,6 +369,15 @@ proc configureWindow(window: Window): CoreResult =
   )
   if not messageConfigured.isOk:
     return coreFailure(messageConfigured.failure.mapNativeError())
+
+  let newWindowConfigured = native.onNewWindowRequested(window.nativeView,
+    proc(url: string) =
+      if window.newWindowHandler.isNil:
+        return
+      try: discard window.newWindowHandler(NewWindowRequest(url: url))
+      except CatchableError: discard)
+  if not newWindowConfigured.isOk:
+    return coreFailure(newWindowConfigured.failure.mapNativeError())
 
   let navigationConfigured = native.onNavigationStarting(window.nativeView,
     proc(url: string): bool =
@@ -693,6 +706,13 @@ proc onDownload*(window: Window;
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.onDownload"))
   window.downloadHandler = handler
+  coreSuccess()
+
+proc onNewWindow*(window: Window;
+                  handler: proc(request: NewWindowRequest): bool): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onNewWindow"))
+  window.newWindowHandler = handler
   coreSuccess()
 
 proc loadUrl*(window: Window; url: string): CoreResult =
