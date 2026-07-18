@@ -39,3 +39,9 @@ block windowsOwnIndependentRpcAllowLists:
   )
   doAssert first.value.rpc.isMethodRegistered("only.first")
   doAssert not second.value.rpc.isMethodRegistered("only.first")
+
+block localAssetRootRejectsTraversal:
+  let created = newApp(id = "tech.asopi.assets-test", name = "Assets test")
+  doAssert created.isOk
+  let window = created.value.newWindow(title = "Assets").value
+  doAssert not window.loadAssets("/path/that/does/not/exist").isOk

@@ -1,9 +1,9 @@
 ## M3 application facade.  Native object types remain private to this module.
 
-import std/[asyncfutures, json, strutils, uri]
+import std/[asyncfutures, json, os, strutils, uri]
 
 when defined(linux):
-  import std/[options, os]
+  import std/options
   import nimino_wsl
 
 import nimino_native as native
@@ -119,6 +119,7 @@ type
     webViewId: uint64
     rpc*: RpcRegistry
     documentStartBridgeConfigured: bool
+    assetRoot: string
     closed: bool
 
 proc mapNativeError(error: native.NativeError): CoreError =
@@ -452,6 +453,47 @@ proc loadUrl*(window: Window; url: string): CoreResult =
         coreFailure(loaded.failure)
     else:
       coreFailure(coreError(platformUnavailable, "window.loadUrl"))
+
+proc loadHtml*(window: Window; html: string): CoreResult
+
+proc loadAssets*(window: Window; directory: string): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.loadAssets"))
+  if directory.len == 0 or not dirExists(directory):
+    return coreFailure(coreError(invalidArgument, "window.loadAssets",
+      detail = "asset root does not exist"))
+  try:
+    let root = absolutePath(directory).normalizedPath()
+    if not dirExists(root):
+      return coreFailure(coreError(invalidArgument, "window.loadAssets",
+        detail = "asset root is not a directory"))
+    window.assetRoot = root
+    coreSuccess()
+  except CatchableError:
+    coreFailure(coreError(invalidArgument, "window.loadAssets",
+      detail = "asset root could not be normalized"))
+
+proc loadEntry*(window: Window; entry = "index.html"): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.loadEntry"))
+  if window.assetRoot.len == 0:
+    return coreFailure(coreError(invalidState, "window.loadEntry",
+      detail = "loadAssets must be called first"))
+  if entry.len == 0 or entry.isAbsolute:
+    return coreFailure(coreError(invalidArgument, "window.loadEntry",
+      detail = "entry must be a relative path"))
+  try:
+    let root = window.assetRoot.normalizedPath()
+    let path = (root / entry).absolutePath().normalizedPath()
+    let relative = relativePath(path, root)
+    if relative == ".." or relative.startsWith(".." & DirSep) or not fileExists(path):
+      return coreFailure(coreError(invalidArgument, "window.loadEntry",
+        detail = "entry escapes the asset root or does not exist"))
+    let content = readFile(path)
+    window.loadHtml(content)
+  except CatchableError:
+    coreFailure(coreError(nativeFailure, "window.loadEntry",
+      detail = "asset entry could not be read"))
 
 proc loadHtml*(window: Window; html: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
