@@ -151,6 +151,19 @@ proc deleteProfileSetting*(appId, profile, key: string): ProfilePathResult =
   except OSError:
     profileFailure("unable to delete profile setting")
 
+proc clearProfileSettings*(appId, profile: string): ProfilePathResult =
+  let directory = profileDirectoryPath(appId, profile, settings)
+  if not directory.isOk:
+    return directory
+  if not dirExists(directory.value):
+    return profileSuccess(directory.value)
+  try:
+    for path in walkFiles(directory.value / "*.json"):
+      removeFile(path)
+    profileSuccess(directory.value)
+  except OSError:
+    profileFailure("unable to clear profile settings")
+
 proc cookieFileKey(cookie: ProfileCookie): string =
   cookie.domain & "__" & cookie.name
 

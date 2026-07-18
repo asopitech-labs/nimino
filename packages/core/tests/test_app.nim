@@ -110,6 +110,9 @@ block windowsCanSelectIndependentProfiles:
   doAssert launch.value["count"].getInt() == 1
   doAssert direct.value.listSettings().value.len >= 1
   doAssert direct.value.deleteSetting("launch").isOk
+  doAssert direct.value.writeSetting("launch", %*{"count": 2}).isOk
+  doAssert direct.value.clearSettings().isOk
+  doAssert direct.value.listSettings().value.len == 0
   let sessionCookie = ProfileCookie(name: "sid", value: "window", domain: "example.com")
   doAssert direct.value.writeCookie(sessionCookie).isOk
   let readCookie = direct.value.readCookie("example.com", "sid")

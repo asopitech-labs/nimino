@@ -666,6 +666,13 @@ proc deleteSetting*(window: Window; key: string): CoreResult =
   if deleted.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.deleteSetting", detail = deleted.error))
 
+proc clearSettings*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.clearSettings"))
+  let cleared = clearProfileSettings(window.app.id, window.profileName)
+  if cleared.isOk: coreSuccess()
+  else: coreFailure(coreError(invalidArgument, "window.clearSettings", detail = cleared.error))
+
 proc writeCookie*(window: Window; cookie: ProfileCookie): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.writeCookie"))
