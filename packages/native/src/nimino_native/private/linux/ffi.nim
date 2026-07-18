@@ -13,6 +13,7 @@ type
   GtkApplication* {.incompleteStruct.} = object
   GtkWindow* {.incompleteStruct.} = object
   WebKitWebView* {.incompleteStruct.} = object
+  WebKitNetworkSession* {.incompleteStruct.} = object
   WebKitUserContentManager* {.incompleteStruct.} = object
   WebKitUserScript* {.incompleteStruct.} = object
   WebKitPolicyDecision* {.incompleteStruct.} = object
@@ -71,6 +72,8 @@ proc g_object_ref_sink*(instance: pointer): pointer
   {.cdecl, importc, dynlib: LibGObject.}
 proc g_object_unref*(instance: pointer)
   {.cdecl, importc, dynlib: LibGObject.}
+proc g_object_new*(objectType: culong; firstPropertyName: cstring): pointer {.varargs, cdecl,
+  importc, dynlib: LibGObject.}
 proc g_free*(memory: pointer)
   {.cdecl, importc, dynlib: LibGlib.}
 proc g_error_free*(error: ptr GError)
@@ -87,6 +90,11 @@ proc g_source_remove*(tag: uint32): cint
   {.cdecl, importc, dynlib: LibGlib.}
 
 proc webkit_web_view_new*(): ptr WebKitWebView
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_web_view_get_type*(): culong
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_network_session_new*(dataDirectory, cacheDirectory: cstring):
+    ptr WebKitNetworkSession
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_load_uri*(view: ptr WebKitWebView; uri: cstring)
   {.cdecl, importc, dynlib: LibWebKit.}

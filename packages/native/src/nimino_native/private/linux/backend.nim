@@ -1,3 +1,5 @@
+import std/os
+
 proc linuxTrackDownload(view: NativeWebView; download: pointer; url: string)
 
 proc linuxSetTitle(window: NativeWindow) =
@@ -454,7 +456,26 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
     return failure(nativeError(invalidState, "window.create", detail = "WebView is required"))
 
   let view = window.views[0]
-  let webView = webkit_web_view_new()
+  var webView: ptr WebKitWebView
+  var session: ptr WebKitNetworkSession
+  if view.window.profilePath.len > 0:
+    let dataDir = view.window.profilePath / "webkit-data"
+    let cacheDir = view.window.profilePath / "cache"
+    try:
+      createDir(dataDir)
+      createDir(cacheDir)
+    except OSError:
+      return failure(nativeError(osError, "webview.profile",
+        detail = "unable to create WebKit profile directories"))
+    session = webkit_network_session_new(cstring(dataDir), cstring(cacheDir))
+    if session.isNil:
+      return failure(nativeError(webViewError, "webview.profile",
+        detail = "WebKitNetworkSession creation failed"))
+    webView = cast[ptr WebKitWebView](g_object_new(webkit_web_view_get_type(),
+      "network-session", cast[pointer](session), nil))
+    g_object_unref(cast[pointer](session))
+  else:
+    webView = webkit_web_view_new()
   if webView.isNil:
     return failure(nativeError(webViewError, "webview.create", detail = "WebKitWebView creation failed"))
 
