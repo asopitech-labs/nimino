@@ -99,6 +99,10 @@ type
     width*: int
     height*: int
 
+  NavigationRules* = object
+    allow*: seq[string]
+    deny*: seq[string]
+
   App* = ref object
     state: CoreAppState
     backend: CoreBackend
@@ -120,6 +124,8 @@ type
     rpc*: RpcRegistry
     documentStartBridgeConfigured: bool
     assetRoot: string
+    navigationRules: NavigationRules
+    navigationRulesConfigured: bool
     closed: bool
 
 proc mapNativeError(error: native.NativeError): CoreError =
@@ -140,6 +146,24 @@ proc fromNativeOf[T](nativeResult: native.NativeResultOf[T]): CoreResultOf[T] =
     coreSuccessOf(nativeResult.value)
   else:
     coreFailureOf[T](nativeResult.failure.mapNativeError())
+
+proc navigationPatternMatches(pattern, url: string): bool {.inline.} =
+  if pattern.len == 0:
+    return false
+  if pattern.endsWith("**"):
+    return url.startsWith(pattern[0 ..< pattern.len - 2])
+  pattern == url
+
+proc navigationAllowed(window: Window; url: string): bool =
+  if window.isNil or not window.navigationRulesConfigured:
+    return true
+  for pattern in window.navigationRules.deny:
+    if navigationPatternMatches(pattern, url):
+      return false
+  for pattern in window.navigationRules.allow:
+    if navigationPatternMatches(pattern, url):
+      return true
+  false
 
 proc isWslEnvironment(): bool =
   when defined(niminoWsl):
@@ -283,6 +307,11 @@ proc configureWindow(window: Window): CoreResult =
   )
   if not messageConfigured.isOk:
     return coreFailure(messageConfigured.failure.mapNativeError())
+
+  let navigationConfigured = native.onNavigationStarting(window.nativeView,
+    proc(url: string): bool = window.navigationAllowed(url))
+  if not navigationConfigured.isOk:
+    return coreFailure(navigationConfigured.failure.mapNativeError())
 
   coreSuccess()
 
@@ -428,6 +457,34 @@ proc setSize*(window: Window; width, height: int): CoreResult =
         coreFailure(updated.failure)
     else:
       coreFailure(coreError(platformUnavailable, "window.setSize"))
+
+proc setNavigationRules*(window: Window; rules: NavigationRules): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setNavigationRules"))
+  for pattern in rules.allow & rules.deny:
+    if pattern.len == 0:
+      return coreFailure(coreError(invalidArgument, "window.setNavigationRules",
+        detail = "navigation patterns must not be empty"))
+  case window.app.backend
+  of nativeBackend:
+    discard
+  of wslBackend:
+    when defined(linux):
+      if window.app.wslUiStarted:
+        return coreFailure(coreError(invalidState, "window.setNavigationRules",
+          detail = "WSL navigation rules must be set before the UI loop starts"))
+      let configured = window.app.wslCall("native.webview.setNavigationRules", $(%*{
+        "webViewId": $window.webViewId,
+        "allow": rules.allow,
+        "deny": rules.deny
+      }))
+      if not configured.isOk:
+        return coreFailure(configured.failure)
+    else:
+      return coreFailure(coreError(platformUnavailable, "window.setNavigationRules"))
+  window.navigationRules = rules
+  window.navigationRulesConfigured = true
+  coreSuccess()
 
 proc loadUrl*(window: Window; url: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:

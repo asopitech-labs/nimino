@@ -45,3 +45,11 @@ block localAssetRootRejectsTraversal:
   doAssert created.isOk
   let window = created.value.newWindow(title = "Assets").value
   doAssert not window.loadAssets("/path/that/does/not/exist").isOk
+
+block navigationRulesAreExplicit:
+  let created = newApp(id = "tech.asopi.navigation-test", name = "Navigation test")
+  doAssert created.isOk
+  let window = created.value.newWindow(title = "Navigation").value
+  doAssert window.setNavigationRules(NavigationRules(
+    allow: @["https://example.com/**"], deny: @["https://example.com/private/**"])).isOk
+  doAssert not window.setNavigationRules(NavigationRules(allow: @[""], deny: @[])).isOk

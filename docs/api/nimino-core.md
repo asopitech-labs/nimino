@@ -31,6 +31,7 @@ proc loadUrl*(window: Window, url: string): CoreResult
 proc loadHtml*(window: Window, html: string): CoreResult
 proc loadAssets*(window: Window, directory: string): CoreResult
 proc loadEntry*(window: Window, entry = "index.html"): CoreResult
+proc setNavigationRules*(window: Window, rules: NavigationRules): CoreResult
 proc evalJavaScript*(window: Window, script: string): Future[CoreResultOf[string]]
 proc quit*(app: App): CoreResult
 proc run*(app: App): CoreResult
@@ -109,3 +110,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 `loadAssets`はrootディレクトリを正規化してWindowへ固定します。`loadEntry`はroot外の
 絶対パス、`..`による脱出、存在しないファイルを拒否してからHTMLを読み込みます。
 これはM4のローカルアセット境界であり、外部URLからのasset fetchやMIME配信は未実装です。
+
+`setNavigationRules`はallow/denyの宣言的URL ruleを設定します。denyが優先され、
+設定後に未一致のURLは拒否します。nativeはUI callback内で同期評価し、WSLはUI loop
+開始前にhostへruleを同期します。任意のWSL側callbackをUI callbackで待つ方式ではありません。
