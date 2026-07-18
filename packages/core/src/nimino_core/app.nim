@@ -351,6 +351,18 @@ proc configureWindow(window: Window): CoreResult =
   if not navigationConfigured.isOk:
     return coreFailure(navigationConfigured.failure.mapNativeError())
 
+  let permissionConfigured = native.onPermissionRequested(window.nativeView,
+    proc(url: string): bool = window.decidePermission(PermissionRequest(
+      kind: microphone, url: url)) == permissionGrant)
+  if not permissionConfigured.isOk:
+    return coreFailure(permissionConfigured.failure.mapNativeError())
+
+  let downloadConfigured = native.onDownloadStarting(window.nativeView,
+    proc(url: string): bool = window.decideDownload(DownloadRequest(
+      url: url, suggestedName: "download")) == downloadAllow)
+  if not downloadConfigured.isOk:
+    return coreFailure(downloadConfigured.failure.mapNativeError())
+
   coreSuccess()
 
 proc newApp*(options: AppOptions): CoreResultOf[App] =
