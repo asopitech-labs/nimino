@@ -71,6 +71,26 @@ while true:
       let payload = $(%*{"webViewId": "1", "url": "https://example.test/", "succeeded": true})
       doAssert output.writeMessageTo(event("native.webview.navigationCompleted", payload, nextEventId)).isOk
       inc nextEventId
+      ## Headless harness: emulate the document-start bridge without a real
+      ## WebView, so the async RPC/timeout contract can run deterministically.
+      rpcRequestsSent = true
+      let asyncRequest = $(%*{
+        "nimino": "rpc", "kind": "request", "id": "async-one",
+        "method": "async.request", "params": newJNull(), "timeoutMs": 1_000
+      })
+      let completed = $(%*{
+        "nimino": "rpc", "kind": "notification", "method": "async.complete",
+        "params": newJNull()
+      })
+      let never = $(%*{
+        "nimino": "rpc", "kind": "request", "id": "timeout-one",
+        "method": "never", "params": newJNull(), "timeoutMs": 40
+      })
+      for wire in [asyncRequest, completed, never]:
+        let messagePayload = $(%*{"webViewId": "1", "message": wire})
+        doAssert output.writeMessageTo(event("native.webview.message", messagePayload,
+          nextEventId)).isOk
+        inc nextEventId
     of "native.webview.evalJavaScript":
       doAssert output.writeMessageTo(message.response("{\"result\":\"null\"}")).isOk
       let script = parseJson(message.payload)["script"].getStr()

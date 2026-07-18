@@ -1,4 +1,4 @@
-import std/[asyncfutures, json, strutils]
+import std/[asyncfutures, json, os, strutils]
 
 import nimino_wsl
 
@@ -12,10 +12,12 @@ proc requestMessage(methodName, payload: string): ProtocolMessage =
     payload: payload
   )
 
+putEnv("LOCALAPPDATA", getTempDir() / "nimino-host-adapter")
+
 block createsWindowViewAndUrlBeforeStartingUi:
   let adapter = newHostAdapter()
   let window = adapter.handleRequest(requestMessage("native.window.create",
-    "{\"title\":\"WSL\",\"width\":800,\"height\":600}"))
+    "{\"title\":\"WSL\",\"width\":800,\"height\":600,\"appId\":\"app.test\",\"profile\":\"default\"}"))
   doAssert window.isOk
   let windowId = parseJson(window.value.payload)["windowId"].getStr()
 
@@ -36,7 +38,7 @@ block createsWindowViewAndUrlBeforeStartingUi:
 block navigationRulesAreEvaluatedOnHostWithoutIpcWait:
   let adapter = newHostAdapter()
   let window = adapter.handleRequest(requestMessage("native.window.create",
-    "{\"title\":\"Policy\",\"width\":800,\"height\":600}"))
+    "{\"title\":\"Policy\",\"width\":800,\"height\":600,\"appId\":\"app.test\",\"profile\":\"default\"}"))
   doAssert window.isOk
   let windowId = parseJson(window.value.payload)["windowId"].getStr()
   let view = adapter.handleRequest(requestMessage("native.webview.create",
@@ -68,7 +70,7 @@ block rejectsUnknownObjectsAndLateMutation:
 block updatesWindowTitleAndSize:
   let adapter = newHostAdapter()
   let window = adapter.handleRequest(requestMessage("native.window.create",
-    "{\"title\":\"Initial\",\"width\":320,\"height\":200}"))
+    "{\"title\":\"Initial\",\"width\":320,\"height\":200,\"appId\":\"app.test\",\"profile\":\"default\"}"))
   doAssert window.isOk
   let windowId = parseJson(window.value.payload)["windowId"].getStr()
 
@@ -89,7 +91,7 @@ block shutdownDoesNotNeedPayload:
 block htmlLoadStartsTheUiLoop:
   let adapter = newHostAdapter()
   let window = adapter.handleRequest(requestMessage("native.window.create",
-    "{\"title\":\"HTML\",\"width\":320,\"height\":200}"))
+    "{\"title\":\"HTML\",\"width\":320,\"height\":200,\"appId\":\"app.test\",\"profile\":\"default\"}"))
   doAssert window.isOk
   let windowId = parseJson(window.value.payload)["windowId"].getStr()
   let view = adapter.handleRequest(requestMessage("native.webview.create",

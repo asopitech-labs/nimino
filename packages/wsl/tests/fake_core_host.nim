@@ -69,6 +69,18 @@ while true:
       let payload = $(%*{"webViewId": "1", "url": "https://example.test/", "succeeded": true})
       doAssert output.writeMessageTo(event("native.webview.navigationCompleted", payload, nextEventId)).isOk
       inc nextEventId
+      let wire = $(%*{
+        "nimino": "rpc",
+        "kind": "request",
+        "id": "one",
+        "method": "system.version",
+        "params": newJNull(),
+        "timeoutMs": 1_000
+      })
+      let messagePayload = $(%*{"webViewId": "1", "message": wire})
+      doAssert output.writeMessageTo(event("native.webview.message", messagePayload,
+        nextEventId)).isOk
+      inc nextEventId
     of "native.webview.evalJavaScript":
       doAssert output.writeMessageTo(incomingMessage.response("{\"result\":\"null\"}")).isOk
       let script = parseJson(incomingMessage.payload)["script"].getStr()
@@ -92,5 +104,10 @@ while true:
       break
     else:
       quit(QuitFailure)
+  of response:
+    ## The Core RPC handler has answered the synthetic request.  End the
+    ## harness run deterministically instead of waiting for a real WebView.
+    doAssert output.writeMessageTo(event("app.closed", "{}", nextEventId)).isOk
+    break
   else:
     quit(QuitFailure)
