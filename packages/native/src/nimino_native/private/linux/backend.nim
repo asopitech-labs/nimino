@@ -183,6 +183,31 @@ proc linuxConfigureNavigationStarting(view: NativeWebView): NativeResult =
   view.policyDecisionSignalHandler = signal
   success()
 
+proc linuxPermissionRequested(webView: pointer; request: ptr WebKitPermissionRequest;
+                              userData: pointer): cint {.cdecl.} =
+  ## Until core policy decisions are bridged into this native callback, deny
+  ## every request explicitly. Never leave WebKitGTK permission state implicit.
+  if not request.isNil:
+    webkit_permission_request_deny(request)
+  1
+
+proc linuxConfigurePermissionRequests(view: NativeWebView): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.permissionRequested"))
+  let signal = g_signal_connect_data(
+    view.platformView,
+    "permission-request",
+    cast[pointer](linuxPermissionRequested),
+    cast[pointer](view),
+    nil,
+    0
+  )
+  if signal == 0:
+    return failure(nativeError(webViewError, "webview.permissionRequested",
+      detail = "WebKitGTK permission-request signal registration failed"))
+  view.permissionSignalHandler = signal
+  success()
+
 proc linuxCreateRequested(webView: pointer; action: ptr WebKitNavigationAction;
                           userData: pointer): pointer {.cdecl.} =
   let view = cast[NativeWebView](userData)
@@ -235,6 +260,9 @@ proc linuxDisposeLoadEvents(view: NativeWebView) =
   if view.policyDecisionSignalHandler != 0:
     g_signal_handler_disconnect(webView, view.policyDecisionSignalHandler)
     view.policyDecisionSignalHandler = 0
+  if view.permissionSignalHandler != 0:
+    g_signal_handler_disconnect(webView, view.permissionSignalHandler)
+    view.permissionSignalHandler = 0
   if view.createSignalHandler != 0:
     g_signal_handler_disconnect(webView, view.createSignalHandler)
     view.createSignalHandler = 0
@@ -354,6 +382,9 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let navigationStarting = view.linuxConfigureNavigationStarting()
   if not navigationStarting.isOk:
     return navigationStarting
+  let permissionEvents = view.linuxConfigurePermissionRequests()
+  if not permissionEvents.isOk:
+    return permissionEvents
   let newWindowEvents = view.linuxConfigureNewWindowRequested()
   if not newWindowEvents.isOk:
     return newWindowEvents

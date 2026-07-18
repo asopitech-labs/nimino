@@ -19,6 +19,7 @@ type
   WebKitNavigationPolicyDecision* {.incompleteStruct.} = object
   WebKitNavigationAction* {.incompleteStruct.} = object
   WebKitURIRequest* {.incompleteStruct.} = object
+  WebKitPermissionRequest* {.incompleteStruct.} = object
   GAsyncResult* {.incompleteStruct.} = object
   GError* {.incompleteStruct.} = object
   JSCValue* {.incompleteStruct.} = object
@@ -119,6 +120,8 @@ proc webkit_uri_request_get_uri*(request: ptr WebKitURIRequest): cstring
 proc webkit_policy_decision_use*(decision: ptr WebKitPolicyDecision)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_policy_decision_ignore*(decision: ptr WebKitPolicyDecision)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_permission_request_deny*(request: ptr WebKitPermissionRequest)
   {.cdecl, importc, dynlib: LibWebKit.}
 
 const LibJavaScriptCore = "libjavascriptcoregtk-6.0.so.1"

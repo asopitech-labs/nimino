@@ -72,6 +72,7 @@ type
     platformMessageManager: pointer
     messageSignalHandler: culong
     policyDecisionSignalHandler: culong
+    permissionSignalHandler: culong
     createSignalHandler: culong
     loadChangedSignalHandler: culong
     loadFailedSignalHandler: culong
