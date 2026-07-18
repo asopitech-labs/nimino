@@ -178,3 +178,30 @@ proc readProfileCookie*(appId, profile, domain, name: string):
     ProfileResult[ProfileCookie](isOk: true, value: cookie)
   except CatchableError:
     ProfileResult[ProfileCookie](isOk: false, error: "profile cookie is not valid JSON")
+
+proc listProfileCookies*(appId, profile: string): ProfilePathResult =
+  let directory = profileDirectoryPath(appId, profile, cookies)
+  if not directory.isOk:
+    return directory
+  if not dirExists(directory.value):
+    return profileFailure("profile cookies directory does not exist")
+  try:
+    var keys: seq[string]
+    for path in walkFiles(directory.value / "*.json"):
+      keys.add(path.lastPathPart[0 ..< path.lastPathPart.len - 5])
+    keys.sort()
+    profileSuccess(keys.join("\n"))
+  except OSError:
+    profileFailure("unable to list profile cookies")
+
+proc deleteProfileCookie*(appId, profile, domain, name: string): ProfilePathResult =
+  let path = cookiePath(appId, profile, ProfileCookie(domain: domain, name: name))
+  if not path.isOk:
+    return path
+  if not fileExists(path.value):
+    return profileFailure("profile cookie does not exist")
+  try:
+    removeFile(path.value)
+    profileSuccess(path.value)
+  except OSError:
+    profileFailure("unable to delete profile cookie")
