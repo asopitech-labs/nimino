@@ -60,5 +60,6 @@ navigationPolicyへ昇格するには、次を追加検証する。
 `make wsl-host-abnormal-smoke`はhandshake直後にclient stdinを閉じ、hostが0終了して
 ハングしないことを確認する。UI loop開始後のEOF、timeout後の再接続契約は未確認である。
 
-したがって、WSLの任意同期callbackは引き続き未実装であり、現在のcore公開APIへ
-自動的に追加しない。
+その後、host callbackからWSL clientへ`native.webview.policyRequested` requestを送り、
+coreのWindow navigationPolicyがallow/denyを同期応答する実装を追加した。timeout、EOF、
+不正応答はdeny-by-defaultである。redirectの実遷移と再接続契約は引き続き別途検証する。
