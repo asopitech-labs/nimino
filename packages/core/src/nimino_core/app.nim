@@ -832,10 +832,15 @@ when defined(linux):
           if policy.value.kind == permissionPolicy:
             allowed = window.decidePermission(PermissionRequest(
               kind: microphone, url: policy.value.url)) == permissionGrant
-          else:
+          elif policy.value.kind == downloadPolicy:
             allowed = window.decideDownload(DownloadRequest(
               url: policy.value.url,
               suggestedName: policy.value.suggestedName)) == downloadAllow
+          elif not window.navigationPolicy.isNil:
+            allowed = window.navigationPolicy(NavigationRequest(
+              url: policy.value.url)) == navigationAllow
+          else:
+            allowed = window.navigationAllowed(policy.value.url)
           break
       let sent = app.wslClient.sendResponse(event.requestId,
         policyResponseJson(PolicyResponse(allow: allowed)))

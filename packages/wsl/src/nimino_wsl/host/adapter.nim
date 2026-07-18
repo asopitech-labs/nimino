@@ -61,6 +61,7 @@ type
     ## Optional synchronous decision hook owned by the transport layer.
     ## Returning false is the fail-closed default.
     policyDecision*: proc(request: PolicyRequest): bool {.closure.}
+    navigationDecisionHook*: proc(webViewId: uint64; url: string): bool {.closure.}
     navigationRules: Table[uint64, NavigationRules]
 
 proc newHostAdapter*(): HostAdapter =
@@ -255,6 +256,8 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
           webViewId: webViewId,
           url: url
         ))
+        if not owner.navigationDecisionHook.isNil:
+          return owner.navigationDecisionHook(webViewId, url)
         return owner.navigationDecision(webViewId, url)
       true
   )

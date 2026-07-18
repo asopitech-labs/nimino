@@ -56,6 +56,7 @@ type
   PolicyKind* = enum
     permissionPolicy
     downloadPolicy
+    navigationPolicy
 
   PolicyRequest* = object
     kind*: PolicyKind
@@ -71,6 +72,7 @@ proc `$`*(kind: PolicyKind): string =
   case kind
   of permissionPolicy: "permission"
   of downloadPolicy: "download"
+  of navigationPolicy: "navigation"
 
 proc policyRequestJson*(request: PolicyRequest): string =
   $(%*{
@@ -110,6 +112,7 @@ proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
     let kind = case node["kind"].getStr()
       of "permission": permissionPolicy
       of "download": downloadPolicy
+      of "navigation": navigationPolicy
       else: return failureOf[PolicyRequest](protocolError(invalidMessage,
         "unknown policy kind"))
     let suggestedName = if node.hasKey("suggestedName") and

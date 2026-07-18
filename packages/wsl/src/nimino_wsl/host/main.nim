@@ -244,6 +244,9 @@ proc runHost(): int =
   )
   state.adapter.policyDecision = proc(request: PolicyRequest): bool =
     state.requestPolicy(request)
+  state.adapter.navigationDecisionHook = proc(webViewId: uint64; url: string): bool =
+    state.requestPolicy(PolicyRequest(kind: navigationPolicy,
+      webViewId: webViewId, url: url))
   if not state.writeMessage(ProtocolMessage(
     version: ProtocolVersion,
     kind: ProtocolMessageKind.ready,
