@@ -265,6 +265,21 @@ proc coreAddNavigationStarting*(core: pointer; handler: pointer;
   )
   dispatch(core, handler, token)
 
+proc coreAddPermissionRequested*(core: pointer; handler: pointer;
+                                 token: ptr EventRegistrationToken): HResult {.inline.} =
+  ## ICoreWebView2 vtable slot verified against WebView2.h 1.0.3967.48.
+  let dispatch = cast[proc(self: pointer; handler: pointer;
+                           token: ptr EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[23]
+  )
+  dispatch(core, handler, token)
+
+proc coreRemovePermissionRequested*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}] (
+    cast[ptr ComInterface](core).vtable[24]
+  )
+  dispatch(core, token)
+
 proc coreRemoveNavigationStarting*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
     cast[ptr ComInterface](core).vtable[8]
