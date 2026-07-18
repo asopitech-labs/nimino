@@ -116,6 +116,8 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 `window.clearSettings()`では同じprofileのJSON設定を全削除できます。
 `window.clearCache()`ではNimino管理のprofile cacheファイルを削除できます。WebView
 エンジン内部cacheの自動接続・消去は別途未実装です。
+`window.clearDownloads()`ではprofile内のNimino管理downloadファイルを削除できます。
+WebViewエンジンの実ダウンロード保存・進捗管理は別途未実装です。
 
 `loadAssets`はrootディレクトリを正規化してWindowへ固定します。`loadEntry`はroot外の
 絶対パス、`..`による脱出、存在しないファイルを拒否してからHTMLを読み込みます。

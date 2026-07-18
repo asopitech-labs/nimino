@@ -680,6 +680,13 @@ proc clearCache*(window: Window): CoreResult =
   if cleared.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.clearCache", detail = cleared.error))
 
+proc clearDownloads*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.clearDownloads"))
+  let cleared = clearProfileDownloads(window.app.id, window.profileName)
+  if cleared.isOk: coreSuccess()
+  else: coreFailure(coreError(invalidArgument, "window.clearDownloads", detail = cleared.error))
+
 proc writeCookie*(window: Window; cookie: ProfileCookie): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.writeCookie"))

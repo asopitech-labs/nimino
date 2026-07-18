@@ -118,6 +118,11 @@ block windowsCanSelectIndependentProfiles:
   writeFile(cachePath.value / "entry", "cache")
   doAssert direct.value.clearCache().isOk
   doAssert not fileExists(cachePath.value / "entry")
+  let downloadPath = profileDirectoryPath("tech.asopi.profile-window-test", "direct", ProfileDirectory.downloads)
+  doAssert downloadPath.isOk
+  writeFile(downloadPath.value / "download.tmp", "partial")
+  doAssert direct.value.clearDownloads().isOk
+  doAssert not fileExists(downloadPath.value / "download.tmp")
   let sessionCookie = ProfileCookie(name: "sid", value: "window", domain: "example.com")
   doAssert direct.value.writeCookie(sessionCookie).isOk
   let readCookie = direct.value.readCookie("example.com", "sid")
