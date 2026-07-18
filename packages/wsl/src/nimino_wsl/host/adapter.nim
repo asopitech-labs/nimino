@@ -221,6 +221,18 @@ proc handleWindowClose(adapter: HostAdapter; payload: JsonNode): ProtocolResultO
   adapter.windowViewCounts.del(windowId.value)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
+proc handleWindowVisibility(adapter: HostAdapter; payload: JsonNode; visible: bool): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  let updated = if visible: adapter.windows[windowId.value].show()
+                else: adapter.windows[windowId.value].hide()
+  if not updated.isOk:
+    return nativeFailure(if visible: "native.window.show" else: "native.window.hide", updated)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
   if adapter.uiStartRequested:
     return errorAction("webview creation is closed after the UI loop starts")
@@ -454,6 +466,10 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowSetSize(payload.value)
   of "native.window.close":
     adapter.handleWindowClose(payload.value)
+  of "native.window.show":
+    adapter.handleWindowVisibility(payload.value, true)
+  of "native.window.hide":
+    adapter.handleWindowVisibility(payload.value, false)
   of "native.webview.create":
     adapter.handleWebViewCreate(payload.value)
   of "native.webview.setDocumentStartScript":

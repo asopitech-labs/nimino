@@ -8,6 +8,14 @@ proc linuxSetSize(window: NativeWindow) =
     gtk_window_set_default_size(cast[ptr GtkWindow](window.platformWindow),
       cint(window.width), cint(window.height))
 
+proc linuxShowWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    gtk_window_present(cast[ptr GtkWindow](window.platformWindow))
+
+proc linuxHideWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    gtk_widget_hide(window.platformWindow)
+
 proc linuxLoadUrl(view: NativeWebView) =
   if view.platformView != nil and view.pendingUrl.len > 0:
     let url = view.pendingUrl

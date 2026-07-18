@@ -653,6 +653,30 @@ proc close*(window: Window): CoreResult =
     else:
       coreFailure(coreError(platformUnavailable, "window.close"))
 
+proc show*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.show"))
+  case window.app.backend
+  of nativeBackend:
+    native.show(window.nativeWindow).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let shown = window.app.wslCall("native.window.show", $(%*{"windowId": $window.windowId}))
+      if shown.isOk: coreSuccess() else: coreFailure(shown.failure)
+    else: coreFailure(coreError(platformUnavailable, "window.show"))
+
+proc hide*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.hide"))
+  case window.app.backend
+  of nativeBackend:
+    native.hide(window.nativeWindow).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let hidden = window.app.wslCall("native.window.hide", $(%*{"windowId": $window.windowId}))
+      if hidden.isOk: coreSuccess() else: coreFailure(hidden.failure)
+    else: coreFailure(coreError(platformUnavailable, "window.hide"))
+
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setTitle"))

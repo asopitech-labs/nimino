@@ -844,6 +844,15 @@ proc windowsStartWebView(view: NativeWebView): NativeResult =
     return failure(hresultError("webview.environment", status))
   success()
 
+proc windowsShowWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    discard showWindow(window.platformWindow, SwShow)
+    discard updateWindow(window.platformWindow)
+
+proc windowsHideWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    discard showWindow(window.platformWindow, SwHide)
+
 proc windowsCreateWindow(window: NativeWindow): NativeResult =
   let className = newWideCString(window.app.windowClassName)
   let title = newWideCString(window.title)
