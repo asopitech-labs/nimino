@@ -23,6 +23,8 @@ type
 
 proc newApp*(options: AppOptions): CoreResultOf[App]
 proc newApp*(id = "tech.asopi.nimino"; name = "Nimino"): CoreResultOf[App]
+proc onReady*(app: App; handler: proc()): CoreResult
+proc onExit*(app: App; handler: proc()): CoreResult
 proc newWindow*(app: App, options: CoreWindowOptions): CoreResultOf[Window]
 proc newWindow*(app: App, title = ""; width = 1200; height = 800): CoreResultOf[Window]
 proc setTitle*(window: Window, title: string): CoreResult
@@ -38,6 +40,8 @@ proc run*(app: App): CoreResult
 ```
 
 `CoreError`はnative FFI型を公開せず、`invalidArgument`、`invalidState`、`platformUnavailable`、`nativeFailure`を返す。Windows/Linux facadeはnative App/Window/WebViewを内部所有する。WSL buildではcoreが`nimino-wsl`の公開client APIだけを使い、Windows hostがnative App/Window/WebViewを所有する。hostは配布物で隣接またはPATHへ置く。`NIMINO_WSL_HOST_EXE`は開発・CIの明示上書きであり、通常利用者にplatform指定を要求するものではない。
+
+`onReady`は`run()`がUIイベントループを開始する直前に、`onExit`はネイティブ資源の破棄時に呼び出されます。コールバックの例外はイベントループへ伝播させず、終了処理を継続します。WSLでも同じ順序で通知されます。
 
 ## M3以降のRPC面
 

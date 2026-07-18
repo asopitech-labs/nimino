@@ -160,6 +160,8 @@ type
     nativeApp: native.NativeApp
     quitRequested: bool
     wslUiStarted: bool
+    readyHandler: proc()
+    exitHandler: proc()
     when defined(linux):
       wslClient: WslClient
     windows: seq[Window]
@@ -517,6 +519,18 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
 
 proc newApp*(id = "tech.asopi.nimino"; name = "Nimino"): CoreResultOf[App] =
   newApp(AppOptions(id: id, name: name))
+
+proc onReady*(app: App; handler: proc()): CoreResult =
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.onReady"))
+  app.readyHandler = handler
+  coreSuccess()
+
+proc onExit*(app: App; handler: proc()): CoreResult =
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.onExit"))
+  app.exitHandler = handler
+  coreSuccess()
 
 proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
   if app.isNil or app.state == coreFinished:
@@ -1293,6 +1307,11 @@ proc evalJavaScript*(window: Window; script: string): Future[CoreResultOf[string
 
 proc dispose(app: App)
 
+proc invokeReady(app: App) =
+  if not app.isNil and not app.readyHandler.isNil:
+    try: app.readyHandler()
+    except CatchableError: discard
+
 when defined(linux):
   proc processWslEvent(app: App; event: ProtocolMessage): CoreResultOf[bool] =
     if event.kind == ProtocolMessageKind.request and
@@ -1426,6 +1445,7 @@ when defined(linux):
       return coreFailure(coreError(invalidState, "app.run",
         detail = "a WSL window must load URL or HTML before run"))
     app.state = coreRunning
+    app.invokeReady()
     while true:
       let buffered = app.wslClient.takeEvents()
       for event in buffered:
@@ -1475,9 +1495,15 @@ proc quit*(app: App): CoreResult =
     else:
       coreFailure(coreError(platformUnavailable, "app.quit"))
 
+proc invokeExit(app: App) =
+  if not app.isNil and not app.exitHandler.isNil:
+    try: app.exitHandler()
+    except CatchableError: discard
+
 proc dispose(app: App) =
   if app.isNil:
     return
+  app.invokeExit()
   for window in app.windows:
     window.closed = true
     if window.rpc != nil:
@@ -1506,6 +1532,7 @@ proc run*(app: App): CoreResult =
   if app.nativeApp.isNil:
     return coreFailure(coreError(invalidState, "app.run"))
   app.state = coreRunning
+  app.invokeReady()
   let nativeResult = native.run(app.nativeApp)
   let appResult = nativeResult.fromNative()
   app.dispose()
