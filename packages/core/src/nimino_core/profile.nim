@@ -1,4 +1,4 @@
-import std/[os, strutils]
+import std/[json, os, strutils]
 
 type
   ProfilePathResult* = object
@@ -56,3 +56,45 @@ proc ensureProfileLayout*(appId, profile: string): ProfilePathResult =
     profileSuccess(root.value)
   except OSError:
     profileFailure("unable to create profile storage")
+
+proc validSettingKey(key: string): bool =
+  if key.len == 0 or key in [".", ".."]:
+    return false
+  for character in key:
+    if not (character.isAlphaNumeric or character in {'-', '_', '.'}):
+      return false
+  true
+
+proc profileSettingPath(appId, profile, key: string): ProfilePathResult =
+  if not validSettingKey(key):
+    return profileFailure("setting key contains an unsafe path component")
+  let directory = profileDirectoryPath(appId, profile, settings)
+  if not directory.isOk:
+    return directory
+  profileSuccess(directory.value / (key & ".json"))
+
+proc writeProfileSetting*(appId, profile, key: string;
+                         value: JsonNode): ProfilePathResult =
+  let layout = ensureProfileLayout(appId, profile)
+  if not layout.isOk:
+    return layout
+  let path = profileSettingPath(appId, profile, key)
+  if not path.isOk:
+    return path
+  try:
+    writeFile(path.value, $value)
+    profileSuccess(path.value)
+  except CatchableError:
+    profileFailure("unable to write profile setting")
+
+proc readProfileSetting*(appId, profile, key: string): ProfilePathResult =
+  let path = profileSettingPath(appId, profile, key)
+  if not path.isOk:
+    return path
+  if not fileExists(path.value):
+    return profileFailure("profile setting does not exist")
+  try:
+    discard parseJson(readFile(path.value))
+    profileSuccess(readFile(path.value))
+  except CatchableError:
+    profileFailure("profile setting is not valid JSON")

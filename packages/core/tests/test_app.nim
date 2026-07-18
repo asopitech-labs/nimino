@@ -22,6 +22,14 @@ block profilePathsAreContainedAndSafe:
   for directory in ProfileDirectory:
     doAssert dirExists(storage.value / $directory)
   removeDir(storage.value)
+  let written = writeProfileSetting("tech.asopi.profile-test", "work", "theme",
+    %*{"dark": true})
+  doAssert written.isOk
+  let loaded = readProfileSetting("tech.asopi.profile-test", "work", "theme")
+  doAssert loaded.isOk
+  doAssert parseJson(loaded.value)["dark"].getBool()
+  doAssert not writeProfileSetting("tech.asopi.profile-test", "work", "../escape",
+    newJNull()).isOk
 
 block windowsOwnIndependentRpcAllowLists:
   let created = newApp(id = "tech.asopi.core-test", name = "Core test")
