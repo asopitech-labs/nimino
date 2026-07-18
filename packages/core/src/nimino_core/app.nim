@@ -1059,12 +1059,15 @@ proc inlineWslAssets(root, html: string): string =
     if start < 0: break
     let tagEnd = result.find('>', start)
     if tagEnd < 0: break
-    let srcStart = result.find("src=\"", start)
+    let doubleSrcStart = result.find("src=\"", start)
+    let singleSrcStart = result.find("src='", start)
+    let useSingle = singleSrcStart >= 0 and (doubleSrcStart < 0 or singleSrcStart < doubleSrcStart)
+    let srcStart = if useSingle: singleSrcStart else: doubleSrcStart
     if srcStart < 0 or srcStart > tagEnd:
       cursor = tagEnd + 1
       continue
     let valueStart = srcStart + 5
-    let valueEnd = result.find('"', valueStart)
+    let valueEnd = result.find(if useSingle: '\'' else: '"', valueStart)
     if valueEnd < 0 or valueEnd > tagEnd:
       cursor = tagEnd + 1
       continue
@@ -1085,13 +1088,16 @@ proc inlineWslAssets(root, html: string): string =
     if start < 0: break
     let tagEnd = result.find('>', start)
     if tagEnd < 0: break
-    let hrefStart = result.find("href=\"", start)
+    let doubleHrefStart = result.find("href=\"", start)
+    let singleHrefStart = result.find("href='", start)
+    let useSingle = singleHrefStart >= 0 and (doubleHrefStart < 0 or singleHrefStart < doubleHrefStart)
+    let hrefStart = if useSingle: singleHrefStart else: doubleHrefStart
     if hrefStart < 0 or hrefStart > tagEnd:
       cursor = tagEnd + 1
       continue
     let valueStart = hrefStart + 6
-    let valueEnd = result.find('"', valueStart)
-    let relValue = result.find("rel=\"stylesheet\"", start)
+    let valueEnd = result.find(if useSingle: '\'' else: '"', valueStart)
+    let relValue = result.find(if useSingle: "rel='stylesheet'" else: "rel=\"stylesheet\"", start)
     if valueEnd < 0 or valueEnd > tagEnd or relValue < start or relValue > tagEnd:
       cursor = tagEnd + 1
       continue
