@@ -242,10 +242,11 @@ proc runHost(): int =
     nextEventId: 1,
     nextPolicyRequestId: 1
   )
+  let statePointer = cast[pointer](state)
   state.adapter.policyDecision = proc(request: PolicyRequest): bool =
-    state.requestPolicy(request)
+    cast[HostState](statePointer).requestPolicy(request)
   state.adapter.navigationDecisionHook = proc(webViewId: uint64; url: string): bool =
-    state.requestPolicy(PolicyRequest(kind: navigationPolicy,
+    cast[HostState](statePointer).requestPolicy(PolicyRequest(kind: navigationPolicy,
       webViewId: webViewId, url: url))
   if not state.writeMessage(ProtocolMessage(
     version: ProtocolVersion,
