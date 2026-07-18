@@ -234,7 +234,7 @@ proc runHost(): int =
     stderr.writeLine("nimino-wsl-host: random source is unavailable")
     return 2
 
-  let state = HostState(
+  let state {.cursor.} = HostState(
     adapter: newHostAdapter(),
     input: input.value,
     output: output,
