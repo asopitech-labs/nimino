@@ -154,6 +154,10 @@ const
     data1: 0x15e1c6a3'u32, data2: 0xc72a'u16, data3: 0x4df3'u16,
     data4: [0x91'u8, 0xd7'u8, 0xd0'u8, 0x97'u8, 0xfb'u8, 0xec'u8, 0x6b'u8, 0xfd'u8]
   )
+  IidDownloadStartingEventHandler* = WinGuid(
+    data1: 0xefedc989'u32, data2: 0xc396'u16, data3: 0x41ca'u16,
+    data4: [0x83'u8, 0xf7'u8, 0x07'u8, 0xf8'u8, 0x45'u8, 0xa5'u8, 0x57'u8, 0x24'u8]
+  )
 
 proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
   {.stdcall, importc: "CoInitializeEx", dynlib: "ole32.dll".}
