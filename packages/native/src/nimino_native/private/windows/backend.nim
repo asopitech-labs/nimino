@@ -49,6 +49,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
+  PermissionRequestedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
+
   EnvironmentCompletedHandler = object
     vtable: ptr EnvironmentCompletedVTable
     references: Atomic[int]
@@ -88,6 +94,10 @@ type
     vtable: ptr NewWindowRequestedVTable
     references: Atomic[int]
     view: pointer
+
+  PermissionRequestedHandler = object
+    vtable: ptr PermissionRequestedVTable
+    references: Atomic[int]
 
 proc windowsDisposeWindow(window: NativeWindow)
 proc windowsFail(app: NativeApp; error: NativeError)
@@ -241,6 +251,26 @@ proc newWindowRequestedQueryInterface(self: pointer; iid: ptr WinGuid;
   queryCallback(self, iid, outInstance, IidNewWindowRequestedEventHandler,
     newWindowRequestedAddRef)
 
+proc permissionAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr PermissionRequestedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc permissionRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr PermissionRequestedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0: dealloc(handler)
+  uint32(remaining)
+
+proc permissionQueryInterface(self: pointer; iid: ptr WinGuid;
+                              outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidPermissionRequestedEventHandler,
+    permissionAddRef)
+
+proc permissionInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  if not args.isNil:
+    discard permissionArgsPutState(args, WebView2PermissionStateDeny)
+  S_OK
+
 proc environmentInvoke(self: pointer; errorCode: HResult;
                        environment: pointer): HResult {.stdcall.}
 proc controllerInvoke(self: pointer; errorCode: HResult;
@@ -309,6 +339,18 @@ var newWindowRequestedVTable = NewWindowRequestedVTable(
   release: newWindowRequestedRelease,
   invoke: newWindowRequestedInvoke
 )
+
+var permissionRequestedVTable = PermissionRequestedVTable(
+  queryInterface: permissionQueryInterface,
+  addRef: permissionAddRef,
+  release: permissionRelease,
+  invoke: permissionInvoke
+)
+
+proc newPermissionRequestedHandler(): ptr PermissionRequestedHandler =
+  result = cast[ptr PermissionRequestedHandler](alloc0(sizeof(PermissionRequestedHandler)))
+  result.vtable = addr permissionRequestedVTable
+  result.references.store(1, moRelaxed)
 
 proc newEnvironmentCompletedHandler(view: NativeWebView): ptr EnvironmentCompletedHandler =
   result = cast[ptr EnvironmentCompletedHandler](alloc0(sizeof(EnvironmentCompletedHandler)))
