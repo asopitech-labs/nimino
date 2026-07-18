@@ -632,7 +632,9 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
       let remoteWindow = app.wslCall("native.window.create", $(%*{
         "title": title,
         "width": options.width,
-        "height": options.height
+        "height": options.height,
+        "appId": app.id,
+        "profile": profileName
       }))
       if not remoteWindow.isOk:
         return coreFailureOf[Window](remoteWindow.failure)

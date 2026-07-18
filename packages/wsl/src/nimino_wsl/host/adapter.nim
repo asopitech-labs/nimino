@@ -1,7 +1,7 @@
 ## Host-side M1 command adapter.  It owns the native object table but not the
 ## stdio transport or the Windows UI thread.
 
-import std/[asyncfutures, json, strutils, tables]
+import std/[asyncfutures, json, os, strutils, tables]
 
 import nimino_native except success, successOf, failure, failureOf
 
@@ -173,14 +173,28 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
   let title = payload.requiredString("title")
   let width = payload.requiredPositiveInt("width")
   let height = payload.requiredPositiveInt("height")
+  let appId = payload.requiredString("appId")
+  let profile = payload.requiredString("profile")
   if not title.isOk:
     return failureOf[HostAction](title.failure)
   if not width.isOk:
     return failureOf[HostAction](width.failure)
   if not height.isOk:
     return failureOf[HostAction](height.failure)
+  if not appId.isOk:
+    return failureOf[HostAction](appId.failure)
+  if not profile.isOk:
+    return failureOf[HostAction](profile.failure)
+  if appId.value.len == 0 or profile.value.len == 0 or
+      appId.value.contains("..") or appId.value.contains("/") or appId.value.contains("\\") or
+      profile.value.contains("..") or profile.value.contains("/") or profile.value.contains("\\"):
+    return errorAction("appId/profile contains an unsafe path component")
 
-  let created = adapter.app.newWindow(title.value, width.value, height.value)
+  let localAppData = getEnv("LOCALAPPDATA")
+  if localAppData.len == 0:
+    return errorAction("LOCALAPPDATA is unavailable")
+  let profilePath = localAppData / "Nimino" / "WSL" / appId.value / profile.value
+  let created = adapter.app.newWindow(title.value, width.value, height.value, profilePath)
   if not created.isOk:
     return nativeFailure("native.window.create", created)
 
