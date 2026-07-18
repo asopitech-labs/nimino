@@ -1,4 +1,7 @@
-import std/[os, osproc, streams, strutils, strtabs, sysrand]
+import std/[options, os, osproc, streams, strutils, strtabs, sysrand]
+
+when defined(posix):
+  import std/posix
 
 import ../protocol/[messages, versioning]
 import ./transport
@@ -9,6 +12,43 @@ type
     sessionId*: string
     nextRequestId*: uint64
     events: seq[ProtocolMessage]
+
+when defined(posix):
+  proc readExactly(handle: FileHandle; size: int): ProtocolResultOf[string] =
+    ## Read directly from the child stdout descriptor.  We deliberately avoid
+    ## `Process.outputStream` here: a buffered Stream can retain a following
+    ## frame while `select` reports the descriptor as idle.
+    result = successOf(newString(size))
+    var offset = 0
+    while offset < size:
+      let readCount = posix.read(cint(handle), addr result.value[offset], size - offset)
+      if readCount <= 0:
+        return failureOf[string](protocolError(unexpectedEof,
+          "host stdout ended before frame completed"))
+      offset += readCount
+
+  proc readMessageFromHandle(handle: FileHandle): ProtocolResultOf[ProtocolMessage] =
+    let header = handle.readExactly(4)
+    if not header.isOk:
+      return failureOf[ProtocolMessage](header.failure)
+    let size = (int(byte(header.value[0])) shl 24) or
+      (int(byte(header.value[1])) shl 16) or
+      (int(byte(header.value[2])) shl 8) or int(byte(header.value[3]))
+    if size > MaxFrameBytes:
+      return failureOf[ProtocolMessage](protocolError(frameTooLarge,
+        "frame exceeds maximum size"))
+    let payload = handle.readExactly(size)
+    if not payload.isOk:
+      return failureOf[ProtocolMessage](payload.failure)
+    payload.value.fromJson
+
+proc readHostMessage(client: WslClient): ProtocolResultOf[ProtocolMessage] =
+  if client.isNil or client.process.isNil:
+    return failureOf[ProtocolMessage](protocolError(invalidMessage, "WSL client is closed"))
+  when defined(posix):
+    client.process.outputHandle.readMessageFromHandle()
+  else:
+    client.process.outputStream.readMessageFrom()
 
 proc newAuthenticationToken(): ProtocolResultOf[string] =
   let bytes = urandom(32)
@@ -112,7 +152,7 @@ proc launchHost*(hostExecutable: string; hostArgs: openArray[string] = []):
       osproc.close(process)
       return failureOf[WslClient](written.failure)
 
-    let readyMessage = process.outputStream.readMessageFrom()
+    let readyMessage = client.readHostMessage()
     if not readyMessage.isOk:
       let detail = process.startupFailureDetail()
       osproc.close(process)
@@ -158,7 +198,7 @@ proc receiveNext*(client: WslClient): ProtocolResultOf[ProtocolMessage] =
   ## lifecycle or WebView events.
   if client.isNil or client.process.isNil:
     return failureOf[ProtocolMessage](protocolError(invalidMessage, "WSL client is closed"))
-  let received = client.process.outputStream.readMessageFrom()
+  let received = client.readHostMessage()
   if not received.isOk:
     return failureOf[ProtocolMessage](received.failure)
   let message = received.value
@@ -169,6 +209,46 @@ proc receiveNext*(client: WslClient): ProtocolResultOf[ProtocolMessage] =
   if message.authenticationToken.len != 0:
     return failureOf[ProtocolMessage](protocolError(authenticationFailed, "host returned authentication material"))
   successOf(message)
+
+proc receiveNextWithin*(client: WslClient; timeoutMs: int):
+    ProtocolResultOf[Option[ProtocolMessage]] =
+  ## Wait for at most `timeoutMs` for one host frame.  The WSL core loop uses
+  ## this to advance RPC deadlines even while the Windows host has no events.
+  if client.isNil or client.process.isNil:
+    return failureOf[Option[ProtocolMessage]](
+      protocolError(invalidMessage, "WSL client is closed"))
+  if timeoutMs < 0:
+    return failureOf[Option[ProtocolMessage]](
+      protocolError(invalidMessage, "timeout must not be negative"))
+
+  when defined(posix):
+    let handle = cint(client.process.outputHandle)
+    var readable: TFdSet
+    FD_ZERO(readable)
+    FD_SET(handle, readable)
+    var timeout = Timeval(
+      tv_sec: Time(timeoutMs div 1_000),
+      tv_usec: Suseconds((timeoutMs mod 1_000) * 1_000)
+    )
+    let selected = posix.select(handle + 1, addr readable, nil, nil, addr timeout)
+    if selected < 0:
+      return failureOf[Option[ProtocolMessage]](
+        protocolError(invalidFrame, "unable to poll Windows host output"))
+    if selected == 0:
+      return successOf(none(ProtocolMessage))
+    let received = client.receiveNext()
+    if not received.isOk:
+      return failureOf[Option[ProtocolMessage]](received.failure)
+    successOf(some(received.value))
+  else:
+    ## The adapter is only selected on Linux/WSL.  Keep a conservative
+    ## fallback for callers that compile this module for another platform.
+    if timeoutMs == 0:
+      return successOf(none(ProtocolMessage))
+    let received = client.receiveNext()
+    if not received.isOk:
+      return failureOf[Option[ProtocolMessage]](received.failure)
+    successOf(some(received.value))
 
 proc receiveResponse*(client: WslClient; requestId: uint64): ProtocolResultOf[ProtocolMessage] =
   if client.isNil or client.process.isNil:

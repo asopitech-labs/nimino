@@ -1,6 +1,6 @@
 # ADR-0006: M3 RPC registryはUI threadの明示tickでFutureを回収する
 
-- 状態: Proposed
+- 状態: Accepted
 - 日付: 2026-07-17
 
 ## 文脈
@@ -15,15 +15,14 @@ RPC handlerはNim `Future`で非同期完了でき、request IDごとにtimeout/
 2. deadline超過requestをtimeout responseへ変換して除去する。
 3. cancel済みrequestやtimeout済みrequestの遅延完了を無視する。
 
-registry自身はGUIを知らず、App/Window integrationがWindows timerおよびLinux GLib sourceからtickを呼ぶ。WSL hostも既存Win32 timerで同じ責務を持つ。callback内で同期的にFutureを待たず、別のasync event loopを作らない。
+registry自身はGUIを知らず、App/Window integrationがWindows timerおよびLinux GLib sourceからtickを呼ぶ。WSL hostも既存Win32 timerで同じ責務を持つ。WSL clientはchild stdoutをバッファなしのPOSIX file descriptorで読み、最大10msの`select`待機後にもtickを呼ぶ。これにより、Streamの先読みバッファとpollの不整合を避け、host eventが来ない間にもdeadlineを進める。callback内で同期的にFutureを待たず、別のasync event loopを作らない。
 
 ## 実装状況と未完了の受入条件
 
-LinuxではGLib timeout source（10ms）から`tick()`を実行し、core facadeを通じた実WebViewの同期request/response/notification往復、通知で完了するFuture、timeout responseを確認済みである。Windowsは同じtimer接続をx64クロスコンパイル済みだが、WebView2 Runtime上の実行は未確認である。WSLではcoreがhost eventをWindow registryへ渡し、responseをhost評価requestへ中継することを認証済みfake hostで確認済みだが、実WebView2 Runtimeは未確認である。
+LinuxではGLib timeout source（10ms）から`tick()`を実行し、core facadeを通じた実WebViewの同期request/response/notification往復、通知で完了するFuture、timeout responseを確認済みである。Windowsは同じtimer接続をx64クロスコンパイル済みだが、通常Windows coreのRuntime実行は未確認である。WSLではcoreがhost eventをWindow registryへ渡し、responseをhost評価requestへ中継することを認証済みfake hostとWindows WebView2 Runtimeで確認済みである。
 
-- Windows UI loopでasync responseとtimeoutを実行確認する。
 - Window close時にpending requestをcancelし、遅延Futureがresponseを送らないことを確認する。
 - WSLのclient/host異常終了時にもrequest tableとnative resourceを解放する。
 - `tick()`の頻度、timeout精度、UI負荷を記録する。
 
-このADRがAcceptedになるまで、Windows/Linuxの同期RPC接続だけを実装済みとして扱い、async timeoutとWSL透過RPCは実装済みとは扱わない。
+この決定はWSL経路のasync timeoutを実装済みとするが、Window close時のcancelと通常Windows coreのRuntime検証を完了済みとは扱わない。

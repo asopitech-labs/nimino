@@ -37,6 +37,21 @@ block rejectsUnknownObjectsAndLateMutation:
   let denied = adapter.handleRequest(requestMessage("forbidden", "{}"))
   doAssert not denied.isOk
 
+block updatesWindowTitleAndSize:
+  let adapter = newHostAdapter()
+  let window = adapter.handleRequest(requestMessage("native.window.create",
+    "{\"title\":\"Initial\",\"width\":320,\"height\":200}"))
+  doAssert window.isOk
+  let windowId = parseJson(window.value.payload)["windowId"].getStr()
+
+  let title = adapter.handleRequest(requestMessage("native.window.setTitle",
+    $(%*{"windowId": windowId, "title": "Updated"})))
+  doAssert title.isOk
+
+  let size = adapter.handleRequest(requestMessage("native.window.setSize",
+    $(%*{"windowId": windowId, "width": 640, "height": 480})))
+  doAssert size.isOk
+
 block shutdownDoesNotNeedPayload:
   let adapter = newHostAdapter()
   let stopped = adapter.handleRequest(requestMessage("app.shutdown", ""))
@@ -63,3 +78,8 @@ block htmlLoadStartsTheUiLoop:
   doAssert evaluated.isOk
   doAssert evaluated.value.kind == deferredResponse
   doAssert not evaluated.value.evaluation.finished
+
+  let navigated = adapter.handleRequest(requestMessage("native.webview.loadUrl",
+    $(%*{"webViewId": webViewId, "url": "about:blank"})))
+  doAssert navigated.isOk
+  doAssert navigated.value.kind == noHostAction

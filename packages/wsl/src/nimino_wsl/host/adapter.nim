@@ -131,6 +131,37 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
   adapter.windowViewCounts[windowId] = 0
   successOf(HostAction(kind: noHostAction, payload: encodedId("windowId", windowId)))
 
+proc handleWindowSetTitle(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  let title = payload.requiredString("title")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not title.isOk:
+    return failureOf[HostAction](title.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  let updated = adapter.windows[windowId.value].setTitle(title.value)
+  if not updated.isOk:
+    return nativeFailure("native.window.setTitle", updated)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
+proc handleWindowSetSize(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  let width = payload.requiredPositiveInt("width")
+  let height = payload.requiredPositiveInt("height")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not width.isOk:
+    return failureOf[HostAction](width.failure)
+  if not height.isOk:
+    return failureOf[HostAction](height.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  let updated = adapter.windows[windowId.value].setSize(width.value, height.value)
+  if not updated.isOk:
+    return nativeFailure("native.window.setSize", updated)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
   if adapter.uiStartRequested:
     return errorAction("webview creation is closed after the UI loop starts")
@@ -241,8 +272,6 @@ proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;
     return failureOf[HostAction](content.failure)
   if not adapter.webViews.hasKey(webViewId.value):
     return errorAction("unknown webViewId")
-  if adapter.uiStartRequested:
-    return errorAction("content loading is closed after the UI loop starts")
   if not adapter.allWindowsHaveViews():
     return errorAction("every window must have a WebView before the UI loop starts")
 
@@ -254,6 +283,8 @@ proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;
   if not loaded.isOk:
     return nativeFailure(operation, loaded)
 
+  if adapter.uiStartRequested:
+    return successOf(HostAction(kind: noHostAction, payload: "{}"))
   adapter.uiStartRequested = true
   successOf(HostAction(kind: startUiLoop, payload: "{}"))
 
@@ -290,6 +321,10 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
   case message.methodName
   of "native.window.create":
     adapter.handleWindowCreate(payload.value)
+  of "native.window.setTitle":
+    adapter.handleWindowSetTitle(payload.value)
+  of "native.window.setSize":
+    adapter.handleWindowSetSize(payload.value)
   of "native.webview.create":
     adapter.handleWebViewCreate(payload.value)
   of "native.webview.loadUrl":

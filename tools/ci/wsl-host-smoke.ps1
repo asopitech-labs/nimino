@@ -94,6 +94,23 @@ function Wait-ForNavigationCompleted([string]$webViewId) {
   throw "WebView did not emit a successful navigation-completed event"
 }
 
+function Wait-ForWebMessage([string]$webViewId, [string]$expectedMessage) {
+  for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    $message = Read-Frame
+    if ($message.kind -eq "event" -and $message.method -eq "native.webview.error") {
+      throw "WebView reported an error: $($message.error)"
+    }
+    if ($message.kind -ne "event" -or $message.method -ne "native.webview.message") {
+      continue
+    }
+    $payload = $message.payload | ConvertFrom-Json
+    if ($payload.webViewId -eq $webViewId -and $payload.message -eq $expectedMessage) {
+      return
+    }
+  }
+  throw "WebView did not emit the expected message"
+}
+
 try {
   $script:smokePhase = "handshake"
   Write-Frame @{
@@ -165,13 +182,85 @@ try {
     throw "WebView JavaScript result did not match the loaded document title"
   }
 
+  $script:smokePhase = "native window title"
+  Write-Frame @{
+    version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+    requestId = "6"; eventId = "0"; method = "native.window.setTitle"
+    payload = (ConvertTo-Json -Compress @{ windowId = $windowId; title = "Nimino Window Updated" })
+    error = ""; timeoutMs = 5000
+  }
+  $titleResponse = Read-Frame
+  if ($titleResponse.kind -ne "response" -or $titleResponse.requestId -ne "6" -or
+      -not [string]::IsNullOrEmpty($titleResponse.error)) {
+    throw "Host did not update the native window title"
+  }
+
+  $script:smokePhase = "native window resize"
+  Write-Frame @{
+    version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+    requestId = "7"; eventId = "0"; method = "native.window.setSize"
+    payload = (ConvertTo-Json -Compress @{ windowId = $windowId; width = 1000; height = 700 })
+    error = ""; timeoutMs = 5000
+  }
+  $sizeResponse = Read-Frame
+  if ($sizeResponse.kind -ne "response" -or $sizeResponse.requestId -ne "7" -or
+      -not [string]::IsNullOrEmpty($sizeResponse.error)) {
+    throw "Host did not resize the native window"
+  }
+
+  $script:smokePhase = "resized viewport evaluation"
+  Write-Frame @{
+    version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+    requestId = "8"; eventId = "0"; method = "native.webview.evalJavaScript"
+    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "JSON.stringify({ width: innerWidth, height: innerHeight })" })
+    error = ""; timeoutMs = 5000
+  }
+  $viewportEvaluation = Read-Frame
+  if ($viewportEvaluation.kind -ne "response" -or $viewportEvaluation.requestId -ne "8" -or
+      -not [string]::IsNullOrEmpty($viewportEvaluation.error)) {
+    throw "Host did not evaluate the resized WebView viewport"
+  }
+  $viewport = (($viewportEvaluation.payload | ConvertFrom-Json).result | ConvertFrom-Json) | ConvertFrom-Json
+  if ($viewport.width -le 0 -or $viewport.height -le 0) {
+    throw "WebView viewport was not available after native window resize"
+  }
+
+  $script:smokePhase = "URL loading"
+  Write-Frame @{
+    version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+    requestId = "9"; eventId = "0"; method = "native.webview.loadUrl"
+    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; url = "about:blank" })
+    error = ""; timeoutMs = 5000
+  }
+  $urlResponse = Read-Frame
+  if ($urlResponse.kind -ne "response" -or $urlResponse.requestId -ne "9" -or
+      -not [string]::IsNullOrEmpty($urlResponse.error)) {
+    throw "Host did not start WebView URL loading"
+  }
+  $script:smokePhase = "URL navigation completion"
+  Wait-ForNavigationCompleted $webViewId
+
+  $script:smokePhase = "WebView message"
+  Write-Frame @{
+    version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+    requestId = "10"; eventId = "0"; method = "native.webview.evalJavaScript"
+    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "chrome.webview.postMessage('nimino-native-message')" })
+    error = ""; timeoutMs = 5000
+  }
+  $messageEvaluation = Read-Frame
+  if ($messageEvaluation.kind -ne "response" -or $messageEvaluation.requestId -ne "10" -or
+      -not [string]::IsNullOrEmpty($messageEvaluation.error)) {
+    throw "Host did not execute the WebView message script"
+  }
+  Wait-ForWebMessage $webViewId "nimino-native-message"
+
   $script:smokePhase = "shutdown"
   Write-Frame @{
     version = 1; kind = "shutdown"; sessionId = $ready.sessionId; authenticationToken = ""
-    requestId = "6"; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000
+    requestId = "11"; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000
   }
   $response = Read-Frame
-  if ($response.kind -ne "response" -or $response.requestId -ne "6" -or
+  if ($response.kind -ne "response" -or $response.requestId -ne "11" -or
       $response.sessionId -ne $ready.sessionId -or -not [string]::IsNullOrEmpty($response.error)) {
     throw "Host did not acknowledge shutdown"
   }

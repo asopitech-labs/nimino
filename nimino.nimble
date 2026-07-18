@@ -13,6 +13,9 @@ task test, "Run Nimino unit tests in ARC mode":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-core-fake-host-nimcache --out:/tmp/nimino-wsl-core-fake-host --path:packages/wsl packages/wsl/tests/fake_core_host.nim"
   exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-test-wsl-core-adapter-nimcache --out:/tmp/nimino-test-wsl-core-adapter --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_wsl_core_adapter.nim"
   exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-wsl-core-adapter /tmp/nimino-wsl-core-fake-host"
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-core-async-fake-host-nimcache --out:/tmp/nimino-wsl-core-async-fake-host --path:packages/wsl packages/wsl/tests/fake_core_async_host.nim"
+  exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-test-wsl-core-async-adapter-nimcache --out:/tmp/nimino-test-wsl-core-async-adapter --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_wsl_core_async_adapter.nim"
+  exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-wsl-core-async-adapter /tmp/nimino-wsl-core-async-fake-host"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-nimcache --out:/tmp/nimino-test-protocol --path:packages/wsl --path:packages/native packages/wsl/tests/test_protocol.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-launcher-nimcache --out:/tmp/nimino-test-launcher --path:packages/wsl --path:packages/native packages/wsl/tests/test_launcher.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-test-host-adapter --path:packages/wsl --path:packages/native packages/wsl/tests/test_host_adapter.nim"
@@ -55,3 +58,7 @@ task buildWslClientArtifact, "Build a disposable WSL client smoke-test artifact"
 task buildWslCoreClientArtifact, "Build a disposable WSL core adapter smoke-test artifact":
   exec "mkdir -p /workspace/.tmp"
   exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-core-client-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-core-client-smoke --path:packages/core --path:packages/wsl --path:packages/native tools/ci/wsl_core_client_smoke.nim"
+
+task buildWslCoreRpcAsyncClientArtifact, "Build a disposable WSL core async RPC smoke-test artifact":
+  exec "mkdir -p /workspace/.tmp"
+  exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-core-rpc-async-client-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-core-rpc-async-client-smoke --path:packages/core --path:packages/wsl --path:packages/native tools/ci/wsl_core_rpc_async_client_smoke.nim"

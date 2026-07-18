@@ -101,6 +101,9 @@ const
   CwUseDefault* = -2147483648'i32
   WsOverlappedWindow* = 0x00CF0000'u32
   SwShow* = 5'i32
+  SwpNoSize* = 0x0001'u32
+  SwpNoMove* = 0x0002'u32
+  SwpNoZOrder* = 0x0004'u32
 
   WmSize* = 0x0005'u32
   WmDestroy* = 0x0002'u32
@@ -180,6 +183,8 @@ proc getWindowLongPtrW*(window: HWND; index: int32): int
   {.stdcall, importc: "GetWindowLongPtrW", dynlib: "user32.dll".}
 proc setWindowTextW*(window: HWND; text: WideCString): WinBool
   {.stdcall, importc: "SetWindowTextW", dynlib: "user32.dll".}
+proc setWindowPos*(window, insertAfter: HWND; x, y, width, height: int32; flags: uint32): WinBool
+  {.stdcall, importc: "SetWindowPos", dynlib: "user32.dll".}
 proc showWindow*(window: HWND; command: int32): WinBool
   {.stdcall, importc: "ShowWindow", dynlib: "user32.dll".}
 proc updateWindow*(window: HWND): WinBool

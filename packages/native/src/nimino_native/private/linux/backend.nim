@@ -3,6 +3,11 @@ proc linuxSetTitle(window: NativeWindow) =
     let title = window.title
     gtk_window_set_title(cast[ptr GtkWindow](window.platformWindow), cstring(title))
 
+proc linuxSetSize(window: NativeWindow) =
+  if window.platformWindow != nil:
+    gtk_window_set_default_size(cast[ptr GtkWindow](window.platformWindow),
+      cint(window.width), cint(window.height))
+
 proc linuxLoadUrl(view: NativeWebView) =
   if view.platformView != nil and view.pendingUrl.len > 0:
     let url = view.pendingUrl

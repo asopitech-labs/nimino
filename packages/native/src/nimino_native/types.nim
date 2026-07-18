@@ -262,6 +262,21 @@ proc setTitle*(window: NativeWindow; title: string): NativeResult =
   else:
     return success()
 
+proc setSize*(window: NativeWindow; width, height: int): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.setSize"))
+  if width <= 0 or height <= 0 or width > int(high(int32)) or height > int(high(int32)):
+    return failure(nativeError(invalidState, "window.setSize", detail = "size must be positive"))
+  window.width = width
+  window.height = height
+  when defined(linux) and not defined(niminoWsl):
+    linuxSetSize(window)
+    return success()
+  elif defined(windows):
+    return windowsSetSize(window)
+  else:
+    return success()
+
 proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.loadUrl"))

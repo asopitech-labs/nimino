@@ -3,7 +3,7 @@
 import std/[asyncfutures, strutils]
 
 when defined(linux):
-  import std/[json, os]
+  import std/[json, options, os]
   import nimino_wsl
 
 import nimino_native as native
@@ -155,6 +155,8 @@ proc isWslEnvironment(): bool =
     false
 
 when defined(linux):
+  const WslRpcPollIntervalMs = 10
+
   proc mapProtocolError(operation: string; error: ProtocolError): CoreError =
     let kind = case error.kind
       of invalidMessage, invalidFrame, unexpectedEof, frameTooLarge: nativeFailure
@@ -343,6 +345,52 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
 proc newWindow*(app: App; title = ""; width = 1200; height = 800): CoreResultOf[Window] =
   app.newWindow(CoreWindowOptions(title: title, width: width, height: height))
 
+proc setTitle*(window: Window; title: string): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setTitle"))
+  case window.app.backend
+  of nativeBackend:
+    if window.nativeWindow.isNil:
+      return coreFailure(coreError(invalidState, "window.setTitle"))
+    native.setTitle(window.nativeWindow, title).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let updated = window.app.wslCall("native.window.setTitle", $(%*{
+        "windowId": $window.windowId,
+        "title": title
+      }))
+      if updated.isOk:
+        coreSuccess()
+      else:
+        coreFailure(updated.failure)
+    else:
+      coreFailure(coreError(platformUnavailable, "window.setTitle"))
+
+proc setSize*(window: Window; width, height: int): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setSize"))
+  if width <= 0 or height <= 0:
+    return coreFailure(coreError(invalidArgument, "window.setSize",
+      detail = "size must be positive"))
+  case window.app.backend
+  of nativeBackend:
+    if window.nativeWindow.isNil:
+      return coreFailure(coreError(invalidState, "window.setSize"))
+    native.setSize(window.nativeWindow, width, height).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let updated = window.app.wslCall("native.window.setSize", $(%*{
+        "windowId": $window.windowId,
+        "width": width,
+        "height": height
+      }))
+      if updated.isOk:
+        coreSuccess()
+      else:
+        coreFailure(updated.failure)
+    else:
+      coreFailure(coreError(platformUnavailable, "window.setSize"))
+
 proc loadUrl*(window: Window; url: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.loadUrl"))
@@ -503,17 +551,24 @@ when defined(linux):
         if handled.value:
           app.dispose()
           return coreSuccess()
-      let received = app.wslClient.receiveNext()
+      ## Do not block indefinitely in the host transport.  A pending Nim RPC
+      ## Future has an independent deadline and must expire even when WebView2
+      ## has no subsequent event to wake this loop.
+      let received = app.wslClient.receiveNextWithin(WslRpcPollIntervalMs)
       if not received.isOk:
         app.dispose()
         return coreFailure(mapProtocolError("app.run", received.failure))
-      let handled = app.processWslEvent(received.value)
-      if not handled.isOk:
-        app.dispose()
-        return coreFailure(handled.failure)
-      if handled.value:
-        app.dispose()
-        return coreSuccess()
+      if received.value.isSome:
+        let handled = app.processWslEvent(received.value.get())
+        if not handled.isOk:
+          app.dispose()
+          return coreFailure(handled.failure)
+        if handled.value:
+          app.dispose()
+          return coreSuccess()
+      for window in app.windows:
+        if not window.closed:
+          window.rpc.tick()
 
 proc quit*(app: App): CoreResult =
   if app.isNil or app.state == coreFinished:

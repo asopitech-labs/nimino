@@ -45,15 +45,13 @@ callbackApp = cast[pointer](app)
 doAssert app.setIdleHandler(receiveIdle).isOk
 let window = app.newWindow("Nimino Linux smoke", 320, 200)
 doAssert window.isOk
+doAssert window.value.setSize(640, 480).isOk
 let view = window.value.newWebView()
 doAssert view.isOk
 doAssert view.value.onMessage(receiveMessage).isOk
 doAssert view.value.onNavigationStarting(receiveNavigationStarting).isOk
 doAssert view.value.onNavigationCompleted(receiveNavigationCompleted).isOk
-doAssert view.value.loadHtml("""
-<main>Nimino Linux smoke</main>
-<script>window.webkit.messageHandlers.nimino.postMessage('Nimino Linux message')</script>
-""").isOk
+doAssert view.value.loadUrl("data:text/html,%3Cmain%3ENimino%20Linux%20smoke%3C/main%3E%3Cscript%3Ewindow.webkit.messageHandlers.nimino.postMessage(%27Nimino%20Linux%20message%27)%3C/script%3E").isOk
 
 let evaluated = view.value.evalJavaScript("'Nimino Linux eval'")
 evaluated.addCallback(completeEvaluation)

@@ -490,6 +490,14 @@ proc windowsSetTitle(window: NativeWindow): NativeResult =
     return failure(windowsError("window.setTitle", getLastError()))
   success()
 
+proc windowsSetSize(window: NativeWindow): NativeResult =
+  if window.platformWindow == nil:
+    return success()
+  if setWindowPos(window.platformWindow, nil, 0, 0, int32(window.width),
+      int32(window.height), SwpNoMove or SwpNoZOrder) == 0:
+    return failure(windowsError("window.setSize", getLastError()))
+  success()
+
 proc windowsLoadUrl(view: NativeWebView): NativeResult =
   if view.platformView == nil:
     return success()

@@ -1,6 +1,6 @@
 # Nimino Architecture
 
-**状態: M0完了、M1実装、M2（JavaScript評価・文字列message・ナビゲーション開始/完了・基本エラー通知・新規Window拒否）とM3 Windows/Linux facade・RPC、WSL core adapterを部分実装中（2026-07-17）**
+**状態: M0/M1完了、M2（JavaScript評価・文字列message・ナビゲーション開始/完了・基本エラー通知・新規Window拒否）とM3 Windows/Linux facade・RPC、WSL core adapterを部分実装中（2026-07-18）**
 
 Niminoは、NimアプリケーションがOS固有のWindow、WebView、またはWSL通信を直接意識せずにWeb UIを構築できるようにするモノレポです。レンダリングエンジンや汎用WebViewラッパーは実装・導入しません。
 
@@ -31,9 +31,9 @@ URL / manifest -- nimino-pack -- nimino-core public API -- nimino-native
 
 | ターゲット | Window/WebView | M0の決定 | M1状態 |
 | --- | --- | --- | --- |
-| Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2とM3 core facadeをx64クロスコンパイル済み。Loader/Runtime不足のため実GUI未検証 |
+| Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2とM3 core facadeをx64クロスコンパイル済み。導入済みRuntimeを使うWSL hostでWindow/WebView、HTML/URL、title/resize、評価/messageを実行済み。通常Windows GUI CIは未整備 |
 | Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1/M2評価/message/navigation開始/完了/errorとM3 RPC同期往復をXvfb実行済み |
-| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client/core setup smoke済み。M3 core adapterは`-d:niminoWsl`でLinux GUI FFIを除外し、hostを自動選択する。実WebView2 Runtimeは未確認 |
+| WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client/core setup smoke済み。M3 core adapterは`-d:niminoWsl`でLinux GUI FFIを除外し、hostを自動選択する。Windows WebView2 Runtime上のasync RPC/timeoutも実行済み |
 | macOS | Cocoa + WKWebView | 将来のprivate backendのみ。共通APIへ固有要件を入れない | 対象外 |
 
 ## 公開面とエラー
@@ -89,7 +89,7 @@ NativeApp (明示 close)
 
 ## リポジトリ配置
 
-M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registry、WSL client adapterを追加しています。WSL adapterはM1 setupとfake host RPC relayを確認済みですが、実WebView2 Runtime上の読込/評価、async timeout、型抽出macro、プロファイルは未実装です。`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
+M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registry、WSL client adapterを追加しています。WSL adapterはM1 setup、fake host RPC relay、実WebView2 Runtime上の読込/評価、async response/timeoutを確認済みです。型抽出macro、プロファイルは未実装です。`pack`は、実用機能を偽装する空実装を避けるためまだ作成していません。最終配置は次です。
 
 ```text
 packages/
