@@ -29,6 +29,9 @@ block capabilitiesAreExplicit:
   let available: CapabilitySet = {multipleWebViews}
   doAssert available.supports(multipleWebViews)
   doAssert not available.supports(systemTray)
+  let app = newNativeApp()
+  doAssert app.supports(webPermissionEvents)
+  doAssert not app.supports(multipleWebViews)
 
 block windowAndViewRemainSeparate:
   let app = newNativeApp()

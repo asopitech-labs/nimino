@@ -242,7 +242,7 @@ elif defined(windows):
 proc newNativeApp*(): NativeApp =
   new(result)
   result.state = created
-  result.capabilities = {}
+  result.capabilities = {webPermissionEvents}
 
 proc supports*(app: NativeApp; capability: Capability): bool {.inline.} =
   app.capabilities.supports(capability)
