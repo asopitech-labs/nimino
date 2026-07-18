@@ -38,8 +38,8 @@ task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "mkdir -p /tmp/nimino-pack-cli-test && printf 'name = \"Demo\"\\nid = \"app.nimino.demo\"\\nurl = \"https://example.com\"\\n' > /tmp/nimino-pack-cli-test/input.toml && printf '#!/bin/sh\\n' > /tmp/nimino-pack-cli-test/host"
   exec "/tmp/nimino pack /tmp/nimino-pack-cli-test/input.toml --out /tmp/nimino-pack-cli-test/out --host /tmp/nimino-pack-cli-test/host"
   exec "test -s /tmp/nimino-pack-cli-test/out/nimino-manifest.json && test -x /tmp/nimino-pack-cli-test/out/run-nimino.sh && test -s /tmp/nimino-pack-cli-test/out/run-nimino.cmd && test -s /tmp/nimino-pack-cli-test/out/nimino.desktop && test -s /tmp/nimino-pack-cli-test/out/install-windows.ps1 && test -s /tmp/nimino-pack-cli-test/out/host"
-  exec "/tmp/nimino pack https://example.com --name DemoUrl --id app.nimino.demo-url --out /tmp/nimino-pack-cli-test/url-out"
-  exec "grep -q 'DemoUrl' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json && grep -q 'https://example.com' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json"
+  exec "/tmp/nimino pack https://example.com --name DemoUrl --id app.nimino.demo-url --icon https://example.com/icon.png --out /tmp/nimino-pack-cli-test/url-out"
+  exec "grep -q 'DemoUrl' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json && grep -q 'https://example.com' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json && grep -q 'icon.png' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json"
 
 task testPackArchive, "Verify Linux and Windows pack archives":
   exec "tar -czf /tmp/nimino-pack-cli-test/nimino-demo-linux.tar.gz -C /tmp/nimino-pack-cli-test/out ."

@@ -26,6 +26,7 @@ type
     name*: string
     id*: string
     url*: string
+    icon*: string
     profile*: string
     window*: PackWindowOptions
     navigationAllow*: seq[string]
@@ -119,6 +120,7 @@ proc parse*(text: string): PackResult[PackManifest] =
       of "name": manifest.name = unquote(value)
       of "id": manifest.id = unquote(value)
       of "url": manifest.url = unquote(value)
+      of "icon": manifest.icon = unquote(value)
       of "profile": manifest.profile = unquote(value)
       else: return failure[PackManifest](invalidManifest, "unknown root key: " & key)
     of "window":

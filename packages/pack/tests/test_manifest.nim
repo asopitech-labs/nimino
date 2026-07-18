@@ -4,6 +4,7 @@ let parsed = parse("""
 name = "Discord"
 id = "app.nimino.discord"
 url = "https://discord.com/app"
+icon = "https://discord.com/icon.png"
 profile = "default"
 
 [window]
@@ -24,6 +25,7 @@ javascript = ["custom.js"]
 """)
 doAssert parsed.isOk
 doAssert parsed.value.name == "Discord"
+doAssert parsed.value.icon == "https://discord.com/icon.png"
 doAssert parsed.value.window.width == 1280
 doAssert parsed.value.navigationAllow.len == 2
 doAssert parsed.value.permissionsAllow == @["microphone", "notifications"]

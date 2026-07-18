@@ -8,6 +8,7 @@ URLを直接指定して包装できます。
 nimino pack https://discord.com/app \
   --name Discord \
   --id app.nimino.discord \
+  --icon https://discord.com/icon.png \
   --out dist/discord \
   --host nimino-host
 ```
@@ -18,6 +19,6 @@ nimino pack https://discord.com/app \
 nimino pack discord.toml --out dist/discord --host nimino-host
 ```
 
-`--out`を省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`が必須で、Window設定・ナビゲーション・権限・注入設定はマニフェスト形式で指定します。
+`--out`を省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`が必須です。`--icon`は任意のアイコンURLまたはパスとして生成マニフェストへ保存します。Window設定・ナビゲーション・権限・注入設定はマニフェスト形式で指定します。
 
 PakeのCLI包装フローを参考にしているが、生成物はNimino hostと`nimino-core`を使用し、Pake/Tauriを実行時依存にしません。

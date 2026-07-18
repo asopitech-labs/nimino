@@ -12,6 +12,7 @@ proc manifestJson(manifest: PackManifest): JsonNode =
     "name": manifest.name,
     "id": manifest.id,
     "url": manifest.url,
+    "icon": manifest.icon,
     "profile": manifest.profile,
     "window": {
       "width": manifest.window.width,
@@ -37,6 +38,7 @@ if source.startsWith("http://") or source.startsWith("https://"):
   var name = ""
   var id = ""
   var profile = "default"
+  var icon = ""
   var index = 3
   while index <= paramCount():
     if index == paramCount():
@@ -47,6 +49,7 @@ if source.startsWith("http://") or source.startsWith("https://"):
     of "--name": name = value
     of "--id": id = value
     of "--profile": profile = value
+    of "--icon": icon = value
     of "--out", "--host": index += 1
     else: usage()
     index += 2
@@ -56,6 +59,7 @@ if source.startsWith("http://") or source.startsWith("https://"):
     name: name,
     id: id,
     url: source,
+    icon: icon,
     profile: profile,
     window: PackWindowOptions(width: 1200, height: 800, resizable: true)))
 else:
@@ -72,7 +76,7 @@ while index <= paramCount():
   case paramStr(index)
   of "--out": outputDirectory = paramStr(index + 1)
   of "--host": hostPath = paramStr(index + 1)
-  of "--name", "--id", "--profile":
+  of "--name", "--id", "--profile", "--icon":
     if not (source.startsWith("http://") or source.startsWith("https://")): usage()
   else: usage()
   index += 2
