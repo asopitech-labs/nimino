@@ -114,3 +114,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 `setNavigationRules`はallow/denyの宣言的URL ruleを設定します。denyが優先され、
 設定後に未一致のURLは拒否します。nativeはUI callback内で同期評価し、WSLはUI loop
 開始前にhostへruleを同期します。任意のWSL側callbackをUI callbackで待つ方式ではありません。
+
+`window.close()`はWindow単位でネイティブWindowを破棄し、Window専用RPCを終了します。
+WSLでは認証済みIPCでWindows hostへ中継します。close後の操作と二重closeは
+`invalidState`になります。
