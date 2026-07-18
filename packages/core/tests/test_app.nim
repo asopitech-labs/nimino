@@ -17,6 +17,11 @@ block profilePathsAreContainedAndSafe:
   doAssert profile.value.endsWith("nimino" / "tech.asopi.example" / "work")
   doAssert not profilePath("../escape", "work").isOk
   doAssert not profilePath("tech.asopi.example", "../escape").isOk
+  let storage = ensureProfileLayout("tech.asopi.profile-test", "work")
+  doAssert storage.isOk
+  for directory in ProfileDirectory:
+    doAssert dirExists(storage.value / $directory)
+  removeDir(storage.value)
 
 block windowsOwnIndependentRpcAllowLists:
   let created = newApp(id = "tech.asopi.core-test", name = "Core test")

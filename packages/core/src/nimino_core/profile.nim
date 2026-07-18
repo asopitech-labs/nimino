@@ -8,6 +8,14 @@ type
     of false:
       error*: string
 
+  ProfileDirectory* = enum
+    cookies
+    localStorage
+    cache
+    permissions
+    downloads
+    settings
+
 proc profileSuccess(value: string): ProfilePathResult {.inline.} =
   ProfilePathResult(isOk: true, value: value)
 
@@ -29,3 +37,22 @@ proc profilePath*(appId, profile: string): ProfilePathResult =
     return profileFailure("profile name contains an unsafe path component")
   let root = getConfigDir() / "nimino"
   profileSuccess(root / appId / profile)
+
+proc profileDirectoryPath*(appId, profile: string;
+                           directory: ProfileDirectory): ProfilePathResult =
+  let root = profilePath(appId, profile)
+  if not root.isOk:
+    return root
+  profileSuccess(root.value / $directory)
+
+proc ensureProfileLayout*(appId, profile: string): ProfilePathResult =
+  ## Create the complete persistent profile layout in an idempotent manner.
+  let root = profilePath(appId, profile)
+  if not root.isOk:
+    return root
+  try:
+    for directory in ProfileDirectory:
+      createDir(root.value / $directory)
+    profileSuccess(root.value)
+  except OSError:
+    profileFailure("unable to create profile storage")
