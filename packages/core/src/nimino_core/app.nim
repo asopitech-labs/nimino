@@ -197,6 +197,7 @@ type
     navigationCompletedHandler*: proc(url: string; succeeded: bool)
     externalNavigationHandler*: proc(request: NavigationRequest)
     newWindowHandler*: proc(request: NewWindowRequest): bool
+    closeRequestedHandler*: proc(): bool
     errorHandler*: proc(error: WindowError)
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
@@ -488,6 +489,15 @@ proc configureWindow(window: Window): CoreResult =
         except CatchableError: discard)
   if not completionConfigured.isOk:
     return coreFailure(completionConfigured.failure.mapNativeError())
+
+  let closeConfigured = native.onCloseRequested(window.nativeWindow,
+    proc(): bool =
+      if window.closeRequestedHandler.isNil:
+        return true
+      try: window.closeRequestedHandler()
+      except CatchableError: false)
+  if not closeConfigured.isOk:
+    return coreFailure(closeConfigured.failure.mapNativeError())
 
   let permissionConfigured = native.onPermissionRequested(window.nativeView,
     proc(url: string): bool = window.decidePermission(PermissionRequest(
@@ -1110,6 +1120,13 @@ proc onNewWindow*(window: Window;
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.onNewWindow"))
   window.newWindowHandler = handler
+  coreSuccess()
+
+proc onCloseRequested*(window: Window;
+                       handler: proc(): bool): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onCloseRequested"))
+  window.closeRequestedHandler = handler
   coreSuccess()
 
 proc onError*(window: Window; handler: proc(error: WindowError)): CoreResult =

@@ -53,6 +53,7 @@ block windowAndViewRemainSeparate:
   doAssert view.value.onNewWindowRequested(proc(url: string) = discard).isOk
   doAssert view.value.onNavigationStarting(proc(url: string): bool = true).isOk
   doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
+  doAssert window.value.onCloseRequested(proc(): bool = true).isOk
   doAssert not window.value.newWebView().isOk
 
 block documentStartScriptIsConfiguredBeforeNativeCreation:

@@ -71,6 +71,8 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert created.isOk
   let app = created.value
   doAssert not app.isRunning()
+  let closeAllowed = app.windows()
+  doAssert closeAllowed.len == 0
   let multipleViews = app.supports(multipleWebViews)
   doAssert multipleViews.isOk
 
@@ -82,6 +84,7 @@ block windowsOwnIndependentRpcAllowLists:
   let second = app.newWindow(title = "Second")
   doAssert first.isOk
   doAssert second.isOk
+  doAssert first.value.onCloseRequested(proc(): bool = true).isOk
   doAssert app.windowCount() == 2
   doAssert app.windows().len == 2
   doAssert first.value.setTitle("Updated first").isOk

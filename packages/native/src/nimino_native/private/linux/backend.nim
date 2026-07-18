@@ -2,6 +2,11 @@ import std/os
 
 proc linuxTrackDownload(view: NativeWebView; download: pointer; url: string)
 
+proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.} =
+  let nativeWindow = cast[NativeWindow](userData)
+  ## GTK close-request returns TRUE to stop the close emission.
+  if nativeWindow.dispatchCloseRequested(): 0 else: 1
+
 proc linuxSetTitle(window: NativeWindow) =
   if window.platformWindow != nil:
     let title = window.title
@@ -437,6 +442,9 @@ proc linuxDisposeWindow(window: NativeWindow) =
     view.state = closed
 
   if window.platformWindow != nil:
+    if window.closeSignalHandler != 0:
+      g_signal_handler_disconnect(window.platformWindow, window.closeSignalHandler)
+      window.closeSignalHandler = 0
     gtk_window_destroy(cast[ptr GtkWindow](window.platformWindow))
     g_object_unref(window.platformWindow)
     window.platformWindow = nil

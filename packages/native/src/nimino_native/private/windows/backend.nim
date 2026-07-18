@@ -1055,6 +1055,8 @@ proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
         window.app.idleHandler()
       return 0
     of WmClose:
+      if not window.dispatchCloseRequested():
+        return 0
       discard destroyWindow(hwnd)
       return 0
     of WmDestroy:

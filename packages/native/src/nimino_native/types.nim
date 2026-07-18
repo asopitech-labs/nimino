@@ -19,6 +19,7 @@ type
     nativeDownloadCancelled
   NativeDownloadEventHandler* = proc(url: string; state: NativeDownloadState;
                                      progress: float) {.closure.}
+  NativeCloseRequestedHandler* = proc(): bool {.closure.}
 
   NativeState* = enum
     pending
@@ -69,6 +70,8 @@ type
     profilePath*: string
     platformWindow: pointer
     views: seq[NativeWebView]
+    closeRequestedHandler: NativeCloseRequestedHandler
+    closeSignalHandler: culong
 
   NativeWebView* = ref object
     window: NativeWindow
@@ -121,6 +124,7 @@ type
     activeScripts: seq[NativeScriptRequest]
 
 when defined(linux) and not defined(niminoWsl):
+  proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.}
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
 elif defined(windows):
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
@@ -216,6 +220,16 @@ proc dispatchNewWindowRequested(view: NativeWebView; url: string) =
   except CatchableError:
     ## A user callback must not unwind through a native C/COM callback.
     discard
+
+proc dispatchCloseRequested(window: NativeWindow): bool =
+  if window.isNil or window.state in {closing, closed}:
+    return false
+  if window.closeRequestedHandler.isNil:
+    return true
+  try:
+    window.closeRequestedHandler()
+  except CatchableError:
+    false
 
 proc dispatchNavigationCompleted(view: NativeWebView; url: string; succeeded: bool) =
   if view.isNil or view.state in {closing, closed} or
@@ -341,6 +355,20 @@ proc close*(window: NativeWindow): NativeResult =
     return success()
   else:
     failure(nativeError(unsupported, "window.close"))
+
+proc onCloseRequested*(window: NativeWindow;
+                       handler: NativeCloseRequestedHandler): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.onCloseRequested"))
+  window.closeRequestedHandler = handler
+  when defined(linux) and not defined(niminoWsl):
+    if window.platformWindow != nil and window.closeSignalHandler == 0:
+      let signal = g_signal_connect_data(window.platformWindow, "close-request",
+        cast[pointer](linuxCloseRequested), cast[pointer](window), nil, 0)
+      if signal == 0:
+        return failure(nativeError(webViewError, "window.onCloseRequested"))
+      window.closeSignalHandler = signal
+  success()
 
 proc show*(window: NativeWindow): NativeResult =
   if window.isNil or window.state in {closing, closed}:
