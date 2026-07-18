@@ -104,10 +104,12 @@ type
   PermissionRequestedHandler = object
     vtable: ptr PermissionRequestedVTable
     references: Atomic[int]
+    view: pointer
 
   DownloadStartingHandler = object
     vtable: ptr DownloadStartingVTable
     references: Atomic[int]
+    view: pointer
 
 proc windowsDisposeWindow(window: NativeWindow)
 proc windowsFail(app: NativeApp; error: NativeError)
@@ -277,8 +279,15 @@ proc permissionQueryInterface(self: pointer; iid: ptr WinGuid;
     permissionAddRef)
 
 proc permissionInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  let handler = cast[ptr PermissionRequestedHandler](self)
+  var allowed = false
+  if not handler.view.isNil:
+    var source: WideCString
+    if succeeded(coreGetSource(handler.view, addr source)):
+      allowed = dispatchPermissionRequested(cast[NativeWebView](handler.view), $source)
+      coTaskMemFree(cast[pointer](source))
   if not args.isNil:
-    discard permissionArgsPutState(args, WebView2PermissionStateDeny)
+    discard permissionArgsPutState(args, if allowed: WebView2PermissionStateAllow else: WebView2PermissionStateDeny)
   S_OK
 
 proc downloadAddRef(self: pointer): uint32 {.stdcall.} =
@@ -297,8 +306,16 @@ proc downloadQueryInterface(self: pointer; iid: ptr WinGuid;
     downloadAddRef)
 
 proc downloadInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  let handler = cast[ptr DownloadStartingHandler](self)
+  var allowed = false
+  if not handler.view.isNil:
+    var source: WideCString
+    if succeeded(coreGetSource(handler.view, addr source)):
+      allowed = dispatchDownloadStarting(cast[NativeWebView](handler.view), $source)
+      coTaskMemFree(cast[pointer](source))
   if not args.isNil:
-    discard downloadArgsPutCancel(args, 1)
+    if not allowed:
+      discard downloadArgsPutCancel(args, 1)
   S_OK
 
 proc environmentInvoke(self: pointer; errorCode: HResult;
@@ -384,15 +401,17 @@ var downloadStartingVTable = DownloadStartingVTable(
   invoke: downloadInvoke
 )
 
-proc newPermissionRequestedHandler(): ptr PermissionRequestedHandler =
+proc newPermissionRequestedHandler(view: NativeWebView): ptr PermissionRequestedHandler =
   result = cast[ptr PermissionRequestedHandler](alloc0(sizeof(PermissionRequestedHandler)))
   result.vtable = addr permissionRequestedVTable
   result.references.store(1, moRelaxed)
+  result.view = cast[pointer](view)
 
-proc newDownloadStartingHandler(): ptr DownloadStartingHandler =
+proc newDownloadStartingHandler(view: NativeWebView): ptr DownloadStartingHandler =
   result = cast[ptr DownloadStartingHandler](alloc0(sizeof(DownloadStartingHandler)))
   result.vtable = addr downloadStartingVTable
   result.references.store(1, moRelaxed)
+  result.view = cast[pointer](view)
 
 proc newEnvironmentCompletedHandler(view: NativeWebView): ptr EnvironmentCompletedHandler =
   result = cast[ptr EnvironmentCompletedHandler](alloc0(sizeof(EnvironmentCompletedHandler)))
@@ -757,7 +776,7 @@ proc windowsConfigureNavigationStarting(view: NativeWebView): NativeResult =
 proc windowsConfigurePermissionRequested(view: NativeWebView): NativeResult =
   if view.platformView.isNil:
     return failure(nativeError(invalidState, "webview.permissionRequested"))
-  let handler = newPermissionRequestedHandler()
+  let handler = newPermissionRequestedHandler(view)
   var token: EventRegistrationToken
   let status = coreAddPermissionRequested(view.platformView, cast[pointer](handler), addr token)
   discard permissionRelease(cast[pointer](handler))
@@ -776,7 +795,7 @@ proc windowsConfigureDownloadStarting(view: NativeWebView): NativeResult =
   if not succeeded(queried) or core4.isNil:
     return failure(nativeError(unsupported, "webview.downloadStarting",
       detail = "WebView2 v4 interface is unavailable"))
-  let handler = newDownloadStartingHandler()
+  let handler = newDownloadStartingHandler(view)
   var token: EventRegistrationToken
   let status = core4AddDownloadStarting(core4, cast[pointer](handler), addr token)
   discard downloadRelease(cast[pointer](handler))
