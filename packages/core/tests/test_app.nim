@@ -35,6 +35,9 @@ block profilePathsAreContainedAndSafe:
   doAssert not readProfileSetting("tech.asopi.profile-test", "work", "theme").isOk
   doAssert not writeProfileSetting("tech.asopi.profile-test", "work", "../escape",
     newJNull()).isOk
+  let downloadPath = profileDownloadPath("tech.asopi.profile-test", "work", "../report.txt")
+  doAssert downloadPath.isOk
+  doAssert downloadPath.value.endsWith("downloads" / "_report.txt")
   let cookie = ProfileCookie(name: "sid", value: "abc", domain: "example.com",
     path: "/", secure: true, expires: int64(epochTime()) + 3600)
   doAssert writeProfileCookie("tech.asopi.profile-test", "work", cookie).isOk
