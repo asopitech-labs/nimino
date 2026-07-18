@@ -703,10 +703,14 @@ when defined(linux):
       ## The bridge is installed before the initial navigation.  Completion is
       ## retained as a host lifecycle event but requires no post-load script.
       discard
+    of "native.webview.permissionRequested", "native.webview.downloadStarting":
+      ## These events require a synchronous decision from the WSL client.  The
+      ## current transport is request/response plus one-way events, so silently
+      ## ignoring them would turn a protocol mismatch into an implicit grant.
+      ## Fail closed until the decision-relay protocol is negotiated.
+      return coreFailureOf[bool](coreError(platformUnavailable, "wsl.policy",
+        detail = "WSL policy decision relay is not negotiated"))
     else:
-      ## Permission and download policy events are currently enforced by the
-      ## native host's explicit-deny defaults; core-level decision relay is a
-      ## future extension.
       discard
     for window in app.windows:
       if not window.closed:
