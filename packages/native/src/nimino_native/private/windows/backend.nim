@@ -751,6 +751,23 @@ proc windowsConfigurePermissionRequested(view: NativeWebView): NativeResult =
     return failure(hresultError("webview.permissionRequested", status))
   success()
 
+proc windowsConfigureDownloadStarting(view: NativeWebView): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.downloadStarting"))
+  var core4: pointer
+  let queried = comQueryInterface(view.platformView, addr IidCoreWebView2_4, addr core4)
+  if not succeeded(queried) or core4.isNil:
+    return failure(nativeError(unsupported, "webview.downloadStarting",
+      detail = "WebView2 v4 interface is unavailable"))
+  let handler = newDownloadStartingHandler()
+  var token: EventRegistrationToken
+  let status = core4AddDownloadStarting(core4, cast[pointer](handler), addr token)
+  discard downloadRelease(cast[pointer](handler))
+  discard comRelease(core4)
+  if not succeeded(status):
+    return failure(hresultError("webview.downloadStarting", status))
+  success()
+
 proc windowsConfigureNewWindowRequested(view: NativeWebView): NativeResult =
   if view.platformView.isNil:
     return failure(nativeError(invalidState, "webview.onNewWindowRequested"))
@@ -911,6 +928,10 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
   let permissionEvents = view.windowsConfigurePermissionRequested()
   if not permissionEvents.isOk:
     view.window.app.windowsFail(permissionEvents.failure)
+    return S_OK
+  let downloadEvents = view.windowsConfigureDownloadStarting()
+  if not downloadEvents.isOk:
+    view.window.app.windowsFail(downloadEvents.failure)
     return S_OK
   let newWindowEvents = view.windowsConfigureNewWindowRequested()
   if not newWindowEvents.isOk:

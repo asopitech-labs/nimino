@@ -247,6 +247,21 @@ proc comQueryInterface*(instance: pointer; iid: ptr WinGuid;
   )
   dispatch(instance, iid, outInstance)
 
+proc core4AddDownloadStarting*(core4: pointer; handler: pointer;
+                               token: ptr EventRegistrationToken): HResult {.inline.} =
+  ## Slot 72 verified from ICoreWebView2_4Vtbl in SDK 1.0.3967.48.
+  let dispatch = cast[proc(self: pointer; handler: pointer;
+                           token: ptr EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core4).vtable[72]
+  )
+  dispatch(core4, handler, token)
+
+proc core4RemoveDownloadStarting*(core4: pointer; token: EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core4).vtable[73]
+  )
+  dispatch(core4, token)
+
 proc environmentCreateController*(environment: pointer; parent: HWND;
                                   handler: pointer): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; parent: HWND; handler: pointer): HResult {.stdcall.}](
