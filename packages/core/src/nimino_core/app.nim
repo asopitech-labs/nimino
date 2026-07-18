@@ -1160,14 +1160,30 @@ proc loadAssets*(window: Window; directory: string): CoreResult =
 
 proc assetMime(path: string): string =
   case splitFile(path).ext.toLowerAscii()
+  of ".html", ".htm": "text/html"
+  of ".css": "text/css"
+  of ".js", ".mjs": "text/javascript"
+  of ".json", ".map": "application/json"
+  of ".wasm": "application/wasm"
   of ".png": "image/png"
   of ".jpg", ".jpeg": "image/jpeg"
   of ".gif": "image/gif"
+  of ".ico": "image/x-icon"
   of ".svg": "image/svg+xml"
   of ".webp": "image/webp"
+  of ".avif": "image/avif"
+  of ".bmp": "image/bmp"
+  of ".tif", ".tiff": "image/tiff"
+  of ".mp3": "audio/mpeg"
+  of ".wav": "audio/wav"
+  of ".ogg": "audio/ogg"
+  of ".mp4": "video/mp4"
+  of ".webm": "video/webm"
+  of ".mov": "video/quicktime"
   of ".woff": "font/woff"
   of ".woff2": "font/woff2"
   of ".ttf": "font/ttf"
+  of ".otf": "font/otf"
   else: ""
 
 proc inlineWslCssUrls(root, baseDir, css: string): string =
