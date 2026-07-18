@@ -133,6 +133,13 @@ block navigationRulesAreExplicit:
   doAssert window.setNavigationRules(NavigationRules(
     allow: @["https://example.com/**"], deny: @["https://example.com/private/**"])).isOk
   doAssert not window.setNavigationRules(NavigationRules(allow: @[""], deny: @[])).isOk
+  var externalUrl = ""
+  doAssert window.onExternalNavigation(proc(request: NavigationRequest) =
+    externalUrl = request.url).isOk
+  window.navigationPolicy = proc(request: NavigationRequest): NavigationDecision =
+    navigationExternal
+  doAssert window.applyNavigationDecision(NavigationRequest(url: "https://outside.example")) == false
+  doAssert externalUrl == "https://outside.example"
 
 block permissionsAndDownloadsDefaultToDeny:
   let created = newApp(id = "tech.asopi.policy-test", name = "Policy test")

@@ -116,6 +116,7 @@ type
   NavigationDecision* = enum
     navigationDeny
     navigationAllow
+    navigationExternal
 
   NavigationRequest* = object
     url*: string
@@ -178,6 +179,7 @@ type
     navigationRules: NavigationRules
     navigationRulesConfigured: bool
     navigationPolicy*: proc(request: NavigationRequest): NavigationDecision
+    externalNavigationHandler*: proc(request: NavigationRequest)
     newWindowHandler*: proc(request: NewWindowRequest): bool
     errorHandler*: proc(error: WindowError)
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
@@ -234,6 +236,19 @@ proc navigationAllowed(window: Window; url: string): bool =
     if navigationPatternMatches(pattern, url):
       return true
   false
+
+proc applyNavigationDecision*(window: Window; request: NavigationRequest): bool =
+  let decision = if window.navigationPolicy.isNil:
+                   if window.navigationAllowed(request.url): navigationAllow else: navigationDeny
+                 else: window.navigationPolicy(request)
+  case decision
+  of navigationAllow: true
+  of navigationDeny: false
+  of navigationExternal:
+    if not window.externalNavigationHandler.isNil:
+      try: window.externalNavigationHandler(request)
+      except CatchableError: discard
+    false
 
 proc decidePermission*(window: Window; request: PermissionRequest): PermissionDecision =
   ## Unhandled permission requests are denied by default.
@@ -432,9 +447,7 @@ proc configureWindow(window: Window): CoreResult =
 
   let navigationConfigured = native.onNavigationStarting(window.nativeView,
     proc(url: string): bool =
-      if not window.navigationPolicy.isNil:
-        return window.navigationPolicy(NavigationRequest(url: url)) == navigationAllow
-      window.navigationAllowed(url))
+      window.applyNavigationDecision(NavigationRequest(url: url)))
   if not navigationConfigured.isOk:
     return coreFailure(navigationConfigured.failure.mapNativeError())
 
@@ -866,6 +879,13 @@ proc setNavigationPolicy*(window: Window;
   window.navigationPolicy = policy
   coreSuccess()
 
+proc onExternalNavigation*(window: Window;
+                           handler: proc(request: NavigationRequest)): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onExternalNavigation"))
+  window.externalNavigationHandler = handler
+  coreSuccess()
+
 proc onPermission*(window: Window;
                    handler: proc(request: PermissionRequest): PermissionDecision): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -1057,11 +1077,9 @@ when defined(linux):
             allowed = window.decideDownload(DownloadRequest(
               url: policy.value.url,
               suggestedName: policy.value.suggestedName)) == downloadAllow
-          elif not window.navigationPolicy.isNil:
-            allowed = window.navigationPolicy(NavigationRequest(
-              url: policy.value.url)) == navigationAllow
           else:
-            allowed = window.navigationAllowed(policy.value.url)
+            allowed = window.applyNavigationDecision(NavigationRequest(
+              url: policy.value.url))
           break
       let sent = app.wslClient.sendResponse(event.requestId,
         policyResponseJson(PolicyResponse(allow: allowed)))
