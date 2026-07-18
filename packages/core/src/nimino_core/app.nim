@@ -681,6 +681,20 @@ proc setNavigationPolicy*(window: Window;
   window.navigationPolicy = policy
   coreSuccess()
 
+proc onPermission*(window: Window;
+                   handler: proc(request: PermissionRequest): PermissionDecision): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onPermission"))
+  window.permissionHandler = handler
+  coreSuccess()
+
+proc onDownload*(window: Window;
+                 handler: proc(request: DownloadRequest): DownloadDecision): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onDownload"))
+  window.downloadHandler = handler
+  coreSuccess()
+
 proc loadUrl*(window: Window; url: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.loadUrl"))
