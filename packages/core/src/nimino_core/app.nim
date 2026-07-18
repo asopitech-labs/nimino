@@ -1456,6 +1456,25 @@ when defined(linux):
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "navigation completed event is malformed"))
+    of "native.webview.downloadStarted":
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("webViewId") or
+            not payload.hasKey("url") or not payload.hasKey("succeeded"):
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "download event is malformed"))
+        let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
+        for window in app.windows:
+          if not window.closed and window.webViewId == webViewId and
+              not window.downloadEventHandler.isNil:
+            try: window.downloadEventHandler(DownloadRequest(
+              url: payload["url"].getStr(), suggestedName: "download"),
+              payload["succeeded"].getBool())
+            except CatchableError: discard
+            break
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "download event is malformed"))
     of "native.webview.newWindowRequested":
       try:
         let payload = parseJson(event.payload)

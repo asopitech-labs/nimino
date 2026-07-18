@@ -164,7 +164,15 @@ proc requestPolicy(state: HostState; request: PolicyRequest): bool =
       response.requestId != requestId or response.error.len != 0:
     return false
   let decision = response.payload.parsePolicyResponse()
-  decision.isOk and decision.value.allow
+  if not decision.isOk or not decision.value.allow:
+    return false
+  if request.kind == downloadPolicy:
+    discard state.writeEvent("native.webview.downloadStarted", $(%*{
+      "webViewId": $request.webViewId,
+      "url": request.url,
+      "succeeded": true
+    }), "")
+  true
 
 proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
   let session = state.sessionId.validateSessionMessage(message)
