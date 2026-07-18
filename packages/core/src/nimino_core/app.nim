@@ -674,6 +674,31 @@ proc dispose(app: App)
 
 when defined(linux):
   proc processWslEvent(app: App; event: ProtocolMessage): CoreResultOf[bool] =
+    if event.kind == ProtocolMessageKind.request and
+        event.methodName == "native.webview.policyRequested":
+      let policy = parsePolicyRequest(event.payload)
+      if not policy.isOk:
+        discard app.wslClient.sendResponse(event.requestId, "{}", policy.failure.detail)
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.policy",
+          detail = policy.failure.detail))
+      var allowed = false
+      for window in app.windows:
+        if not window.closed and window.webViewId == policy.value.webViewId:
+          if policy.value.kind == permissionPolicy:
+            allowed = window.decidePermission(PermissionRequest(
+              kind: microphone, url: policy.value.url)) == permissionGrant
+          else:
+            allowed = window.decideDownload(DownloadRequest(
+              url: policy.value.url,
+              suggestedName: policy.value.suggestedName)) == downloadAllow
+          break
+      let sent = app.wslClient.sendResponse(event.requestId,
+        policyResponseJson(PolicyResponse(allow: allowed)))
+      if not sent.isOk:
+        let detail = sent.failure.detail
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.policy",
+          detail = detail))
+      return coreSuccessOf(false)
     if event.kind != ProtocolMessageKind.event:
       return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
         detail = "unexpected host response"))

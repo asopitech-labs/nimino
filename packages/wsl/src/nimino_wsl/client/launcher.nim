@@ -210,6 +210,21 @@ proc receiveNext*(client: WslClient): ProtocolResultOf[ProtocolMessage] =
     return failureOf[ProtocolMessage](protocolError(authenticationFailed, "host returned authentication material"))
   successOf(message)
 
+proc sendResponse*(client: WslClient; requestId: uint64; payload: string;
+                   error = ""): ProtocolResult =
+  ## Reply to a host-initiated request (for example a policy decision).
+  if client.isNil or client.process.isNil:
+    return failure(protocolError(invalidMessage, "WSL client is closed"))
+  let response = ProtocolMessage(
+    version: ProtocolVersion,
+    kind: ProtocolMessageKind.response,
+    sessionId: client.sessionId,
+    requestId: requestId,
+    payload: payload,
+    error: error
+  )
+  client.process.inputStream.writeMessageTo(response)
+
 proc receiveNextWithin*(client: WslClient; timeoutMs: int):
     ProtocolResultOf[Option[ProtocolMessage]] =
   ## Wait for at most `timeoutMs` for one host frame.  The WSL core loop uses

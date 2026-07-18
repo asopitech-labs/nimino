@@ -98,6 +98,30 @@ proc successOf*[T](value: T): ProtocolResultOf[T] {.inline.} =
 proc failureOf*[T](error: ProtocolError): ProtocolResultOf[T] {.inline.} =
   ProtocolResultOf[T](isOk: false, failure: error)
 
+proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
+  try:
+    let node = parseJson(payload)
+    if node.kind != JObject or not node.hasKey("kind") or
+        node["kind"].kind != JString or not node.hasKey("webViewId") or
+        node["webViewId"].kind != JString or not node.hasKey("url") or
+        node["url"].kind != JString:
+      return failureOf[PolicyRequest](protocolError(invalidMessage,
+        "policy request is malformed"))
+    let kind = case node["kind"].getStr()
+      of "permission": permissionPolicy
+      of "download": downloadPolicy
+      else: return failureOf[PolicyRequest](protocolError(invalidMessage,
+        "unknown policy kind"))
+    let suggestedName = if node.hasKey("suggestedName") and
+        node["suggestedName"].kind == JString: node["suggestedName"].getStr()
+      else: ""
+    successOf(PolicyRequest(kind: kind,
+      webViewId: uint64(parseUInt(node["webViewId"].getStr())),
+      url: node["url"].getStr(), suggestedName: suggestedName))
+  except CatchableError:
+    failureOf[PolicyRequest](protocolError(invalidMessage,
+      "malformed policy request"))
+
 proc parsePolicyResponse*(payload: string): ProtocolResultOf[PolicyResponse] =
   try:
     let node = parseJson(payload)
