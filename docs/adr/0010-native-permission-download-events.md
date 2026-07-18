@@ -35,6 +35,13 @@ path also exposes `webkit_policy_decision_download()` for forced downloads.
 These declarations are now confirmed from the installed headers; the Nim FFI
 and lifetime bridge are the remaining implementation work.
 
+The pinned WebView2 SDK header (`1.0.3967.48`) also confirms
+`ICoreWebView2::add_PermissionRequested` and
+`ICoreWebView2::add_DownloadStarting`, with separate event-handler and
+event-argument COM interfaces. These interfaces require explicit COM
+reference-counted callback objects; they must not be represented as a raw Nim
+closure.
+
 ## Consequences
 
 Until those headers are verified and implemented, permission and download
