@@ -58,6 +58,7 @@ window.rpc.register("files.save") do (request: SaveRequest) -> Future[SaveResult
 
 `registerTyped`と`registerTypedAsync`は、引数なしまたは一つのJSON codec対応入力型を受け、戻り値（または`Future`の戻り値）をJSON化する。これらも明示メソッド名の許可リストであり、reflectionによる任意関数公開ではない。`Window.typescriptDeclarations`は登録済みメソッドだけを`unknown`型で宣言生成します。register macroによる型抽出は未実装であり、native層へ追加しない。
 `window.rpc.unregister("method")`で登録済みの一つのメソッドを撤去できます。撤去後の新規呼び出しは拒否され、既に実行中のrequestは完了まで維持されます。
+メソッド名は制御文字・空白・引用符を含められず、256文字以内に制限されます。
 
 ```nim
 type Settings = object

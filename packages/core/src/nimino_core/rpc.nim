@@ -66,6 +66,14 @@ proc setReplySink*(registry: RpcRegistry; sink: RpcReplySink) =
 proc isMethodRegistered*(registry: RpcRegistry; methodName: string): bool =
   registry != nil and registry.handlers.hasKey(methodName)
 
+proc validMethodName(methodName: string): bool {.inline.} =
+  if methodName.len == 0 or methodName.len > 256:
+    return false
+  for ch in methodName:
+    if ch <= '\x20' or ch == '\x7f' or ch in {'"', '\\'}:
+      return false
+  true
+
 proc registeredMethods*(registry: RpcRegistry): seq[string] =
   ## Return only explicitly registered names; handler closures never escape.
   if registry.isNil or registry.closed:
@@ -87,7 +95,7 @@ proc typescriptDeclarations*(registry: RpcRegistry): string =
   result.add("    };\n  }\n}\nexport {};\n")
 
 proc register*(registry: RpcRegistry; methodName: string; handler: RpcHandler): bool =
-  if registry.isNil or registry.closed or methodName.len == 0 or handler.isNil:
+  if registry.isNil or registry.closed or not validMethodName(methodName) or handler.isNil:
     return false
   if registry.handlers.hasKey(methodName):
     return false
@@ -97,7 +105,7 @@ proc register*(registry: RpcRegistry; methodName: string; handler: RpcHandler): 
 proc unregister*(registry: RpcRegistry; methodName: string): bool =
   ## Remove one explicitly registered method. Pending requests are not
   ## cancelled here; they retain their original handler until completion.
-  if registry.isNil or registry.closed or methodName.len == 0 or
+  if registry.isNil or registry.closed or not validMethodName(methodName) or
       not registry.handlers.hasKey(methodName):
     return false
   registry.handlers.del(methodName)
