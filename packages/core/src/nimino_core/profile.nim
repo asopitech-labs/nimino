@@ -249,6 +249,19 @@ proc clearProfileCache*(appId, profile: string): ProfilePathResult =
   try:
     for path in walkFiles(directory.value / "*"):
       if fileExists(path): removeFile(path)
+    ## WebView2 stores browser cache below the profile user-data folder.
+    ## Only known cache directories are removed; cookies and local storage
+    ## remain intact.
+    let root = profilePath(appId, profile)
+    if not root.isOk:
+      return profileFailure(root.error)
+    let engineRoot = root.value / "webview2"
+    for relative in ["Default" / "Cache", "Default" / "Code Cache",
+                     "Default" / "GPUCache", "Default" / "DawnCache"]:
+      let engineCache = engineRoot / relative
+      if dirExists(engineCache):
+        for path in walkFiles(engineCache / "*"):
+          if fileExists(path): removeFile(path)
     profileSuccess(directory.value)
   except OSError:
     profileFailure("unable to clear profile cache")
