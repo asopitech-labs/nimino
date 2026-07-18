@@ -308,20 +308,27 @@ proc downloadQueryInterface(self: pointer; iid: ptr WinGuid;
 proc downloadInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
   let handler = cast[ptr DownloadStartingHandler](self)
   var allowed = false
+  var downloadUrl = ""
   if not handler.view.isNil:
     var source: WideCString
     if succeeded(coreGetSource(handler.view, addr source)):
-      allowed = dispatchDownloadStarting(cast[NativeWebView](handler.view), $source)
+      downloadUrl = $source
+      allowed = dispatchDownloadStarting(cast[NativeWebView](handler.view), downloadUrl)
       coTaskMemFree(cast[pointer](source))
   if not args.isNil:
     if not allowed:
       discard downloadArgsPutCancel(args, 1)
     else:
-      var source: WideCString
-      if succeeded(coreGetSource(handler.view, addr source)):
-        dispatchDownloadEvent(cast[NativeWebView](handler.view), $source,
-          nativeDownloadStarted, 0.0)
-        coTaskMemFree(cast[pointer](source))
+      dispatchDownloadEvent(cast[NativeWebView](handler.view), downloadUrl,
+        nativeDownloadStarted, 0.0)
+      var operation: pointer
+      if succeeded(downloadArgsGetOperation(args, addr operation)) and operation != nil:
+        var received, total: int64
+        if succeeded(downloadOperationGetBytesReceived(operation, addr received)) and
+            succeeded(downloadOperationGetTotalBytes(operation, addr total)) and total > 0:
+          dispatchDownloadEvent(cast[NativeWebView](handler.view), downloadUrl,
+            nativeDownloadProgress, float(received) / float(total))
+        discard comRelease(operation)
   S_OK
 
 proc environmentInvoke(self: pointer; errorCode: HResult;

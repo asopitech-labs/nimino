@@ -341,6 +341,27 @@ proc downloadArgsPutCancel*(args: pointer; cancel: WinBool): HResult {.inline.} 
   )
   dispatch(args, cancel)
 
+proc downloadArgsGetOperation*(args: pointer; operation: ptr pointer): HResult {.inline.} =
+  ## ICoreWebView2DownloadStartingEventArgs::get_DownloadOperation (slot 3).
+  let dispatch = cast[proc(self: pointer; operation: ptr pointer): HResult {.stdcall.}] (
+    cast[ptr ComInterface](args).vtable[3]
+  )
+  dispatch(args, operation)
+
+proc downloadOperationGetBytesReceived*(operation: pointer; value: ptr int64): HResult {.inline.} =
+  ## ICoreWebView2DownloadOperation::get_BytesReceived (slot 6).
+  let dispatch = cast[proc(self: pointer; value: ptr int64): HResult {.stdcall.}] (
+    cast[ptr ComInterface](operation).vtable[6]
+  )
+  dispatch(operation, value)
+
+proc downloadOperationGetTotalBytes*(operation: pointer; value: ptr int64): HResult {.inline.} =
+  ## ICoreWebView2DownloadOperation::get_TotalBytesToReceive (slot 7).
+  let dispatch = cast[proc(self: pointer; value: ptr int64): HResult {.stdcall.}] (
+    cast[ptr ComInterface](operation).vtable[7]
+  )
+  dispatch(operation, value)
+
 proc coreRemoveNavigationStarting*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
     cast[ptr ComInterface](core).vtable[8]
