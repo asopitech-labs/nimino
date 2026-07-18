@@ -28,23 +28,29 @@ function Write-Frame([hashtable]$message) {
   $stream.Flush()
 }
 
-function Read-Exactly([int]$count) {
+function Read-Exactly([int]$count, [int]$timeoutMs = 0) {
   $buffer = New-Object byte[] $count
   $offset = 0
   while ($offset -lt $count) {
-    $read = $process.StandardOutput.BaseStream.Read($buffer, $offset, $count - $offset)
+    if ($timeoutMs -gt 0) {
+      $task = $process.StandardOutput.BaseStream.ReadAsync($buffer, $offset, $count - $offset)
+      if (-not $task.Wait($timeoutMs)) { throw [System.TimeoutException]::new("Timed out waiting for interactive host output") }
+      $read = $task.Result
+    } else {
+      $read = $process.StandardOutput.BaseStream.Read($buffer, $offset, $count - $offset)
+    }
     if ($read -le 0) { throw "Interactive host closed stdout" }
     $offset += $read
   }
   return ,$buffer
 }
 
-function Read-Frame {
-  $lengthBytes = Read-Exactly 4
+function Read-Frame([int]$timeoutMs = 0) {
+  $lengthBytes = Read-Exactly 4 $timeoutMs
   if ([System.BitConverter]::IsLittleEndian) { [System.Array]::Reverse($lengthBytes) }
   $length = [System.BitConverter]::ToUInt32($lengthBytes, 0)
   if ($length -gt 1048576) { throw "Interactive host returned an oversized frame" }
-  [System.Text.Encoding]::UTF8.GetString((Read-Exactly ([int]$length))) | ConvertFrom-Json
+  [System.Text.Encoding]::UTF8.GetString((Read-Exactly ([int]$length) $timeoutMs)) | ConvertFrom-Json
 }
 
 function Close-InteractiveHost {
@@ -82,8 +88,9 @@ try {
   Write-Host "Window opened. Click the link or button; Ctrl+C closes the interactive host." -ForegroundColor Green
   if ($WaitForPopupMessage) {
     Write-Host "Popup message test is armed; click once and wait for automatic result." -ForegroundColor Yellow
-    for ($attempt = 0; $attempt -lt 60; $attempt++) {
-      $message = Read-Frame
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    while ([DateTime]::UtcNow -lt $deadline) {
+      try { $message = Read-Frame 1000 } catch [System.TimeoutException] { continue }
       if ($message.kind -eq "event" -and $message.method -eq "native.webview.message") {
         $payload = $message.payload | ConvertFrom-Json
         if ($payload.message -eq "popup-message-received") {
@@ -92,7 +99,7 @@ try {
         }
       }
     }
-    throw "Popup message was not received within 60 protocol frames"
+    throw "Popup message was not received within 60 seconds"
   }
   while ($true) {
     $message = Read-Frame
