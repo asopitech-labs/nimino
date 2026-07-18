@@ -345,6 +345,8 @@ proc documentStartBridgeSource(url: string): string =
       ## than authorizing every data document in this WebView. `about:blank`
       ## is deliberately excluded: it can inherit a parent document's origin.
       guard = "globalThis.location.href === " & $(%url)
+    of "file":
+      guard = "globalThis.location.href === " & $(%url)
     else:
       return ""
     "(() => { if (!(" & guard & ")) return;\n" & RpcBootstrapSource & "\n})();"
@@ -998,6 +1000,12 @@ proc loadEntry*(window: Window; entry = "index.html"): CoreResult =
     if relative == ".." or relative.startsWith(".." & DirSep) or not fileExists(path):
       return coreFailure(coreError(invalidArgument, "window.loadEntry",
         detail = "entry escapes the asset root or does not exist"))
+    if window.app.backend == nativeBackend:
+      let normalized = path.replace('\\', '/')
+      let prefix = if normalized.len >= 2 and normalized[1] == ':': "file:///" else: "file://"
+      let fileUrl = prefix & encodeUrl(
+        if prefix == "file:///": normalized[0 .. ^1] else: normalized, false)
+      return window.loadUrl(fileUrl)
     let content = readFile(path)
     window.loadHtml(content)
   except CatchableError:

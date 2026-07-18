@@ -125,6 +125,13 @@ block localAssetRootRejectsTraversal:
   doAssert not window.loadAssets("/path/that/does/not/exist").isOk
   doAssert window.loadHtml("<p>local</p>").isOk
   doAssert not window.reload().isOk
+  let assetRoot = getTempDir() / "nimino-core-asset-entry"
+  createDir(assetRoot)
+  writeFile(assetRoot / "index.html", "<script src='app.js'></script>")
+  writeFile(assetRoot / "app.js", "window.assetLoaded = true")
+  doAssert window.loadAssets(assetRoot).isOk
+  doAssert window.loadEntry().isOk
+  removeDir(assetRoot)
 
 block navigationRulesAreExplicit:
   doAssert matchesNavigationPattern("https://*.discord.com/**", "https://canary.discord.com/channels")
