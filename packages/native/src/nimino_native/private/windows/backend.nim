@@ -55,6 +55,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
+  DownloadStartingVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
+
   EnvironmentCompletedHandler = object
     vtable: ptr EnvironmentCompletedVTable
     references: Atomic[int]
@@ -97,6 +103,10 @@ type
 
   PermissionRequestedHandler = object
     vtable: ptr PermissionRequestedVTable
+    references: Atomic[int]
+
+  DownloadStartingHandler = object
+    vtable: ptr DownloadStartingVTable
     references: Atomic[int]
 
 proc windowsDisposeWindow(window: NativeWindow)
@@ -271,6 +281,26 @@ proc permissionInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
     discard permissionArgsPutState(args, WebView2PermissionStateDeny)
   S_OK
 
+proc downloadAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr DownloadStartingHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc downloadRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr DownloadStartingHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0: dealloc(handler)
+  uint32(remaining)
+
+proc downloadQueryInterface(self: pointer; iid: ptr WinGuid;
+                            outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidDownloadStartingEventHandler,
+    downloadAddRef)
+
+proc downloadInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  if not args.isNil:
+    discard downloadArgsPutCancel(args, 1)
+  S_OK
+
 proc environmentInvoke(self: pointer; errorCode: HResult;
                        environment: pointer): HResult {.stdcall.}
 proc controllerInvoke(self: pointer; errorCode: HResult;
@@ -347,9 +377,21 @@ var permissionRequestedVTable = PermissionRequestedVTable(
   invoke: permissionInvoke
 )
 
+var downloadStartingVTable = DownloadStartingVTable(
+  queryInterface: downloadQueryInterface,
+  addRef: downloadAddRef,
+  release: downloadRelease,
+  invoke: downloadInvoke
+)
+
 proc newPermissionRequestedHandler(): ptr PermissionRequestedHandler =
   result = cast[ptr PermissionRequestedHandler](alloc0(sizeof(PermissionRequestedHandler)))
   result.vtable = addr permissionRequestedVTable
+  result.references.store(1, moRelaxed)
+
+proc newDownloadStartingHandler(): ptr DownloadStartingHandler =
+  result = cast[ptr DownloadStartingHandler](alloc0(sizeof(DownloadStartingHandler)))
+  result.vtable = addr downloadStartingVTable
   result.references.store(1, moRelaxed)
 
 proc newEnvironmentCompletedHandler(view: NativeWebView): ptr EnvironmentCompletedHandler =
