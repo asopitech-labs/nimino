@@ -156,6 +156,7 @@ type
     windowId: uint64
     webViewId: uint64
     profilePath*: string
+    profileName: string
     rpc*: RpcRegistry
     documentStartBridgeConfigured: bool
     assetRoot: string
@@ -487,7 +488,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
       if not webViewId.isOk:
         return coreFailureOf[Window](webViewId.failure)
       let window = Window(app: app, windowId: windowId.value, webViewId: webViewId.value,
-                          profilePath: profile.value)
+                          profilePath: profile.value, profileName: profileName)
       window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
       app.windows.add(window)
       return coreSuccessOf(window)
@@ -502,7 +503,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     return coreFailureOf[Window](nativeView.failure.mapNativeError())
 
   let window = Window(app: app, nativeWindow: nativeWindow.value,
-                      nativeView: nativeView.value, profilePath: profile.value)
+                      nativeView: nativeView.value, profilePath: profile.value,
+                      profileName: profileName)
   window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
   let configured = window.configureWindow()
   if not configured.isOk:
@@ -521,6 +523,24 @@ proc typescriptDeclarations*(window: Window): CoreResultOf[string] =
     return coreFailureOf[string](coreError(invalidState,
       "window.typescriptDeclarations"))
   coreSuccessOf(window.rpc.typescriptDeclarations())
+
+proc writeSetting*(window: Window; key: string; value: JsonNode): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.writeSetting"))
+  let written = writeProfileSetting(window.app.id, window.profileName, key, value)
+  if written.isOk: coreSuccess()
+  else: coreFailure(coreError(invalidArgument, "window.writeSetting", detail = written.error))
+
+proc readSetting*(window: Window; key: string): CoreResultOf[JsonNode] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[JsonNode](coreError(invalidState, "window.readSetting"))
+  let loaded = readProfileSetting(window.app.id, window.profileName, key)
+  if not loaded.isOk:
+    return coreFailureOf[JsonNode](coreError(invalidArgument, "window.readSetting", detail = loaded.error))
+  try:
+    coreSuccessOf(parseJson(loaded.value))
+  except CatchableError:
+    coreFailureOf[JsonNode](coreError(nativeFailure, "window.readSetting"))
 
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:

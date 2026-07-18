@@ -87,6 +87,10 @@ block windowsCanSelectIndependentProfiles:
   let direct = created.value.newWindow(profile = "direct", width = 1200, height = 800)
   doAssert direct.isOk
   doAssert direct.value.profilePath.endsWith("/direct") or direct.value.profilePath.endsWith("\\direct")
+  doAssert direct.value.writeSetting("launch", %*{"count": 1}).isOk
+  let launch = direct.value.readSetting("launch")
+  doAssert launch.isOk
+  doAssert launch.value["count"].getInt() == 1
 
 block localAssetRootRejectsTraversal:
   let created = newApp(id = "tech.asopi.assets-test", name = "Assets test")
