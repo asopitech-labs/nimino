@@ -381,8 +381,13 @@ proc downloadOperationRelease(self: pointer): uint32 {.stdcall.} =
 
 proc downloadOperationQueryInterface(self: pointer; iid: ptr WinGuid;
                                      outInstance: ptr pointer): HResult {.stdcall.} =
-  queryCallback(self, iid, outInstance, IidDownloadStartingEventHandler,
-    downloadOperationAddRef)
+  if outInstance.isNil or iid.isNil:
+    return E_POINTER
+  ## WebView2 uses distinct IIDs for BytesReceivedChanged and StateChanged.
+  ## This callback object implements both typed event-handler contracts.
+  outInstance[] = self
+  discard downloadOperationAddRef(self)
+  S_OK
 
 proc downloadOperationInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
   let handler = cast[ptr DownloadOperationHandler](self)
