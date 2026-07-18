@@ -62,6 +62,9 @@ type
     pendingNavigationStarts: seq[HostNavigationStarting]
     pendingNavigationCompletions: seq[HostNavigationCompleted]
     pendingPolicyRequests: seq[HostPolicyRequest]
+    ## Optional synchronous decision hook owned by the transport layer.
+    ## Returning false is the fail-closed default.
+    policyDecision*: proc(request: PolicyRequest): bool {.closure.}
     navigationRules: Table[uint64, NavigationRules]
 
 proc newHostAdapter*(): HostAdapter =
@@ -275,18 +278,22 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
     return nativeFailure("native.webview.onNavigationCompleted", navigationConfigured)
   let permissionConfigured = created.value.onPermissionRequested(proc(url: string): bool =
     let owner = cast[HostAdapter](adapterPointer)
+    let request = PolicyRequest(kind: permissionPolicy, webViewId: webViewId, url: url)
     if owner != nil:
-      owner.pendingPolicyRequests.add(HostPolicyRequest(request: PolicyRequest(
-        kind: permissionPolicy, webViewId: webViewId, url: url)))
+      owner.pendingPolicyRequests.add(HostPolicyRequest(request: request))
+      if not owner.policyDecision.isNil:
+        return owner.policyDecision(request)
     false
   )
   if not permissionConfigured.isOk:
     return nativeFailure("native.webview.onPermissionRequested", permissionConfigured)
   let downloadConfigured = created.value.onDownloadStarting(proc(url: string): bool =
     let owner = cast[HostAdapter](adapterPointer)
+    let request = PolicyRequest(kind: downloadPolicy, webViewId: webViewId, url: url)
     if owner != nil:
-      owner.pendingPolicyRequests.add(HostPolicyRequest(request: PolicyRequest(
-        kind: downloadPolicy, webViewId: webViewId, url: url)))
+      owner.pendingPolicyRequests.add(HostPolicyRequest(request: request))
+      if not owner.policyDecision.isNil:
+        return owner.policyDecision(request)
     false
   )
   if not downloadConfigured.isOk:
