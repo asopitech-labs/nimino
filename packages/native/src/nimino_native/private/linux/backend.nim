@@ -8,6 +8,11 @@ proc linuxSetSize(window: NativeWindow) =
     gtk_window_set_default_size(cast[ptr GtkWindow](window.platformWindow),
       cint(window.width), cint(window.height))
 
+proc linuxSetResizable(window: NativeWindow; resizable: bool) =
+  if window.platformWindow != nil:
+    gtk_window_set_resizable(cast[ptr GtkWindow](window.platformWindow),
+      if resizable: 1 else: 0)
+
 proc linuxShowWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     gtk_window_present(cast[ptr GtkWindow](window.platformWindow))

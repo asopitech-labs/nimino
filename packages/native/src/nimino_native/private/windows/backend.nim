@@ -661,6 +661,19 @@ proc windowsSetSize(window: NativeWindow): NativeResult =
     return failure(windowsError("window.setSize", getLastError()))
   success()
 
+proc windowsSetResizable(window: NativeWindow; resizable: bool): NativeResult =
+  if window.platformWindow == nil:
+    return failure(nativeError(invalidState, "window.setResizable"))
+  var style = uint32(getWindowLongPtrW(window.platformWindow, GwlStyle))
+  if resizable:
+    style = style or WsThickFrame or WsMaximizeBox or WsMinimizeBox
+  else:
+    style = style and not (WsThickFrame or WsMaximizeBox or WsMinimizeBox)
+  discard setWindowLongPtrW(window.platformWindow, GwlStyle, int(style))
+  discard setWindowPos(window.platformWindow, nil, 0, 0, 0, 0,
+    SwpNoMove or SwpNoSize or SwpNoZOrder or 0x0020'u32)
+  success()
+
 proc windowsLoadUrl(view: NativeWebView): NativeResult =
   if view.platformView == nil:
     return success()

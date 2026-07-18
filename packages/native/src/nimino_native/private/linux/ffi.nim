@@ -45,6 +45,8 @@ proc gtk_window_set_title*(window: ptr GtkWindow; title: cstring)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_set_default_size*(window: ptr GtkWindow; width: cint; height: cint)
   {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_window_set_resizable*(window: ptr GtkWindow; resizable: cint)
+  {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_set_child*(window: ptr GtkWindow; child: pointer)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_present*(window: ptr GtkWindow)

@@ -373,6 +373,17 @@ proc restore*(window: NativeWindow): NativeResult =
   else:
     failure(nativeError(unsupported, "window.restore"))
 
+proc setResizable*(window: NativeWindow; resizable: bool): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.setResizable"))
+  when defined(linux) and not defined(niminoWsl):
+    linuxSetResizable(window, resizable)
+    success()
+  elif defined(windows):
+    windowsSetResizable(window, resizable)
+  else:
+    failure(nativeError(unsupported, "window.setResizable"))
+
 proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.loadUrl"))

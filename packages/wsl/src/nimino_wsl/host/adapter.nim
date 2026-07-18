@@ -92,6 +92,11 @@ proc requiredPositiveInt(node: JsonNode; name: string): ProtocolResultOf[int] =
     return failureOf[int](protocolError(invalidMessage, name & " is out of range"))
   successOf(int(value))
 
+proc requiredBool(node: JsonNode; name: string): ProtocolResultOf[bool] =
+  if not node.hasKey(name) or node[name].kind != JBool:
+    return failureOf[bool](protocolError(invalidMessage, name & " must be a boolean"))
+  successOf(node[name].getBool())
+
 proc requiredId(node: JsonNode; name: string): ProtocolResultOf[uint64] =
   let encoded = node.requiredString(name)
   if not encoded.isOk:
@@ -245,6 +250,20 @@ proc handleWindowState(adapter: HostAdapter; payload: JsonNode; operation: strin
     else: adapter.windows[windowId.value].restore()
   if not updated.isOk:
     return nativeFailure("native.window." & operation, updated)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
+proc handleWindowSetResizable(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  let value = payload.requiredBool("resizable")
+  if not value.isOk:
+    return failureOf[HostAction](value.failure)
+  let updated = adapter.windows[windowId.value].setResizable(value.value)
+  if not updated.isOk:
+    return nativeFailure("native.window.setResizable", updated)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
@@ -490,6 +509,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowState(payload.value, "maximize")
   of "native.window.restore":
     adapter.handleWindowState(payload.value, "restore")
+  of "native.window.setResizable":
+    adapter.handleWindowSetResizable(payload.value)
   of "native.webview.create":
     adapter.handleWebViewCreate(payload.value)
   of "native.webview.setDocumentStartScript":

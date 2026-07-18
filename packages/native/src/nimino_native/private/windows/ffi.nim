@@ -102,6 +102,10 @@ const
   WebView2PermissionStateDeny* = 2'i32
   WebView2PermissionStateAllow* = 1'i32
   WsOverlappedWindow* = 0x00CF0000'u32
+  WsThickFrame* = 0x00040000'u32
+  WsMaximizeBox* = 0x00010000'u32
+  WsMinimizeBox* = 0x00020000'u32
+  GwlStyle* = -16'i32
   SwHide* = 0'i32
   SwMinimize* = 6'i32
   SwMaximize* = 3'i32
