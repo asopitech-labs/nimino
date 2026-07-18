@@ -1,4 +1,4 @@
-import std/json
+import std/[json, os, strutils]
 
 import nimino_core
 
@@ -10,6 +10,13 @@ block appOptionsAreValidated:
   let missingName = newApp(AppOptions(id: "tech.asopi.example", name: ""))
   doAssert not missingName.isOk
   doAssert missingName.failure.kind == invalidArgument
+
+block profilePathsAreContainedAndSafe:
+  let profile = profilePath("tech.asopi.example", "work")
+  doAssert profile.isOk
+  doAssert profile.value.endsWith("nimino" / "tech.asopi.example" / "work")
+  doAssert not profilePath("../escape", "work").isOk
+  doAssert not profilePath("tech.asopi.example", "../escape").isOk
 
 block windowsOwnIndependentRpcAllowLists:
   let created = newApp(id = "tech.asopi.core-test", name = "Core test")
