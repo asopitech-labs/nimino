@@ -701,6 +701,13 @@ proc clearLocalStorage*(window: Window): CoreResult =
   if cleared.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.clearLocalStorage", detail = cleared.error))
 
+proc clearProfileData*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.clearProfileData"))
+  let cleared = clearAllProfileData(window.app.id, window.profileName)
+  if cleared.isOk: coreSuccess()
+  else: coreFailure(coreError(invalidArgument, "window.clearProfileData", detail = cleared.error))
+
 proc writeCookie*(window: Window; cookie: ProfileCookie): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.writeCookie"))

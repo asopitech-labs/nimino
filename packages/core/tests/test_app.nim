@@ -133,6 +133,9 @@ block windowsCanSelectIndependentProfiles:
   writeFile(storagePath.value / "origin.json", "{}")
   doAssert direct.value.clearLocalStorage().isOk
   doAssert not fileExists(storagePath.value / "origin.json")
+  doAssert direct.value.writeSetting("reset", %*{"ok": true}).isOk
+  doAssert direct.value.clearProfileData().isOk
+  doAssert direct.value.listSettings().value.len == 0
   let sessionCookie = ProfileCookie(name: "sid", value: "window", domain: "example.com")
   doAssert direct.value.writeCookie(sessionCookie).isOk
   let readCookie = direct.value.readCookie("example.com", "sid")
