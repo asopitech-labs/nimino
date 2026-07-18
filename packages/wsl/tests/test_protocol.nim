@@ -86,6 +86,21 @@ block streamTransportRoundTrip:
   doAssert read.value.kind == hello
   doAssert read.value.authenticationToken == ValidToken
 
+block policyPayloadRoundTrip:
+  let request = PolicyRequest(kind: downloadPolicy, webViewId: 42,
+    url: "https://example.com/file.zip", suggestedName: "file.zip")
+  let decodedRequest = request.policyRequestJson.parsePolicyRequest()
+  doAssert decodedRequest.isOk
+  doAssert decodedRequest.value.kind == downloadPolicy
+  doAssert decodedRequest.value.webViewId == 42
+  doAssert decodedRequest.value.suggestedName == "file.zip"
+
+  let decodedResponse = policyResponseJson(PolicyResponse(allow: true)).parsePolicyResponse()
+  doAssert decodedResponse.isOk
+  doAssert decodedResponse.value.allow
+  let malformedResponse = parsePolicyResponse("{\"allow\":\"yes\"}")
+  doAssert not malformedResponse.isOk
+
 block truncatedStreamIsRejected:
   let stream = newStringStream("\0\0")
   let read = stream.readFrameFrom()
