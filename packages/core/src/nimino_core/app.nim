@@ -912,6 +912,25 @@ when defined(linux):
       ## The bridge is installed before the initial navigation.  Completion is
       ## retained as a host lifecycle event but requires no post-load script.
       discard
+    of "native.webview.newWindowRequested":
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("webViewId") or
+            not payload.hasKey("url") or payload["webViewId"].kind != JString or
+            payload["url"].kind != JString:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "new-window event is malformed"))
+        let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
+        for window in app.windows:
+          if not window.closed and window.webViewId == webViewId and
+              not window.newWindowHandler.isNil:
+            try: discard window.newWindowHandler(NewWindowRequest(
+              url: payload["url"].getStr()))
+            except CatchableError: discard
+            break
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "new-window event is malformed"))
     of "native.webview.permissionRequested", "native.webview.downloadStarting",
        "native.webview.policyRequested":
       ## These events require a synchronous decision from the WSL client.  The
