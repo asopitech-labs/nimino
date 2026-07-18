@@ -370,8 +370,14 @@ proc documentStartCookieSource(window: Window; url: string): string =
     for cookie in cookies.value:
       if cookie.secure and parsed.scheme.toLowerAscii() != "https":
         continue
+      let cookiePath = if cookie.path.len == 0: "/" else: cookie.path
+      let requestPath = if parsed.path.len == 0: "/" else: parsed.path
+      if not requestPath.startsWith(cookiePath) or
+          (cookiePath[^1] != '/' and requestPath.len > cookiePath.len and
+            requestPath[cookiePath.len] != '/'):
+        continue
       let value = cookie.name & "=" & cookie.value & "; path=" &
-        (if cookie.path.len == 0: "/" else: cookie.path)
+        cookiePath
       source.add("document.cookie = " & $(%value) & ";")
     source.add("})();")
     source
