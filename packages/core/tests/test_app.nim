@@ -53,3 +53,21 @@ block navigationRulesAreExplicit:
   doAssert window.setNavigationRules(NavigationRules(
     allow: @["https://example.com/**"], deny: @["https://example.com/private/**"])).isOk
   doAssert not window.setNavigationRules(NavigationRules(allow: @[""], deny: @[])).isOk
+
+block permissionsAndDownloadsDefaultToDeny:
+  let created = newApp(id = "tech.asopi.policy-test", name = "Policy test")
+  doAssert created.isOk
+  let window = created.value.newWindow(title = "Policy").value
+  doAssert window.decidePermission(PermissionRequest(
+    kind: microphone, url: "https://example.com")) == permissionDeny
+  doAssert window.decideDownload(DownloadRequest(
+    url: "https://example.com/file", suggestedName: "file")) == downloadDeny
+  window.permissionHandler = proc(request: PermissionRequest): PermissionDecision =
+    if request.kind == notifications: permissionGrant else: permissionDeny
+  window.downloadHandler = proc(request: DownloadRequest): DownloadDecision = downloadAllow
+  doAssert window.decidePermission(PermissionRequest(
+    kind: notifications, url: "https://example.com")) == permissionGrant
+  doAssert window.decidePermission(PermissionRequest(
+    kind: camera, url: "https://example.com")) == permissionDeny
+  doAssert window.decideDownload(DownloadRequest(
+    url: "https://example.com/file", suggestedName: "file")) == downloadAllow

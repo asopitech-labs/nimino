@@ -103,6 +103,30 @@ type
     allow*: seq[string]
     deny*: seq[string]
 
+  PermissionKind* = enum
+    microphone
+    camera
+    notifications
+    geolocation
+    clipboard
+    screenCapture
+
+  PermissionDecision* = enum
+    permissionDeny
+    permissionGrant
+
+  PermissionRequest* = object
+    kind*: PermissionKind
+    url*: string
+
+  DownloadDecision* = enum
+    downloadDeny
+    downloadAllow
+
+  DownloadRequest* = object
+    url*: string
+    suggestedName*: string
+
   App* = ref object
     state: CoreAppState
     backend: CoreBackend
@@ -126,6 +150,8 @@ type
     assetRoot: string
     navigationRules: NavigationRules
     navigationRulesConfigured: bool
+    permissionHandler*: proc(request: PermissionRequest): PermissionDecision
+    downloadHandler*: proc(request: DownloadRequest): DownloadDecision
     closed: bool
 
 proc mapNativeError(error: native.NativeError): CoreError =
@@ -164,6 +190,18 @@ proc navigationAllowed(window: Window; url: string): bool =
     if navigationPatternMatches(pattern, url):
       return true
   false
+
+proc decidePermission*(window: Window; request: PermissionRequest): PermissionDecision =
+  ## Unhandled permission requests are denied by default.
+  if window.isNil or window.permissionHandler.isNil:
+    return permissionDeny
+  window.permissionHandler(request)
+
+proc decideDownload*(window: Window; request: DownloadRequest): DownloadDecision =
+  ## Downloads require an explicit application decision.
+  if window.isNil or window.downloadHandler.isNil:
+    return downloadDeny
+  window.downloadHandler(request)
 
 proc isWslEnvironment(): bool =
   when defined(niminoWsl):
