@@ -88,6 +88,20 @@ proc profileSettingPath(appId, profile, key: string): ProfilePathResult =
     return directory
   profileSuccess(directory.value / (key & ".json"))
 
+proc atomicWrite(path, content: string): ProfilePathResult =
+  let temporary = path & ".tmp-" & $getCurrentProcessId()
+  try:
+    writeFile(temporary, content)
+    if fileExists(path):
+      removeFile(path)
+    moveFile(temporary, path)
+    profileSuccess(path)
+  except CatchableError:
+    if fileExists(temporary):
+      try: removeFile(temporary)
+      except OSError: discard
+    profileFailure("unable to atomically write profile data")
+
 proc writeProfileSetting*(appId, profile, key: string;
                          value: JsonNode): ProfilePathResult =
   let layout = ensureProfileLayout(appId, profile)
@@ -96,11 +110,7 @@ proc writeProfileSetting*(appId, profile, key: string;
   let path = profileSettingPath(appId, profile, key)
   if not path.isOk:
     return path
-  try:
-    writeFile(path.value, $value)
-    profileSuccess(path.value)
-  except CatchableError:
-    profileFailure("unable to write profile setting")
+  atomicWrite(path.value, $value)
 
 proc readProfileSetting*(appId, profile, key: string): ProfilePathResult =
   let path = profileSettingPath(appId, profile, key)
@@ -160,11 +170,7 @@ proc writeProfileCookie*(appId, profile: string;
   let path = cookiePath(appId, profile, cookie)
   if not path.isOk:
     return path
-  try:
-    writeFile(path.value, $(%*cookie))
-    profileSuccess(path.value)
-  except CatchableError:
-    profileFailure("unable to write profile cookie")
+  atomicWrite(path.value, $(%*cookie))
 
 proc readProfileCookie*(appId, profile, domain, name: string):
     ProfileResult[ProfileCookie] =
