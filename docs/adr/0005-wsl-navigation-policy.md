@@ -49,9 +49,16 @@ callbackはstdout、IPC response、nested event loopを待たないため、UI t
 この方式は任意のWSL側Nim callbackを透過するものではない。`nimino-core`の
 navigationPolicyへ昇格するには、次を追加検証する。
 
-1. Windows WebView2 Runtimeで、許可・拒否・redirect・`window.open`の実遷移を確認する。
+1. Windows WebView2 Runtimeで、許可・拒否・redirectの実遷移を確認する。
 2. timeout、client EOF、host異常終了時にdeny-by-defaultとなる起動・再接続契約を確認する。
 3. Linux nativeとWSL hostで同じpattern意味論を共通テストする。
+
+`window.open`はJavaScript評価からの合成呼び出しではWebView2のユーザー操作要件で
+抑止されるため、このhost smokeの対象外である。実クリックを伴う通常Windows GUI CIで
+別途確認する。
+
+`make wsl-host-abnormal-smoke`はhandshake直後にclient stdinを閉じ、hostが0終了して
+ハングしないことを確認する。UI loop開始後のEOF、timeout後の再接続契約は未確認である。
 
 したがって、WSLの任意同期callbackは引き続き未実装であり、現在のcore公開APIへ
 自動的に追加しない。
