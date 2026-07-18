@@ -103,6 +103,21 @@ proc storeProfileDownload*(appId, profile, suggestedName, content: string): Prof
   except OSError:
     profileFailure("unable to store profile download")
 
+proc listProfileDownloads*(appId, profile: string): ProfileResult[seq[string]] =
+  let directory = profileDirectoryPath(appId, profile, downloads)
+  if not directory.isOk:
+    return ProfileResult[seq[string]](isOk: false, error: directory.error)
+  if not dirExists(directory.value):
+    return ProfileResult[seq[string]](isOk: true, value: @[])
+  try:
+    var entries: seq[string]
+    for path in walkFiles(directory.value / "*"):
+      if fileExists(path): entries.add(path)
+    entries.sort()
+    ProfileResult[seq[string]](isOk: true, value: entries)
+  except OSError:
+    ProfileResult[seq[string]](isOk: false, error: "unable to list profile downloads")
+
 proc ensureProfileLayout*(appId, profile: string): ProfilePathResult =
   ## Create the complete persistent profile layout in an idempotent manner.
   let root = profilePath(appId, profile)

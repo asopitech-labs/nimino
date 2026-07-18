@@ -755,6 +755,15 @@ proc saveDownload*(window: Window; suggestedName, content: string): CoreResultOf
   else:
     coreFailureOf[string](coreError(osError, "window.saveDownload", detail = stored.error))
 
+proc listDownloads*(window: Window): CoreResultOf[seq[string]] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[seq[string]](coreError(invalidState, "window.listDownloads"))
+  let listed = listProfileDownloads(window.app.id, window.profileName)
+  if listed.isOk:
+    coreSuccessOf(listed.value)
+  else:
+    coreFailureOf[seq[string]](coreError(osError, "window.listDownloads", detail = listed.error))
+
 proc clearPermissions*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.clearPermissions"))
