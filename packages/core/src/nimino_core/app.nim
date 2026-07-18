@@ -542,6 +542,21 @@ proc readSetting*(window: Window; key: string): CoreResultOf[JsonNode] =
   except CatchableError:
     coreFailureOf[JsonNode](coreError(nativeFailure, "window.readSetting"))
 
+proc listSettings*(window: Window): CoreResultOf[seq[string]] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[seq[string]](coreError(invalidState, "window.listSettings"))
+  let listed = listProfileSettings(window.app.id, window.profileName)
+  if not listed.isOk:
+    return coreFailureOf[seq[string]](coreError(invalidArgument, "window.listSettings", detail = listed.error))
+  coreSuccessOf(listed.value.splitLines().filterIt(it.len > 0))
+
+proc deleteSetting*(window: Window; key: string): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.deleteSetting"))
+  let deleted = deleteProfileSetting(window.app.id, window.profileName, key)
+  if deleted.isOk: coreSuccess()
+  else: coreFailure(coreError(invalidArgument, "window.deleteSetting", detail = deleted.error))
+
 proc writeCookie*(window: Window; cookie: ProfileCookie): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.writeCookie"))
