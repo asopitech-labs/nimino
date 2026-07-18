@@ -206,9 +206,23 @@ proc fromNativeOf[T](nativeResult: native.NativeResultOf[T]): CoreResultOf[T] =
 proc navigationPatternMatches(pattern, url: string): bool {.inline.} =
   if pattern.len == 0:
     return false
-  if pattern.endsWith("**"):
-    return url.startsWith(pattern[0 ..< pattern.len - 2])
-  pattern == url
+  if pattern.find('*') < 0:
+    return pattern == url
+  var cursor = 0
+  var first = true
+  for part in pattern.split('*'):
+    if part.len == 0:
+      continue
+    let found = url.find(part, cursor)
+    if found < 0 or (first and found != 0):
+      return false
+    cursor = found + part.len
+    first = false
+  pattern.endsWith('*') or cursor == url.len
+
+proc matchesNavigationPattern*(pattern, url: string): bool =
+  ## Pure URL-rule matcher for policy tests and manifest tooling.
+  navigationPatternMatches(pattern, url)
 
 proc navigationAllowed(window: Window; url: string): bool =
   if window.isNil or not window.navigationRulesConfigured:

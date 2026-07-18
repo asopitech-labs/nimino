@@ -125,6 +125,8 @@ block localAssetRootRejectsTraversal:
   doAssert not window.loadAssets("/path/that/does/not/exist").isOk
 
 block navigationRulesAreExplicit:
+  doAssert matchesNavigationPattern("https://*.discord.com/**", "https://canary.discord.com/channels")
+  doAssert not matchesNavigationPattern("https://*.discord.com/**", "https://discord.net/channels")
   let created = newApp(id = "tech.asopi.navigation-test", name = "Navigation test")
   doAssert created.isOk
   let window = created.value.newWindow(title = "Navigation").value
