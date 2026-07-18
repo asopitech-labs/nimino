@@ -1475,22 +1475,35 @@ when defined(linux):
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "navigation completed event is malformed"))
-    of "native.webview.downloadStarted":
+    of "native.webview.downloadEvent", "native.webview.downloadStarted":
       try:
         let payload = parseJson(event.payload)
         if payload.kind != JObject or not payload.hasKey("webViewId") or
-            not payload.hasKey("url") or not payload.hasKey("succeeded"):
+            not payload.hasKey("url") or
+            (not payload.hasKey("state") and not payload.hasKey("succeeded")):
           return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
             detail = "download event is malformed"))
         let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
         for window in app.windows:
           if not window.closed and window.webViewId == webViewId and
               not window.downloadEventHandler.isNil:
+            let state = if payload.hasKey("state"):
+              case payload["state"].getStr()
+              of "started": downloadStarted
+              of "progress": downloadProgress
+              of "completed": downloadCompleted
+              of "cancelled": downloadCancelled
+              else: downloadFailed
+            else:
+              if payload["succeeded"].getBool(): downloadStarted else: downloadFailed
+            let progress = if payload.hasKey("progress"): payload["progress"].getFloat()
+                           elif state == downloadFailed: -1.0
+                           else: 0.0
             try: window.downloadEventHandler(DownloadEvent(
               request: DownloadRequest(url: payload["url"].getStr(),
                 suggestedName: "download"),
-              state: if payload["succeeded"].getBool(): downloadStarted else: downloadFailed,
-              progress: if payload["succeeded"].getBool(): 0.0 else: -1.0))
+              state: state,
+              progress: progress))
             except CatchableError: discard
             break
       except CatchableError:

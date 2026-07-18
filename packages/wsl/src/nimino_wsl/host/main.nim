@@ -167,10 +167,11 @@ proc requestPolicy(state: HostState; request: PolicyRequest): bool =
   if not decision.isOk or not decision.value.allow:
     return false
   if request.kind == downloadPolicy:
-    discard state.writeEvent("native.webview.downloadStarted", $(%*{
+    discard state.writeEvent("native.webview.downloadEvent", $(%*{
       "webViewId": $request.webViewId,
       "url": request.url,
-      "succeeded": true
+      "state": "started",
+      "progress": 0.0
     }), "")
   true
 
