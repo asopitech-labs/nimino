@@ -203,6 +203,19 @@ proc clearProfilePermissions*(appId, profile: string): ProfilePathResult =
   except OSError:
     profileFailure("unable to clear profile permissions")
 
+proc clearProfileLocalStorage*(appId, profile: string): ProfilePathResult =
+  let directory = profileDirectoryPath(appId, profile, localStorage)
+  if not directory.isOk:
+    return directory
+  if not dirExists(directory.value):
+    return profileSuccess(directory.value)
+  try:
+    for path in walkFiles(directory.value / "*"):
+      if fileExists(path): removeFile(path)
+    profileSuccess(directory.value)
+  except OSError:
+    profileFailure("unable to clear profile local storage")
+
 proc cookieFileKey(cookie: ProfileCookie): string =
   cookie.domain & "__" & cookie.name
 

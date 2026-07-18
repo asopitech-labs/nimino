@@ -128,6 +128,11 @@ block windowsCanSelectIndependentProfiles:
   writeFile(permissionPath.value / "example.com.json", "{\"notifications\":\"deny\"}")
   doAssert direct.value.clearPermissions().isOk
   doAssert not fileExists(permissionPath.value / "example.com.json")
+  let storagePath = profileDirectoryPath("tech.asopi.profile-window-test", "direct", ProfileDirectory.localStorage)
+  doAssert storagePath.isOk
+  writeFile(storagePath.value / "origin.json", "{}")
+  doAssert direct.value.clearLocalStorage().isOk
+  doAssert not fileExists(storagePath.value / "origin.json")
   let sessionCookie = ProfileCookie(name: "sid", value: "window", domain: "example.com")
   doAssert direct.value.writeCookie(sessionCookie).isOk
   let readCookie = direct.value.readCookie("example.com", "sid")
