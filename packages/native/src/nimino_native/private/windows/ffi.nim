@@ -362,6 +362,43 @@ proc downloadOperationGetTotalBytes*(operation: pointer; value: ptr int64): HRes
   )
   dispatch(operation, value)
 
+proc downloadOperationGetState*(operation: pointer; value: ptr int32): HResult {.inline.} =
+  ## ICoreWebView2DownloadOperation::get_State (slot 9).
+  let dispatch = cast[proc(self: pointer; value: ptr int32): HResult {.stdcall.}] (
+    cast[ptr ComInterface](operation).vtable[9]
+  )
+  dispatch(operation, value)
+
+proc downloadOperationAddBytesReceivedChanged*(operation, handler: pointer;
+                                                token: ptr EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; handler: pointer;
+                           token: ptr EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](operation).vtable[16]
+  )
+  dispatch(operation, handler, token)
+
+proc downloadOperationRemoveBytesReceivedChanged*(operation: pointer;
+                                                   token: EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](operation).vtable[17]
+  )
+  dispatch(operation, token)
+
+proc downloadOperationAddStateChanged*(operation, handler: pointer;
+                                       token: ptr EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; handler: pointer;
+                           token: ptr EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](operation).vtable[20]
+  )
+  dispatch(operation, handler, token)
+
+proc downloadOperationRemoveStateChanged*(operation: pointer;
+                                          token: EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](operation).vtable[21]
+  )
+  dispatch(operation, token)
+
 proc coreRemoveNavigationStarting*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
     cast[ptr ComInterface](core).vtable[8]

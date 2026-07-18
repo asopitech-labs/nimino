@@ -61,6 +61,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
+  DownloadOperationVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
+
   EnvironmentCompletedHandler = object
     vtable: ptr EnvironmentCompletedVTable
     references: Atomic[int]
@@ -111,11 +117,24 @@ type
     references: Atomic[int]
     view: pointer
 
+  DownloadOperationHandler = object
+    vtable: ptr DownloadOperationVTable
+    references: Atomic[int]
+    view: pointer
+    url: string
+
+var downloadOperationVTable: DownloadOperationVTable
+
 proc windowsDisposeWindow(window: NativeWindow)
 proc windowsFail(app: NativeApp; error: NativeError)
 proc windowsResize(window: NativeWindow): NativeResult
 proc windowsLoadUrl(view: NativeWebView): NativeResult
 proc windowsFinishWebViewInitialization(view: NativeWebView): NativeResult
+proc downloadOperationAddRef(self: pointer): uint32 {.stdcall.}
+proc downloadOperationRelease(self: pointer): uint32 {.stdcall.}
+proc downloadOperationQueryInterface(self: pointer; iid: ptr WinGuid;
+                                     outInstance: ptr pointer): HResult {.stdcall.}
+proc downloadOperationInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
 proc hresultError(operation: string; status: HResult): NativeError {.inline.} =
   nativeError(webViewError, operation, platformCode = status)
@@ -328,7 +347,59 @@ proc downloadInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
             succeeded(downloadOperationGetTotalBytes(operation, addr total)) and total > 0:
           dispatchDownloadEvent(cast[NativeWebView](handler.view), downloadUrl,
             nativeDownloadProgress, float(received) / float(total))
+        let operationHandler = cast[ptr DownloadOperationHandler](alloc0(sizeof(DownloadOperationHandler)))
+        operationHandler.vtable = addr downloadOperationVTable
+        operationHandler.references.store(1, moRelaxed)
+        operationHandler.view = handler.view
+        operationHandler.url = downloadUrl
+        var bytesToken, stateToken: EventRegistrationToken
+        let bytesStatus = downloadOperationAddBytesReceivedChanged(operation,
+          cast[pointer](operationHandler), addr bytesToken)
+        let stateStatus = downloadOperationAddStateChanged(operation,
+          cast[pointer](operationHandler), addr stateToken)
+        discard downloadOperationRelease(cast[pointer](operationHandler))
+        if succeeded(bytesStatus) and succeeded(stateStatus):
+          let view = cast[NativeWebView](handler.view)
+          view.downloadOperationPointer = operation
+          view.downloadOperationHandlerPointer = cast[pointer](operationHandler)
+          view.downloadBytesToken = bytesToken.value
+          view.downloadStateToken = stateToken.value
         discard comRelease(operation)
+  S_OK
+
+proc downloadOperationAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr DownloadOperationHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc downloadOperationRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr DownloadOperationHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    `=destroy`(handler.url)
+    dealloc(handler)
+  uint32(remaining)
+
+proc downloadOperationQueryInterface(self: pointer; iid: ptr WinGuid;
+                                     outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidDownloadStartingEventHandler,
+    downloadOperationAddRef)
+
+proc downloadOperationInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  let handler = cast[ptr DownloadOperationHandler](self)
+  if handler.view.isNil or sender.isNil:
+    return S_OK
+  let view = cast[NativeWebView](handler.view)
+  var received, total: int64
+  if succeeded(downloadOperationGetBytesReceived(sender, addr received)) and
+      succeeded(downloadOperationGetTotalBytes(sender, addr total)) and total > 0:
+    view.dispatchDownloadEvent(handler.url, nativeDownloadProgress,
+      float(received) / float(total))
+  var state: int32
+  if succeeded(downloadOperationGetState(sender, addr state)):
+    if state == 2:
+      view.dispatchDownloadEvent(handler.url, nativeDownloadCompleted, 1.0)
+    elif state == 1:
+      view.dispatchDownloadEvent(handler.url, nativeDownloadFailed, -1.0)
   S_OK
 
 proc environmentInvoke(self: pointer; errorCode: HResult;
@@ -412,6 +483,13 @@ var downloadStartingVTable = DownloadStartingVTable(
   addRef: downloadAddRef,
   release: downloadRelease,
   invoke: downloadInvoke
+)
+
+downloadOperationVTable = DownloadOperationVTable(
+  queryInterface: downloadOperationQueryInterface,
+  addRef: downloadOperationAddRef,
+  release: downloadOperationRelease,
+  invoke: downloadOperationInvoke
 )
 
 proc newPermissionRequestedHandler(view: NativeWebView): ptr PermissionRequestedHandler =
@@ -534,6 +612,15 @@ proc windowsDisposeView(view: NativeWebView) =
       discard comRelease(core4)
     view.downloadRegistered = false
     view.downloadHandlerPointer = nil
+  if view.downloadOperationPointer != nil:
+    let operation = view.downloadOperationPointer
+    discard downloadOperationRemoveBytesReceivedChanged(operation,
+      EventRegistrationToken(value: view.downloadBytesToken))
+    discard downloadOperationRemoveStateChanged(operation,
+      EventRegistrationToken(value: view.downloadStateToken))
+    discard comRelease(operation)
+    view.downloadOperationPointer = nil
+    view.downloadOperationHandlerPointer = nil
   if view.platformController != nil:
     discard controllerClose(view.platformController)
   if view.platformView != nil:

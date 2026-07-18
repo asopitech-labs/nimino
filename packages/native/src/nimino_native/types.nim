@@ -109,6 +109,10 @@ type
     downloadHandlerPointer: pointer
     downloadRegistrationToken: int64
     downloadRegistered: bool
+    downloadOperationPointer: pointer
+    downloadOperationHandlerPointer: pointer
+    downloadBytesToken: int64
+    downloadStateToken: int64
     downloadSignalHandlers: seq[culong]
     activeDownload: pointer
     activeDownloadUrl: string
