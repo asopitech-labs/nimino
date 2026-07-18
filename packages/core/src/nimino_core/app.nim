@@ -188,6 +188,7 @@ type
     errorHandler*: proc(error: WindowError)
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
+    downloadEventHandler*: proc(request: DownloadRequest; succeeded: bool)
     closed: bool
 
 proc mapNativeError(error: native.NativeError): CoreError =
@@ -487,6 +488,15 @@ proc configureWindow(window: Window): CoreResult =
       url: url, suggestedName: "download")) == downloadAllow)
   if not downloadConfigured.isOk:
     return coreFailure(downloadConfigured.failure.mapNativeError())
+
+  let downloadEventsConfigured = native.onDownloadEvent(window.nativeView,
+    proc(url: string; succeeded: bool) =
+      if not window.downloadEventHandler.isNil:
+        try: window.downloadEventHandler(DownloadRequest(url: url,
+          suggestedName: "download"), succeeded)
+        except CatchableError: discard)
+  if not downloadEventsConfigured.isOk:
+    return coreFailure(downloadEventsConfigured.failure.mapNativeError())
 
   coreSuccess()
 
@@ -1051,6 +1061,13 @@ proc onDownload*(window: Window;
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.onDownload"))
   window.downloadHandler = handler
+  coreSuccess()
+
+proc onDownloadEvent*(window: Window;
+                      handler: proc(request: DownloadRequest; succeeded: bool)): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onDownloadEvent"))
+  window.downloadEventHandler = handler
   coreSuccess()
 
 proc onNewWindow*(window: Window;

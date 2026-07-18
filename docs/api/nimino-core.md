@@ -128,6 +128,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 `window.saveDownload(suggestedName, content)`は一時ファイル経由でprofile内へ保存し、成功時に実パスを返します。
 `window.listDownloads()`はprofile内の保存済みダウンロード実パスを返します。
 `window.deleteDownload(path)`はprofile内に限定して一つの保存済みファイルを削除します。
+`window.onDownloadEvent`は許可されたダウンロードの開始結果を通知します。進捗・完了イベントは次段階で追加します。
 Linux WebKitGTKでは許可したレスポンスのダウンロード開始まで実装しています。保存先指定・進捗・完了イベントは別途未実装です。
 `window.clearPermissions()`ではprofileに保存した権限判断履歴を削除できます。
 `window.clearLocalStorage()`ではNimino管理のprofile local-storage領域を削除できます。

@@ -11,6 +11,7 @@ type
   NativeNavigationCompletedHandler* = proc(url: string; succeeded: bool) {.closure.}
   NativePermissionRequestedHandler* = proc(url: string): bool {.closure.}
   NativeDownloadStartingHandler* = proc(url: string): bool {.closure.}
+  NativeDownloadEventHandler* = proc(url: string; succeeded: bool) {.closure.}
 
   NativeState* = enum
     pending
@@ -94,6 +95,7 @@ type
     navigationCompletedHandler: NativeNavigationCompletedHandler
     permissionRequestedHandler: NativePermissionRequestedHandler
     downloadStartingHandler: NativeDownloadStartingHandler
+    downloadEventHandler: NativeDownloadEventHandler
     permissionHandlerPointer: pointer
     permissionRegistrationToken: int64
     permissionRegistered: bool
@@ -146,6 +148,7 @@ proc releaseCallbackReferences(view: NativeWebView) =
   view.newWindowRequestedHandler = nil
   view.navigationStartingHandler = nil
   view.navigationCompletedHandler = nil
+  view.downloadEventHandler = nil
 
 proc startScriptRequest(view: NativeWebView; request: NativeScriptRequest) =
   request.view = view
@@ -207,6 +210,14 @@ proc dispatchNavigationCompleted(view: NativeWebView; url: string; succeeded: bo
     view.navigationCompletedHandler(url, succeeded)
   except CatchableError:
     ## A user callback must not unwind through a native C/COM callback.
+    discard
+
+proc dispatchDownloadEvent(view: NativeWebView; url: string; succeeded: bool) =
+  if view.isNil or view.state in {closing, closed} or view.downloadEventHandler.isNil:
+    return
+  try:
+    view.downloadEventHandler(url, succeeded)
+  except CatchableError:
     discard
 
 proc dispatchNavigationStarting(view: NativeWebView; url: string): bool =
@@ -510,6 +521,13 @@ proc onDownloadStarting*(view: NativeWebView;
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.onDownloadStarting"))
   view.downloadStartingHandler = handler
+  success()
+
+proc onDownloadEvent*(view: NativeWebView;
+                      handler: NativeDownloadEventHandler): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.onDownloadEvent"))
+  view.downloadEventHandler = handler
   success()
 
 proc quit*(app: NativeApp): NativeResult =

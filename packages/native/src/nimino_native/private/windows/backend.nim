@@ -316,6 +316,11 @@ proc downloadInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
   if not args.isNil:
     if not allowed:
       discard downloadArgsPutCancel(args, 1)
+    else:
+      var source: WideCString
+      if succeeded(coreGetSource(handler.view, addr source)):
+        dispatchDownloadEvent(cast[NativeWebView](handler.view), $source, true)
+        coTaskMemFree(cast[pointer](source))
   S_OK
 
 proc environmentInvoke(self: pointer; errorCode: HResult;
