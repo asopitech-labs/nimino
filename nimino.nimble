@@ -31,6 +31,9 @@ task testCoreLinuxRpcSmoke, "Run the Linux core RPC smoke test under Xvfb":
 task testPackManifest, "Run nimino-pack manifest tests":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-manifest-nimcache --path:packages/pack packages/pack/tests/test_manifest.nim"
 
+task buildPackCli, "Build the nimino-pack validation CLI":
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"
+
 task testCoreLinuxRpcUrlSmoke, "Run the Linux URL document-start RPC smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-url-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-url-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_url_smoke.nim"
   exec "xvfb-run -a /tmp/nimino-core-linux-rpc-url-smoke"

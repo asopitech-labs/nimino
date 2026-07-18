@@ -53,13 +53,13 @@ proc parseStringArray(value: string): PackResult[seq[string]] =
   let body = trimmed[1 .. ^2].strip()
   if body.len == 0:
     return success[seq[string]](@[])
-  var result: seq[string]
+  var values: seq[string]
   for item in body.split(','):
     let parsed = unquote(item)
     if parsed.len == 0:
       return failure[seq[string]](invalidManifest, "array items must be non-empty strings")
-    result.add(parsed)
-  success(result)
+    values.add(parsed)
+  success(values)
 
 proc parseBool(value: string): PackResult[bool] =
   case value.strip().toLowerAscii()
