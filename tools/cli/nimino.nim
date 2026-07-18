@@ -87,15 +87,27 @@ else:
   if directory.len == 0:
     usage()
   createDir(directory)
-  if loaded.value.icon.len > 0 and fileExists(loaded.value.icon):
-    let iconName = extractFilename(loaded.value.icon)
+  var packaged = loaded.value
+  proc packageFiles(paths: var seq[string]) =
+    for index in 0 ..< paths.len:
+      if not fileExists(paths[index]):
+        continue
+      let fileName = extractFilename(paths[index])
+      if fileName.len == 0 or fileName in [".", ".."]:
+        stderr.writeLine("nimino pack: injected file path has no usable filename")
+        quit(1)
+      copyFile(paths[index], directory / fileName)
+      paths[index] = fileName
+  if packaged.icon.len > 0 and fileExists(packaged.icon):
+    let iconName = extractFilename(packaged.icon)
     if iconName.len == 0 or iconName in [".", ".."]:
       stderr.writeLine("nimino pack: icon path has no usable filename")
       quit(1)
-    copyFile(loaded.value.icon, directory / iconName)
-    var packaged = loaded.value
+    copyFile(packaged.icon, directory / iconName)
     packaged.icon = iconName
-    output = manifestJson(packaged).pretty()
+  packageFiles(packaged.css)
+  packageFiles(packaged.javascript)
+  output = manifestJson(packaged).pretty()
   let manifestPath = directory / "nimino-manifest.json"
   writeFile(manifestPath, output & "\n")
   let launcherPath = directory / "run-nimino.sh"
