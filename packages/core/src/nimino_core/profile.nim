@@ -207,6 +207,7 @@ proc profileCookiesForDomain*(appId, profile, domain: string): ProfileResult[seq
   if not listed.isOk:
     return ProfileResult[seq[ProfileCookie]](isOk: true, value: @[])
   let requested = domain.toLowerAscii().strip(chars = {'.'})
+  var matches: seq[ProfileCookie]
   for key in listed.value.splitLines():
     let separator = key.find("__")
     if separator <= 0:
@@ -217,8 +218,8 @@ proc profileCookiesForDomain*(appId, profile, domain: string): ProfileResult[seq
     if loaded.isOk:
       let stored = loaded.value.domain.toLowerAscii().strip(chars = {'.'})
       if requested == stored or requested.endsWith("." & stored):
-        result.value.add(loaded.value)
-  result.isOk = true
+        matches.add(loaded.value)
+  ProfileResult[seq[ProfileCookie]](isOk: true, value: matches)
 
 proc deleteProfileCookie*(appId, profile, domain, name: string): ProfilePathResult =
   let path = cookiePath(appId, profile, ProfileCookie(domain: domain, name: name))

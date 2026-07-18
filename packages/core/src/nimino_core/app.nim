@@ -171,6 +171,7 @@ type
     webViewId: uint64
     profilePath*: string
     profileName: string
+    lastUrl: string
     rpc*: RpcRegistry
     documentStartBridgeConfigured: bool
     assetRoot: string
@@ -874,6 +875,7 @@ proc loadUrl*(window: Window; url: string): CoreResult =
   let bridge = window.configureDocumentStartBridge(url)
   if not bridge.isOk:
     return bridge
+  window.lastUrl = url
   case window.app.backend
   of nativeBackend:
     if window.nativeView.isNil:
@@ -892,6 +894,14 @@ proc loadUrl*(window: Window; url: string): CoreResult =
         coreFailure(loaded.failure)
     else:
       coreFailure(coreError(platformUnavailable, "window.loadUrl"))
+
+proc reload*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.reload"))
+  if window.lastUrl.len == 0:
+    return coreFailure(coreError(invalidState, "window.reload",
+      detail = "no URL has been loaded"))
+  window.loadUrl(window.lastUrl)
 
 proc loadHtml*(window: Window; html: string): CoreResult
 

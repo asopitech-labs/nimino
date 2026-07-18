@@ -118,3 +118,6 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 `window.close()`はWindow単位でネイティブWindowを破棄し、Window専用RPCを終了します。
 WSLでは認証済みIPCでWindows hostへ中継します。close後の操作と二重closeは
 `invalidState`になります。
+
+`window.reload()`は最後に成功したURLを再読込します。URL未読込、close後、または
+不正状態では`invalidState`を返します。
