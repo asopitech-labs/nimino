@@ -16,6 +16,18 @@ proc linuxHideWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     gtk_widget_hide(window.platformWindow)
 
+proc linuxMinimizeWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    gtk_window_minimize(cast[ptr GtkWindow](window.platformWindow))
+
+proc linuxMaximizeWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    gtk_window_maximize(cast[ptr GtkWindow](window.platformWindow))
+
+proc linuxRestoreWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    gtk_window_unmaximize(cast[ptr GtkWindow](window.platformWindow))
+
 proc linuxLoadUrl(view: NativeWebView) =
   if view.platformView != nil and view.pendingUrl.len > 0:
     let url = view.pendingUrl

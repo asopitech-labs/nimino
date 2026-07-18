@@ -233,6 +233,20 @@ proc handleWindowVisibility(adapter: HostAdapter; payload: JsonNode; visible: bo
     return nativeFailure(if visible: "native.window.show" else: "native.window.hide", updated)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
+proc handleWindowState(adapter: HostAdapter; payload: JsonNode; operation: string): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  let updated = case operation
+    of "minimize": adapter.windows[windowId.value].minimize()
+    of "maximize": adapter.windows[windowId.value].maximize()
+    else: adapter.windows[windowId.value].restore()
+  if not updated.isOk:
+    return nativeFailure("native.window." & operation, updated)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
   if adapter.uiStartRequested:
     return errorAction("webview creation is closed after the UI loop starts")
@@ -470,6 +484,12 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowVisibility(payload.value, true)
   of "native.window.hide":
     adapter.handleWindowVisibility(payload.value, false)
+  of "native.window.minimize":
+    adapter.handleWindowState(payload.value, "minimize")
+  of "native.window.maximize":
+    adapter.handleWindowState(payload.value, "maximize")
+  of "native.window.restore":
+    adapter.handleWindowState(payload.value, "restore")
   of "native.webview.create":
     adapter.handleWebViewCreate(payload.value)
   of "native.webview.setDocumentStartScript":

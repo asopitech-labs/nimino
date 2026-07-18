@@ -677,6 +677,39 @@ proc hide*(window: Window): CoreResult =
       if hidden.isOk: coreSuccess() else: coreFailure(hidden.failure)
     else: coreFailure(coreError(platformUnavailable, "window.hide"))
 
+proc minimize*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.minimize"))
+  case window.app.backend
+  of nativeBackend: native.minimize(window.nativeWindow).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let response = window.app.wslCall("native.window.minimize", $(%*{"windowId": $window.windowId}))
+      if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else: coreFailure(coreError(platformUnavailable, "window.minimize"))
+
+proc maximize*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.maximize"))
+  case window.app.backend
+  of nativeBackend: native.maximize(window.nativeWindow).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let response = window.app.wslCall("native.window.maximize", $(%*{"windowId": $window.windowId}))
+      if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else: coreFailure(coreError(platformUnavailable, "window.maximize"))
+
+proc restore*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.restore"))
+  case window.app.backend
+  of nativeBackend: native.restore(window.nativeWindow).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let response = window.app.wslCall("native.window.restore", $(%*{"windowId": $window.windowId}))
+      if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else: coreFailure(coreError(platformUnavailable, "window.restore"))
+
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setTitle"))

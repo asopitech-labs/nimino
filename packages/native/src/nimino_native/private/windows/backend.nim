@@ -853,6 +853,18 @@ proc windowsHideWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     discard showWindow(window.platformWindow, SwHide)
 
+proc windowsMinimizeWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    discard showWindow(window.platformWindow, SwMinimize)
+
+proc windowsMaximizeWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    discard showWindow(window.platformWindow, SwMaximize)
+
+proc windowsRestoreWindow(window: NativeWindow) =
+  if window.platformWindow != nil:
+    discard showWindow(window.platformWindow, SwRestore)
+
 proc windowsCreateWindow(window: NativeWindow): NativeResult =
   let className = newWideCString(window.app.windowClassName)
   let title = newWideCString(window.title)

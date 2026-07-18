@@ -337,6 +337,42 @@ proc hide*(window: NativeWindow): NativeResult =
   else:
     failure(nativeError(unsupported, "window.hide"))
 
+proc minimize*(window: NativeWindow): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.minimize"))
+  when defined(linux) and not defined(niminoWsl):
+    linuxMinimizeWindow(window)
+    success()
+  elif defined(windows):
+    windowsMinimizeWindow(window)
+    success()
+  else:
+    failure(nativeError(unsupported, "window.minimize"))
+
+proc maximize*(window: NativeWindow): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.maximize"))
+  when defined(linux) and not defined(niminoWsl):
+    linuxMaximizeWindow(window)
+    success()
+  elif defined(windows):
+    windowsMaximizeWindow(window)
+    success()
+  else:
+    failure(nativeError(unsupported, "window.maximize"))
+
+proc restore*(window: NativeWindow): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.restore"))
+  when defined(linux) and not defined(niminoWsl):
+    linuxRestoreWindow(window)
+    success()
+  elif defined(windows):
+    windowsRestoreWindow(window)
+    success()
+  else:
+    failure(nativeError(unsupported, "window.restore"))
+
 proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.loadUrl"))

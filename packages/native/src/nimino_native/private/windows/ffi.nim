@@ -103,6 +103,9 @@ const
   WebView2PermissionStateAllow* = 1'i32
   WsOverlappedWindow* = 0x00CF0000'u32
   SwHide* = 0'i32
+  SwMinimize* = 6'i32
+  SwMaximize* = 3'i32
+  SwRestore* = 9'i32
   SwShow* = 5'i32
   SwpNoSize* = 0x0001'u32
   SwpNoMove* = 0x0002'u32

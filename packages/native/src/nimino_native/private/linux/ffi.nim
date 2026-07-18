@@ -49,6 +49,12 @@ proc gtk_window_set_child*(window: ptr GtkWindow; child: pointer)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_present*(window: ptr GtkWindow)
   {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_window_minimize*(window: ptr GtkWindow)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_window_maximize*(window: ptr GtkWindow)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_window_unmaximize*(window: ptr GtkWindow)
+  {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_widget_hide*(widget: pointer)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_destroy*(window: ptr GtkWindow)
