@@ -8,6 +8,13 @@ type
     of false:
       error*: string
 
+  ProfileResult*[T] = object
+    case isOk*: bool
+    of true:
+      value*: T
+    of false:
+      error*: string
+
   ProfileDirectory* = enum
     cookies
     localStorage
@@ -15,6 +22,14 @@ type
     permissions
     downloads
     settings
+
+  ProfileCookie* = object
+    name*: string
+    value*: string
+    domain*: string
+    path*: string
+    secure*: bool
+    expires*: int64
 
 proc profileSuccess(value: string): ProfilePathResult {.inline.} =
   ProfilePathResult(isOk: true, value: value)
@@ -125,3 +140,41 @@ proc deleteProfileSetting*(appId, profile, key: string): ProfilePathResult =
     profileSuccess(path.value)
   except OSError:
     profileFailure("unable to delete profile setting")
+
+proc cookieFileKey(cookie: ProfileCookie): string =
+  cookie.domain & "__" & cookie.name
+
+proc cookiePath(appId, profile: string; cookie: ProfileCookie): ProfilePathResult =
+  if not validSettingKey(cookie.name) or not validSettingKey(cookie.domain):
+    return profileFailure("cookie name or domain contains an unsafe component")
+  let directory = profileDirectoryPath(appId, profile, cookies)
+  if not directory.isOk:
+    return directory
+  profileSuccess(directory.value / (cookie.cookieFileKey() & ".json"))
+
+proc writeProfileCookie*(appId, profile: string;
+                        cookie: ProfileCookie): ProfilePathResult =
+  let layout = ensureProfileLayout(appId, profile)
+  if not layout.isOk:
+    return layout
+  let path = cookiePath(appId, profile, cookie)
+  if not path.isOk:
+    return path
+  try:
+    writeFile(path.value, $(%*cookie))
+    profileSuccess(path.value)
+  except CatchableError:
+    profileFailure("unable to write profile cookie")
+
+proc readProfileCookie*(appId, profile, domain, name: string):
+    ProfileResult[ProfileCookie] =
+  let path = cookiePath(appId, profile, ProfileCookie(domain: domain, name: name))
+  if not path.isOk:
+    return ProfileResult[ProfileCookie](isOk: false, error: path.error)
+  if not fileExists(path.value):
+    return ProfileResult[ProfileCookie](isOk: false, error: "profile cookie does not exist")
+  try:
+    let cookie = to(parseJson(readFile(path.value)), ProfileCookie)
+    ProfileResult[ProfileCookie](isOk: true, value: cookie)
+  except CatchableError:
+    ProfileResult[ProfileCookie](isOk: false, error: "profile cookie is not valid JSON")

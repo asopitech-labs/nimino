@@ -35,6 +35,13 @@ block profilePathsAreContainedAndSafe:
   doAssert not readProfileSetting("tech.asopi.profile-test", "work", "theme").isOk
   doAssert not writeProfileSetting("tech.asopi.profile-test", "work", "../escape",
     newJNull()).isOk
+  let cookie = ProfileCookie(name: "sid", value: "abc", domain: "example.com",
+    path: "/", secure: true, expires: 123)
+  doAssert writeProfileCookie("tech.asopi.profile-test", "work", cookie).isOk
+  let loadedCookie = readProfileCookie("tech.asopi.profile-test", "work",
+    "example.com", "sid")
+  doAssert loadedCookie.isOk
+  doAssert loadedCookie.value.value == "abc"
 
 block windowsOwnIndependentRpcAllowLists:
   let created = newApp(id = "tech.asopi.core-test", name = "Core test")
