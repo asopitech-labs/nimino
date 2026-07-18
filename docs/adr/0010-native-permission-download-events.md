@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — implementation pending official-header verification.
+Accepted — Linux API surface verified; implementation remains pending.
 
 ## Context
 
@@ -25,6 +25,15 @@ Required verification sources:
 - WebView2 SDK headers for `PermissionRequested` and download events.
 - WebKitGTK headers for permission-requested and download-started signals.
 - Backend-specific lifetime rules for event objects and completion callbacks.
+
+The Docker development image currently exposes WebKitGTK 6.0's
+`WebKitWebViewClass.permission_request` callback with signature
+`gboolean (WebKitWebView*, WebKitPermissionRequest*)`. The request interface
+provides the official `webkit_permission_request_allow()` and
+`webkit_permission_request_deny()` completion functions. The response-policy
+path also exposes `webkit_policy_decision_download()` for forced downloads.
+These declarations are now confirmed from the installed headers; the Nim FFI
+and lifetime bridge are the remaining implementation work.
 
 ## Consequences
 
