@@ -105,6 +105,14 @@ proc requiredInteger(node: JsonNode; name: string): ProtocolResultOf[int] =
     return failureOf[int](protocolError(invalidMessage, name & " is out of range"))
   successOf(int(value))
 
+proc safeWindowsPathComponent(value: string): bool =
+  if value.len == 0 or value == "." or value == "..":
+    return false
+  for ch in value:
+    if ch in {'/', '\\', ':', '*', '?', '"', '<', '>', '|'} or ord(ch) < 32:
+      return false
+  true
+
 proc requiredId(node: JsonNode; name: string): ProtocolResultOf[uint64] =
   let encoded = node.requiredString(name)
   if not encoded.isOk:
@@ -185,9 +193,7 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
     return failureOf[HostAction](appId.failure)
   if not profile.isOk:
     return failureOf[HostAction](profile.failure)
-  if appId.value.len == 0 or profile.value.len == 0 or
-      appId.value.contains("..") or appId.value.contains("/") or appId.value.contains("\\") or
-      profile.value.contains("..") or profile.value.contains("/") or profile.value.contains("\\"):
+  if not safeWindowsPathComponent(appId.value) or not safeWindowsPathComponent(profile.value):
     return errorAction("appId/profile contains an unsafe path component")
 
   let localAppData = getEnv("LOCALAPPDATA")
