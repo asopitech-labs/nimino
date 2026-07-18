@@ -433,9 +433,25 @@ proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
       of webPermissionEvents: native.webPermissionEvents
     coreSuccessOf(app.nativeApp.supports(nativeCapability))
   of wslBackend:
-    ## Capability negotiation is not yet part of the WSL handshake. Never
-    ## claim support based on the Windows host's local implementation.
-    coreSuccessOf(false)
+    when defined(linux):
+      let response = app.wslCall("app.capabilities", "{}")
+      if not response.isOk:
+        return coreFailureOf[bool](response.failure)
+      try:
+        let payload = parseJson(response.value.payload)
+        if payload.kind != JObject or not payload.hasKey("capabilities") or
+            payload["capabilities"].kind != JArray:
+          return coreFailureOf[bool](coreError(nativeFailure, "app.supports",
+            detail = "host capabilities response is malformed"))
+        for item in payload["capabilities"].items:
+          if item.kind == JString and item.getStr() == $capability:
+            return coreSuccessOf(true)
+        coreSuccessOf(false)
+      except CatchableError:
+        coreFailureOf[bool](coreError(nativeFailure, "app.supports",
+          detail = "host capabilities response is malformed"))
+    else:
+      coreFailureOf[bool](coreError(platformUnavailable, "app.supports"))
 
 proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if app.isNil or app.state != coreCreated:

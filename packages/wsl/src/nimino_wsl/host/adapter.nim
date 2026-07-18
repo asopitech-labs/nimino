@@ -406,6 +406,14 @@ proc handleEvalJavaScript(adapter: HostAdapter; payload: JsonNode): ProtocolResu
     evaluation: adapter.webViews[webViewId.value].evalJavaScript(script.value)
   ))
 
+proc handleCapabilities(adapter: HostAdapter): ProtocolResultOf[HostAction] =
+  var capabilities = newJArray()
+  for capability in Capability:
+    if adapter.app.supports(capability):
+      capabilities.add(%($capability))
+  successOf(HostAction(kind: noHostAction,
+    payload: $(%*{"capabilities": capabilities})))
+
 proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolResultOf[HostAction] =
   if adapter.isNil:
     return errorAction("host adapter is unavailable")
@@ -414,6 +422,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
 
   if message.methodName == "app.shutdown":
     return successOf(HostAction(kind: shutdownHost, payload: "{}"))
+  if message.methodName == "app.capabilities":
+    return adapter.handleCapabilities()
 
   let payload = message.payload.payloadObject()
   if not payload.isOk:
