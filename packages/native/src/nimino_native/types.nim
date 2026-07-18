@@ -11,7 +11,14 @@ type
   NativeNavigationCompletedHandler* = proc(url: string; succeeded: bool) {.closure.}
   NativePermissionRequestedHandler* = proc(url: string): bool {.closure.}
   NativeDownloadStartingHandler* = proc(url: string): bool {.closure.}
-  NativeDownloadEventHandler* = proc(url: string; succeeded: bool) {.closure.}
+  NativeDownloadState* = enum
+    nativeDownloadStarted
+    nativeDownloadProgress
+    nativeDownloadCompleted
+    nativeDownloadFailed
+    nativeDownloadCancelled
+  NativeDownloadEventHandler* = proc(url: string; state: NativeDownloadState;
+                                     progress: float) {.closure.}
 
   NativeState* = enum
     pending
@@ -212,11 +219,12 @@ proc dispatchNavigationCompleted(view: NativeWebView; url: string; succeeded: bo
     ## A user callback must not unwind through a native C/COM callback.
     discard
 
-proc dispatchDownloadEvent(view: NativeWebView; url: string; succeeded: bool) =
+proc dispatchDownloadEvent(view: NativeWebView; url: string;
+                           state: NativeDownloadState; progress: float) =
   if view.isNil or view.state in {closing, closed} or view.downloadEventHandler.isNil:
     return
   try:
-    view.downloadEventHandler(url, succeeded)
+    view.downloadEventHandler(url, state, progress)
   except CatchableError:
     discard
 

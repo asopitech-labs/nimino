@@ -319,7 +319,8 @@ proc downloadInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
     else:
       var source: WideCString
       if succeeded(coreGetSource(handler.view, addr source)):
-        dispatchDownloadEvent(cast[NativeWebView](handler.view), $source, true)
+        dispatchDownloadEvent(cast[NativeWebView](handler.view), $source,
+          nativeDownloadStarted, 0.0)
         coTaskMemFree(cast[pointer](source))
   S_OK
 

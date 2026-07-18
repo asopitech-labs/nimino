@@ -501,12 +501,17 @@ proc configureWindow(window: Window): CoreResult =
     return coreFailure(downloadConfigured.failure.mapNativeError())
 
   let downloadEventsConfigured = native.onDownloadEvent(window.nativeView,
-    proc(url: string; succeeded: bool) =
+    proc(url: string; state: native.NativeDownloadState; progress: float) =
       if not window.downloadEventHandler.isNil:
         try: window.downloadEventHandler(DownloadEvent(
           request: DownloadRequest(url: url, suggestedName: "download"),
-          state: if succeeded: downloadStarted else: downloadFailed,
-          progress: if succeeded: 0.0 else: -1.0))
+          state: case state
+            of native.nativeDownloadStarted: downloadStarted
+            of native.nativeDownloadProgress: downloadStarted
+            of native.nativeDownloadCompleted: downloadCompleted
+            of native.nativeDownloadFailed: downloadFailed
+            of native.nativeDownloadCancelled: downloadCancelled,
+          progress: progress))
         except CatchableError: discard)
   if not downloadEventsConfigured.isOk:
     return coreFailure(downloadEventsConfigured.failure.mapNativeError())

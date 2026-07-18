@@ -196,7 +196,7 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
       ## failed page navigation.  Destination/progress management remains a
       ## higher-level Core concern.
       discard webkit_web_view_download_uri(cast[ptr WebKitWebView](webView), copiedUri.cstring)
-      view.dispatchDownloadEvent(copiedUri, true)
+      view.dispatchDownloadEvent(copiedUri, nativeDownloadStarted, 0.0)
       webkit_policy_decision_ignore(decision)
     else:
       webkit_policy_decision_ignore(decision)
