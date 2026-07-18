@@ -51,7 +51,7 @@ window.rpc.register("files.save") do (request: SaveRequest) -> Future[SaveResult
 
 登録APIは明示的なメソッド名を持つ許可リストです。任意のNim関数、OS API、または`ref object`を自動公開しません。各Windowは独立したRPC registryとrequest ID空間を持ち、request/response、notification、timeout、cancel、JSON errorを扱います。
 
-`registerTyped`と`registerTypedAsync`は、引数なしまたは一つのJSON codec対応入力型を受け、戻り値（または`Future`の戻り値）をJSON化する。これらも明示メソッド名の許可リストであり、reflectionによる任意関数公開ではない。`register`の型抽出macroとTypeScript定義生成は未実装であり、native層へ追加しない。
+`registerTyped`と`registerTypedAsync`は、引数なしまたは一つのJSON codec対応入力型を受け、戻り値（または`Future`の戻り値）をJSON化する。これらも明示メソッド名の許可リストであり、reflectionによる任意関数公開ではない。`Window.typescriptDeclarations`は登録済みメソッドだけを`unknown`型で宣言生成します。register macroによる型抽出は未実装であり、native層へ追加しない。
 
 ```nim
 type Settings = object

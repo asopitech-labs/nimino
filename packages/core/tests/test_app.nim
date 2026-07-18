@@ -40,6 +40,8 @@ block windowsOwnIndependentRpcAllowLists:
   let created = newApp(id = "tech.asopi.core-test", name = "Core test")
   doAssert created.isOk
   let app = created.value
+  let multipleViews = app.supports(multipleWebViews)
+  doAssert multipleViews.isOk
 
   let invalidSize = app.newWindow(width = 0)
   doAssert not invalidSize.isOk

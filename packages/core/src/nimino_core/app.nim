@@ -90,6 +90,15 @@ type
     nativeBackend
     wslBackend
 
+  Capability* = enum
+    multipleWebViews
+    transparentWindow
+    nativeMenu
+    systemTray
+    nativeNotification
+    customProtocol
+    webPermissionEvents
+
   AppOptions* = object
     id*: string
     name*: string
@@ -408,6 +417,25 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
 
 proc newApp*(id = "tech.asopi.nimino"; name = "Nimino"): CoreResultOf[App] =
   newApp(AppOptions(id: id, name: name))
+
+proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
+  if app.isNil or app.state == coreFinished:
+    return coreFailureOf[bool](coreError(invalidState, "app.supports"))
+  case app.backend
+  of nativeBackend:
+    let nativeCapability = case capability
+      of multipleWebViews: native.multipleWebViews
+      of transparentWindow: native.transparentWindow
+      of nativeMenu: native.nativeMenu
+      of systemTray: native.systemTray
+      of nativeNotification: native.nativeNotification
+      of customProtocol: native.customProtocol
+      of webPermissionEvents: native.webPermissionEvents
+    coreSuccessOf(app.nativeApp.supports(nativeCapability))
+  of wslBackend:
+    ## Capability negotiation is not yet part of the WSL handshake. Never
+    ## claim support based on the Windows host's local implementation.
+    coreSuccessOf(false)
 
 proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if app.isNil or app.state != coreCreated:
