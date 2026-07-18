@@ -118,6 +118,23 @@ proc listProfileDownloads*(appId, profile: string): ProfileResult[seq[string]] =
   except OSError:
     ProfileResult[seq[string]](isOk: false, error: "unable to list profile downloads")
 
+proc deleteProfileDownload*(appId, profile, path: string): ProfilePathResult =
+  let directory = profileDirectoryPath(appId, profile, downloads)
+  if not directory.isOk:
+    return directory
+  let candidate = absolutePath(path).normalizedPath()
+  let root = absolutePath(directory.value).normalizedPath()
+  let relative = relativePath(candidate, root)
+  if relative == ".." or relative.startsWith(".." & DirSep) or relative.contains(DirSep):
+    return profileFailure("download path is outside the profile directory")
+  if not fileExists(candidate):
+    return profileSuccess(candidate)
+  try:
+    removeFile(candidate)
+    profileSuccess(candidate)
+  except OSError:
+    profileFailure("unable to delete profile download")
+
 proc ensureProfileLayout*(appId, profile: string): ProfilePathResult =
   ## Create the complete persistent profile layout in an idempotent manner.
   let root = profilePath(appId, profile)
