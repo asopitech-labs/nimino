@@ -703,7 +703,8 @@ when defined(linux):
       ## The bridge is installed before the initial navigation.  Completion is
       ## retained as a host lifecycle event but requires no post-load script.
       discard
-    of "native.webview.permissionRequested", "native.webview.downloadStarting":
+    of "native.webview.permissionRequested", "native.webview.downloadStarting",
+       "native.webview.policyRequested":
       ## These events require a synchronous decision from the WSL client.  The
       ## current transport is request/response plus one-way events, so silently
       ## ignoring them would turn a protocol mismatch into an implicit grant.

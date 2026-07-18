@@ -143,6 +143,13 @@ proc flushNavigationCompletions(state: HostState) =
       discard state.adapter.app.close()
       return
 
+proc flushPolicyRequests(state: HostState) =
+  for requested in state.adapter.takePolicyRequests():
+    if not state.writeEvent("native.webview.policyRequested",
+        requested.request.policyRequestJson(), ""):
+      discard state.adapter.app.close()
+      return
+
 proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
   let session = state.sessionId.validateSessionMessage(message)
   if not session.isOk:
@@ -178,6 +185,7 @@ proc pollHost(state: HostState) =
   for message in state.input.takePending():
     state.handleRunningMessage(message)
   state.flushEvaluations()
+  state.flushPolicyRequests()
   state.flushMessages()
   state.flushErrors()
   state.flushNewWindowRequests()

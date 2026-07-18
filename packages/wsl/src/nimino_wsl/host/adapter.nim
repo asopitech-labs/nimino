@@ -29,6 +29,9 @@ type
     webViewId*: uint64
     url*: string
 
+  HostPolicyRequest* = object
+    request*: PolicyRequest
+
   NavigationRules = object
     allow: seq[string]
     deny: seq[string]
@@ -58,6 +61,7 @@ type
     pendingNewWindowRequests: seq[HostNewWindowRequested]
     pendingNavigationStarts: seq[HostNavigationStarting]
     pendingNavigationCompletions: seq[HostNavigationCompleted]
+    pendingPolicyRequests: seq[HostPolicyRequest]
     navigationRules: Table[uint64, NavigationRules]
 
 proc newHostAdapter*(): HostAdapter =
@@ -269,6 +273,24 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   )
   if not navigationConfigured.isOk:
     return nativeFailure("native.webview.onNavigationCompleted", navigationConfigured)
+  let permissionConfigured = created.value.onPermissionRequested(proc(url: string): bool =
+    let owner = cast[HostAdapter](adapterPointer)
+    if owner != nil:
+      owner.pendingPolicyRequests.add(HostPolicyRequest(request: PolicyRequest(
+        kind: permissionPolicy, webViewId: webViewId, url: url)))
+    false
+  )
+  if not permissionConfigured.isOk:
+    return nativeFailure("native.webview.onPermissionRequested", permissionConfigured)
+  let downloadConfigured = created.value.onDownloadStarting(proc(url: string): bool =
+    let owner = cast[HostAdapter](adapterPointer)
+    if owner != nil:
+      owner.pendingPolicyRequests.add(HostPolicyRequest(request: PolicyRequest(
+        kind: downloadPolicy, webViewId: webViewId, url: url)))
+    false
+  )
+  if not downloadConfigured.isOk:
+    return nativeFailure("native.webview.onDownloadStarting", downloadConfigured)
   adapter.webViews[webViewId] = created.value
   inc adapter.windowViewCounts[windowId.value]
   successOf(HostAction(kind: noHostAction, payload: encodedId("webViewId", webViewId)))
@@ -338,6 +360,12 @@ proc takeNavigationCompletions*(adapter: HostAdapter): seq[HostNavigationComplet
     return @[]
   result = adapter.pendingNavigationCompletions
   adapter.pendingNavigationCompletions.setLen(0)
+
+proc takePolicyRequests*(adapter: HostAdapter): seq[HostPolicyRequest] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingPolicyRequests
+  adapter.pendingPolicyRequests.setLen(0)
 
 proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;
                        contentField, operation: string): ProtocolResultOf[HostAction] =
