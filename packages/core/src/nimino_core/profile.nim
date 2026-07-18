@@ -1,4 +1,4 @@
-import std/[algorithm, json, os, strutils]
+import std/[algorithm, json, os, strutils, times]
 
 type
   ProfilePathResult* = object
@@ -298,7 +298,8 @@ proc profileCookiesForDomain*(appId, profile, domain: string): ProfileResult[seq
     let loaded = readProfileCookie(appId, profile, cookieDomain, cookieName)
     if loaded.isOk:
       let stored = loaded.value.domain.toLowerAscii().strip(chars = {'.'})
-      if requested == stored or requested.endsWith("." & stored):
+      if (requested == stored or requested.endsWith("." & stored)) and
+          (loaded.value.expires <= 0 or loaded.value.expires > int64(epochTime())):
         matches.add(loaded.value)
   ProfileResult[seq[ProfileCookie]](isOk: true, value: matches)
 
