@@ -112,7 +112,8 @@ proc listProfileDownloads*(appId, profile: string): ProfileResult[seq[string]] =
   try:
     var entries: seq[string]
     for path in walkFiles(directory.value / "*"):
-      if fileExists(path): entries.add(path)
+      if fileExists(path) and not path.endsWith(".part"):
+        entries.add(path)
     entries.sort()
     ProfileResult[seq[string]](isOk: true, value: entries)
   except OSError:
