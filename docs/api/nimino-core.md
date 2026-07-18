@@ -118,6 +118,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 エンジン内部cacheの自動接続・消去は別途未実装です。
 `window.clearDownloads()`ではprofile内のNimino管理downloadファイルを削除できます。
 WebViewエンジンの実ダウンロード保存・進捗管理は別途未実装です。
+`window.clearPermissions()`ではprofileに保存した権限判断履歴を削除できます。
 
 `loadAssets`はrootディレクトリを正規化してWindowへ固定します。`loadEntry`はroot外の
 絶対パス、`..`による脱出、存在しないファイルを拒否してからHTMLを読み込みます。
