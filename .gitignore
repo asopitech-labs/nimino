@@ -3,3 +3,4 @@ nimblecache/
 htmldocs/
 .tmp/
 .spec-workflow/
+reference/tauri/
