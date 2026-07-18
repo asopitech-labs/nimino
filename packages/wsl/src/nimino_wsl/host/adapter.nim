@@ -29,6 +29,11 @@ type
     webViewId*: uint64
     url*: string
 
+  NavigationRules = object
+    allow: seq[string]
+    deny: seq[string]
+    configured: bool
+
   HostActionKind* = enum
     noHostAction
     startUiLoop
@@ -53,6 +58,7 @@ type
     pendingNewWindowRequests: seq[HostNewWindowRequested]
     pendingNavigationStarts: seq[HostNavigationStarting]
     pendingNavigationCompletions: seq[HostNavigationCompleted]
+    navigationRules: Table[uint64, NavigationRules]
 
 proc newHostAdapter*(): HostAdapter =
   HostAdapter(app: newNativeApp(), nextWindowId: 1, nextWebViewId: 1)
@@ -90,6 +96,42 @@ proc requiredId(node: JsonNode; name: string): ProtocolResultOf[uint64] =
     successOf(uint64(parseUInt(encoded.value)))
   except CatchableError:
     failureOf[uint64](protocolError(invalidMessage, name & " must be an unsigned integer string"))
+
+proc ruleMatches(pattern, url: string): bool {.inline.} =
+  if pattern.len == 0:
+    return false
+  if pattern.endsWith("**"):
+    return url.startsWith(pattern[0 ..< pattern.len - 2])
+  pattern == url
+
+proc navigationAllowed(rules: NavigationRules; url: string): bool {.inline.} =
+  if not rules.configured:
+    return true
+  for pattern in rules.deny:
+    if ruleMatches(pattern, url):
+      return false
+  for pattern in rules.allow:
+    if ruleMatches(pattern, url):
+      return true
+  false
+
+proc navigationDecision*(adapter: HostAdapter; webViewId: uint64; url: string): bool =
+  ## Host-local policy hook used by the native callback and its deterministic
+  ## unit tests. It never performs IPC or waits for the WSL client.
+  if adapter.isNil:
+    return false
+  adapter.navigationRules.getOrDefault(webViewId).navigationAllowed(url)
+
+proc stringArray(node: JsonNode; name: string): ProtocolResultOf[seq[string]] =
+  if not node.hasKey(name) or node[name].kind != JArray:
+    return failureOf[seq[string]](protocolError(invalidMessage, name & " must be an array"))
+  var values: seq[string]
+  for item in node[name].items:
+    if item.kind != JString or item.getStr().len == 0:
+      return failureOf[seq[string]](protocolError(invalidMessage,
+        name & " must contain non-empty strings"))
+    values.add(item.getStr())
+  successOf(values)
 
 proc encodedId(name: string; value: uint64): string =
   $(%*{name: $value})
@@ -210,8 +252,7 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
           webViewId: webViewId,
           url: url
         ))
-      ## WSL control responses need a separate no-nested-loop protocol spike.
-      ## The adapter keeps native's default allow behavior until then.
+        return owner.navigationDecision(webViewId, url)
       true
   )
   if not navigationStartingConfigured.isOk:
@@ -247,6 +288,25 @@ proc handleWebViewSetDocumentStartScript(adapter: HostAdapter;
   let configured = adapter.webViews[webViewId.value].setDocumentStartScript(script.value)
   if not configured.isOk:
     return nativeFailure("native.webview.setDocumentStartScript", configured)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
+proc handleWebViewSetNavigationRules(adapter: HostAdapter;
+                                     payload: JsonNode): ProtocolResultOf[HostAction] =
+  if adapter.uiStartRequested:
+    return errorAction("navigation rules are closed after the UI loop starts")
+  let webViewId = payload.requiredId("webViewId")
+  let allow = payload.stringArray("allow")
+  let deny = payload.stringArray("deny")
+  if not webViewId.isOk:
+    return failureOf[HostAction](webViewId.failure)
+  if not allow.isOk:
+    return failureOf[HostAction](allow.failure)
+  if not deny.isOk:
+    return failureOf[HostAction](deny.failure)
+  if not adapter.webViews.hasKey(webViewId.value):
+    return errorAction("unknown webViewId")
+  adapter.navigationRules[webViewId.value] = NavigationRules(
+    allow: allow.value, deny: deny.value, configured: true)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
 proc takeMessages*(adapter: HostAdapter): seq[HostWebMessage] =
@@ -346,6 +406,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWebViewCreate(payload.value)
   of "native.webview.setDocumentStartScript":
     adapter.handleWebViewSetDocumentStartScript(payload.value)
+  of "native.webview.setNavigationRules":
+    adapter.handleWebViewSetNavigationRules(payload.value)
   of "native.webview.loadUrl":
     adapter.handleLoadContent(payload.value, "url", message.methodName)
   of "native.webview.loadHtml":

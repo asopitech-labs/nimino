@@ -1,4 +1,4 @@
-import std/[asyncfutures, json]
+import std/[asyncfutures, json, strutils]
 
 import nimino_wsl
 
@@ -32,6 +32,30 @@ block createsWindowViewAndUrlBeforeStartingUi:
     $(%*{"webViewId": webViewId, "url": "https://example.com"})))
   doAssert loaded.isOk
   doAssert loaded.value.kind == startUiLoop
+
+block navigationRulesAreEvaluatedOnHostWithoutIpcWait:
+  let adapter = newHostAdapter()
+  let window = adapter.handleRequest(requestMessage("native.window.create",
+    "{\"title\":\"Policy\",\"width\":800,\"height\":600}"))
+  doAssert window.isOk
+  let windowId = parseJson(window.value.payload)["windowId"].getStr()
+  let view = adapter.handleRequest(requestMessage("native.webview.create",
+    $(%*{"windowId": windowId})))
+  doAssert view.isOk
+  let webViewId = parseJson(view.value.payload)["webViewId"].getStr()
+  let configured = adapter.handleRequest(requestMessage("native.webview.setNavigationRules",
+    $(%*{"webViewId": webViewId, "allow": ["https://example.com/**"],
+      "deny": ["https://example.com/private/**"]})))
+  doAssert configured.isOk
+  doAssert adapter.navigationDecision(uint64(parseUInt(webViewId)),
+    "https://example.com/docs/start")
+  doAssert not adapter.navigationDecision(uint64(parseUInt(webViewId)),
+    "https://example.com/private/token")
+  doAssert not adapter.navigationDecision(uint64(parseUInt(webViewId)),
+    "https://other.example/")
+  let invalid = adapter.handleRequest(requestMessage("native.webview.setNavigationRules",
+    $(%*{"webViewId": webViewId, "allow": [""], "deny": []})))
+  doAssert not invalid.isOk
 
 block rejectsUnknownObjectsAndLateMutation:
   let adapter = newHostAdapter()

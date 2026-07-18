@@ -1,6 +1,6 @@
 # ADR-0005: WSLのナビゲーション開始policy伝達方式（提案）
 
-- 状態: Proposed
+- 状態: Accepted for host-local declarative rules; client callback remains deferred
 - 日付: 2026-07-17
 
 ## 文脈
@@ -36,3 +36,22 @@ frameを処理し、callbackからstdoutへ直接書かない。callback中にcl
 
 このADRがAcceptedになるまで、WSLでの開始eventは観測用途だけである。coreの
 navigation policy実装とM3完了判定をこれに依存させない。
+
+## スパイク結果（2026-07-18）
+
+host-localな宣言的ruleを事前同期する方式を採用候補として実装した。
+`native.webview.setNavigationRules`はUI loop開始前にWebView単位で一度だけ
+`allow`/`deny`の文字列ruleを設定し、UI callback内で完全一致または末尾`**`の
+prefix matchを評価する。denyが優先され、rule設定後の未一致URLはdenyとなる。
+callbackはstdout、IPC response、nested event loopを待たないため、UI threadの
+停止と相互待機を避けられる。
+
+この方式は任意のWSL側Nim callbackを透過するものではない。`nimino-core`の
+navigationPolicyへ昇格するには、次を追加検証する。
+
+1. Windows WebView2 Runtimeで、許可・拒否・redirect・`window.open`の実遷移を確認する。
+2. timeout、client EOF、host異常終了時にdeny-by-defaultとなる起動・再接続契約を確認する。
+3. Linux nativeとWSL hostで同じpattern意味論を共通テストする。
+
+したがって、WSLの任意同期callbackは引き続き未実装であり、現在のcore公開APIへ
+自動的に追加しない。
