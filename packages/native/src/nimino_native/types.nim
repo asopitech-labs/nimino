@@ -90,6 +90,12 @@ type
     newWindowRequestedHandler: NativeNewWindowRequestedHandler
     navigationStartingHandler: NativeNavigationStartingHandler
     navigationCompletedHandler: NativeNavigationCompletedHandler
+    permissionHandlerPointer: pointer
+    permissionRegistrationToken: int64
+    permissionRegistered: bool
+    downloadHandlerPointer: pointer
+    downloadRegistrationToken: int64
+    downloadRegistered: bool
     pendingScripts: seq[NativeScriptRequest]
     activeScripts: seq[NativeScriptRequest]
 

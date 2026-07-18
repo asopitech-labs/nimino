@@ -488,6 +488,20 @@ proc windowsDisposeView(view: NativeWebView) =
     discard coreRemoveNavigationCompleted(view.platformView, token)
     view.navigationCompletedRegistered = false
     GC_unref(view)
+  if view.permissionRegistered and view.platformView != nil:
+    let token = EventRegistrationToken(value: view.permissionRegistrationToken)
+    discard coreRemovePermissionRequested(view.platformView, token)
+    view.permissionRegistered = false
+    view.permissionHandlerPointer = nil
+    GC_unref(view)
+  if view.downloadRegistered and view.platformView != nil:
+    var core4: pointer
+    if succeeded(comQueryInterface(view.platformView, addr IidCoreWebView2_4, addr core4)) and not core4.isNil:
+      let token = EventRegistrationToken(value: view.downloadRegistrationToken)
+      discard core4RemoveDownloadStarting(core4, token)
+      discard comRelease(core4)
+    view.downloadRegistered = false
+    view.downloadHandlerPointer = nil
   if view.platformController != nil:
     discard controllerClose(view.platformController)
   if view.platformView != nil:
@@ -749,6 +763,9 @@ proc windowsConfigurePermissionRequested(view: NativeWebView): NativeResult =
   discard permissionRelease(cast[pointer](handler))
   if not succeeded(status):
     return failure(hresultError("webview.permissionRequested", status))
+  view.permissionHandlerPointer = cast[pointer](handler)
+  view.permissionRegistrationToken = token.value
+  view.permissionRegistered = true
   success()
 
 proc windowsConfigureDownloadStarting(view: NativeWebView): NativeResult =
@@ -766,6 +783,9 @@ proc windowsConfigureDownloadStarting(view: NativeWebView): NativeResult =
   discard comRelease(core4)
   if not succeeded(status):
     return failure(hresultError("webview.downloadStarting", status))
+  view.downloadHandlerPointer = cast[pointer](handler)
+  view.downloadRegistrationToken = token.value
+  view.downloadRegistered = true
   success()
 
 proc windowsConfigureNewWindowRequested(view: NativeWebView): NativeResult =
