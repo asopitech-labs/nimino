@@ -143,3 +143,6 @@ block fireAndForgetNotificationRegistration:
     "params": {"value": "ready"}
   }))
   doAssert received == "ready"
+  let declarations = registry.typescriptDeclarations()
+  doAssert declarations.find("notify(method: 'status.changed'") >= 0
+  doAssert declarations.find("invoke(method: 'status.changed'") < 0

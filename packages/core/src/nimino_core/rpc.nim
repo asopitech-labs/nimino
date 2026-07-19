@@ -116,11 +116,18 @@ proc registeredMethods*(registry: RpcRegistry): seq[string] =
       result.add(methodName)
   result.sort()
 
+proc registeredNotificationMethods*(registry: RpcRegistry): seq[string] =
+  if registry.isNil or registry.closed:
+    return @[]
+  for methodName in registry.notificationHandlers.keys:
+    result.add(methodName)
+  result.sort()
+
 proc typescriptDeclarations*(registry: RpcRegistry): string =
   ## Generate a conservative declaration surface. Runtime codecs may carry
   ## richer types later; unknown keeps this output sound today.
   result = "declare global {\n  interface Window {\n    nimino: {\n"
-  for methodName in registry.registeredMethods():
+  for methodName in registry.handlers.keys:
     let escaped = methodName.replace("\\", "\\\\").replace("'", "\\'")
     let schema = registry.typeScriptSchemas.getOrDefault(methodName,
       (paramsType: "unknown", resultType: "unknown"))
@@ -128,6 +135,11 @@ proc typescriptDeclarations*(registry: RpcRegistry): string =
     result.add(escaped)
     result.add("', params?: " & schema.paramsType &
       ", options?: { timeoutMs?: number }): Promise<" & schema.resultType & ">;\n")
+  for methodName in registry.registeredNotificationMethods():
+    let escaped = methodName.replace("\\", "\\\\").replace("'", "\\'")
+    result.add("      notify(method: '")
+    result.add(escaped)
+    result.add("', params?: unknown): void;\n")
   result.add("      notify(method: string, params?: unknown): void;\n")
   result.add("    };\n  }\n}\nexport {};\n")
 
