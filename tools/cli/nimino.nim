@@ -103,7 +103,11 @@ else:
   let directory = outputDirectory
   if directory.len == 0:
     usage()
-  createDir(directory)
+  try:
+    createDir(directory)
+  except OSError:
+    stderr.writeLine("nimino pack: unable to create output directory")
+    quit(1)
   var packaged = loaded.value
   proc packageFiles(paths: var seq[string]) =
     var packagedNames: seq[string]
