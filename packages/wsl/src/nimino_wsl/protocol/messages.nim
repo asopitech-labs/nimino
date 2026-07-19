@@ -134,6 +134,11 @@ proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
     let suggestedName = if node.hasKey("suggestedName") and
         node["suggestedName"].kind == JString: node["suggestedName"].getStr()
       else: ""
+    if kind == downloadPolicy:
+      if suggestedName.len > 255 or suggestedName.find({'/', '\\', '\r', '\n', '\x00'}) >= 0 or
+          suggestedName in [".", ".."]:
+        return failureOf[PolicyRequest](protocolError(invalidMessage,
+          "download suggestedName is unsafe"))
     successOf(PolicyRequest(kind: kind,
       windowId: windowId, webViewId: webViewId,
       url: url, suggestedName: suggestedName))

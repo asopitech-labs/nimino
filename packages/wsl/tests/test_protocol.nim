@@ -98,6 +98,8 @@ block policyPayloadRoundTrip:
   let decodedClose = closeRequest.policyRequestJson.parsePolicyRequest()
   doAssert decodedClose.isOk
   doAssert decodedClose.value.kind == closePolicy
+  let unsafe = request.policyRequestJson.replace("file.zip", "../file.zip")
+  doAssert not unsafe.parsePolicyRequest().isOk
   doAssert decodedClose.value.windowId == 7
 
   let decodedResponse = policyResponseJson(PolicyResponse(allow: true)).parsePolicyResponse()
