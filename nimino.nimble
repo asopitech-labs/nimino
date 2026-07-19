@@ -48,6 +48,7 @@ task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "! /tmp/nimino pack https://example.com --name MissingIcon --id app.nimino.missing-icon --icon /tmp/nimino-pack-cli-test/no-such-icon.png --out /tmp/nimino-pack-cli-test/missing-icon-out && test ! -e /tmp/nimino-pack-cli-test/missing-icon-out"
   exec "printf 'name = \"DemoInject\"\\nid = \"app.nimino.demo-inject\"\\nurl = \"https://example.com\"\\n\\n[injection]\\ncss = [\"/tmp/nimino-pack-cli-test/custom.css\"]\\njavascript = [\"/tmp/nimino-pack-cli-test/custom.js\"]\\n' > /tmp/nimino-pack-cli-test/inject.toml && /tmp/nimino pack /tmp/nimino-pack-cli-test/inject.toml --out /tmp/nimino-pack-cli-test/inject-out"
   exec "test -s /tmp/nimino-pack-cli-test/inject-out/custom.css && test -s /tmp/nimino-pack-cli-test/inject-out/custom.js && grep -q 'custom.css' /tmp/nimino-pack-cli-test/inject-out/nimino-manifest.json && grep -q 'custom.js' /tmp/nimino-pack-cli-test/inject-out/nimino-manifest.json"
+  exec "printf 'name = \"MissingInject\"\\nid = \"app.nimino.missing-inject\"\\nurl = \"https://example.com\"\\n\\n[injection]\\ncss = [\"/tmp/nimino-pack-cli-test/no-such.css\"]\\n' > /tmp/nimino-pack-cli-test/missing-inject.toml && ! /tmp/nimino pack /tmp/nimino-pack-cli-test/missing-inject.toml --out /tmp/nimino-pack-cli-test/missing-inject-out && test ! -e /tmp/nimino-pack-cli-test/missing-inject-out"
 
 task testPackArchive, "Verify Linux and Windows pack archives":
   exec "tar -czf /tmp/nimino-pack-cli-test/nimino-demo-linux.tar.gz -C /tmp/nimino-pack-cli-test/out ."

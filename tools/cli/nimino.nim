@@ -108,7 +108,8 @@ else:
   proc packageFiles(paths: var seq[string]) =
     for index in 0 ..< paths.len:
       if not fileExists(paths[index]):
-        continue
+        stderr.writeLine("nimino pack: injected file does not exist: " & paths[index])
+        quit(1)
       let fileName = extractFilename(paths[index])
       if fileName.len == 0 or fileName in [".", ".."]:
         stderr.writeLine("nimino pack: injected file path has no usable filename")
