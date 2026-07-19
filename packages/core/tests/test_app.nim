@@ -245,6 +245,8 @@ block navigationRulesAreExplicit:
     allow: @["https://example.com/**"], deny: @["https://example.com/private/**"])).isOk
   doAssert window.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
   doAssert not window.setNavigationRules(NavigationRules(allow: @[""], deny: @[])).isOk
+  doAssert not window.openExternally("javascript:alert(1)").isOk
+  doAssert not window.openExternally("https://example.com/line\nfeed").isOk
   var externalUrl = ""
   doAssert window.onExternalNavigation(proc(request: NavigationRequest) =
     externalUrl = request.url).isOk

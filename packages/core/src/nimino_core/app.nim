@@ -1,6 +1,6 @@
 ## M3 application facade.  Native object types remain private to this module.
 
-import std/[asyncfutures, base64, json, os, sequtils, strutils, uri]
+import std/[asyncfutures, base64, json, os, osproc, sequtils, strutils, uri]
 import std/httpclient except ProtocolError
 
 when defined(linux):
@@ -1114,6 +1114,34 @@ proc onExternalNavigation*(window: Window;
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.onExternalNavigation"))
   window.externalNavigationHandler = handler
+  coreSuccess()
+
+proc openExternally*(window: Window; url: string): CoreResult =
+  ## Open a validated HTTP(S) URL with the platform's default browser.
+  ## This uses an argument vector rather than a shell command, so URL text
+  ## cannot become shell syntax. WSL callers should use onExternalNavigation
+  ## when Windows interop is not available in the host environment.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.openExternally"))
+  let parsed = parseUri(url)
+  if parsed.scheme.toLowerAscii() notin ["http", "https"] or parsed.hostname.len == 0 or
+      url.anyIt(it.isSpaceAscii or it.ord < 0x20):
+    return coreFailure(coreError(invalidArgument, "window.openExternally",
+      detail = "only absolute HTTP(S) URLs without control characters are allowed"))
+  var process: Process
+  when defined(windows):
+    let command = "rundll32.exe"
+    process = startProcess(command, args = @[
+      "url.dll,FileProtocolHandler", url], options = {poUsePath, poStdErrToStdOut})
+  elif defined(linux):
+    let command = if window.app.backend == wslBackend: "wslview" else: "xdg-open"
+    process = startProcess(command, args = @[url], options = {poUsePath, poStdErrToStdOut})
+  else:
+    return coreFailure(coreError(platformUnavailable, "window.openExternally"))
+  if process.isNil:
+    return coreFailure(coreError(osError, "window.openExternally",
+      detail = "default browser process could not be started"))
+  discard process
   coreSuccess()
 
 proc onPermission*(window: Window;

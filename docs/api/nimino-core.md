@@ -35,6 +35,7 @@ proc loadUrl*(window: Window, url: string): CoreResult
 proc loadHtml*(window: Window, html: string): CoreResult
 proc loadAssets*(window: Window, directory: string): CoreResult
 proc loadEntry*(window: Window, entry = "index.html"): CoreResult
+proc openExternally*(window: Window, url: string): CoreResult
 proc setNavigationRules*(window: Window, rules: NavigationRules): CoreResult
 proc evalJavaScript*(window: Window, script: string): Future[CoreResultOf[string]]
 proc quit*(app: App): CoreResult
