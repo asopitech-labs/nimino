@@ -1,6 +1,6 @@
 ## M3 application facade.  Native object types remain private to this module.
 
-import std/[asyncfutures, base64, json, os, sequtils, strutils, times, uri]
+import std/[asyncfutures, base64, json, os, sequtils, strutils, uri]
 
 when defined(linux):
   import std/options
@@ -381,15 +381,11 @@ proc documentStartCookieSource(window: Window; url: string): string =
     let parsed = parseUri(url)
     if parsed.scheme.toLowerAscii() notin ["http", "https"] or parsed.hostname.len == 0:
       return ""
-    let cookies = profileCookiesForDomain(window.app.id, window.profileName, parsed.hostname)
+    let cookies = profileCookiesForUrl(window.app.id, window.profileName, url)
     if not cookies.isOk or cookies.value.len == 0:
       return ""
     var source = "(() => { if (typeof document === 'undefined') return;"
     for cookie in cookies.value:
-      if cookie.secure and parsed.scheme.toLowerAscii() != "https":
-        continue
-      if cookie.expires > 0 and cookie.expires <= int64(epochTime()):
-        continue
       let cookiePath = if cookie.path.len == 0: "/" else: cookie.path
       let requestPath = if parsed.path.len == 0: "/" else: parsed.path
       if not requestPath.startsWith(cookiePath) or
