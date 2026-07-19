@@ -1317,6 +1317,23 @@ proc inlineWslCssUrls(root, baseDir, css: string): string =
     result = result[0 ..< valueStart] & dataUri & result[valueEnd .. ^1]
     cursor = valueStart + dataUri.len
 
+proc hasStylesheetRel(tag: string): bool =
+  let lower = tag.toLowerAscii()
+  let relStart = lower.find("rel=")
+  if relStart < 0:
+    return false
+  let valueStart = relStart + 4
+  if valueStart >= lower.len or lower[valueStart] notin {'\'', '"'}:
+    return false
+  let quote = lower[valueStart]
+  let valueEnd = lower.find(quote, valueStart + 1)
+  if valueEnd < 0:
+    return false
+  for token in lower[valueStart + 1 ..< valueEnd].splitWhitespace():
+    if token == "stylesheet":
+      return true
+  false
+
 proc inlineWslAssets(root, baseDir, html: string): string =
   result = html
   var cursor = 0
@@ -1364,10 +1381,10 @@ proc inlineWslAssets(root, baseDir, html: string): string =
       continue
     let valueStart = hrefStart + 6
     let valueEnd = result.find(if useSingle: '\'' else: '"', valueStart)
-    let tagMarkup = result[start .. tagEnd].toLowerAscii()
-    let relValue = tagMarkup.find("stylesheet")
+    let tagMarkup = result[start .. tagEnd]
+    let relValue = tagMarkup.hasStylesheetRel()
     if valueEnd < 0 or valueEnd > tagEnd or
-        relValue < 0:
+        not relValue:
       cursor = tagEnd + 1
       continue
     let assetName = decodeUrl(result[valueStart ..< valueEnd].split({'?', '#'}, maxsplit = 1)[0])
