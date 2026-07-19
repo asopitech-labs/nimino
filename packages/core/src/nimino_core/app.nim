@@ -1,6 +1,7 @@
 ## M3 application facade.  Native object types remain private to this module.
 
 import std/[asyncfutures, base64, json, os, sequtils, strutils, uri]
+import std/httpclient except ProtocolError
 
 when defined(linux):
   import std/options
@@ -108,6 +109,7 @@ type
     width*: int
     height*: int
     profile*: string
+    inlineRemoteAssets*: bool
 
   NavigationRules* = object
     allow*: seq[string]
@@ -204,6 +206,7 @@ type
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
     downloadEventHandler*: proc(event: DownloadEvent)
     closed: bool
+    inlineRemoteAssets: bool
 
 proc mapNativeError(error: native.NativeError): CoreError =
   let kind = case error.kind
@@ -667,7 +670,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
       if not webViewId.isOk:
         return coreFailureOf[Window](webViewId.failure)
       let window = Window(app: app, windowId: windowId.value, webViewId: webViewId.value,
-                          profilePath: profile.value, profileName: profileName)
+                          profilePath: profile.value, profileName: profileName,
+                          inlineRemoteAssets: options.inlineRemoteAssets)
       window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
       app.windows.add(window)
       return coreSuccessOf(window)
@@ -684,7 +688,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
 
   let window = Window(app: app, nativeWindow: nativeWindow.value,
                       nativeView: nativeView.value, profilePath: profile.value,
-                      profileName: profileName)
+                      profileName: profileName,
+                      inlineRemoteAssets: options.inlineRemoteAssets)
   window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
   let configured = window.configureWindow()
   if not configured.isOk:
@@ -1344,7 +1349,25 @@ proc hasStylesheetRel(tag: string): bool =
       return true
   false
 
-proc inlineWslAssets(root, baseDir, html: string): string =
+proc remoteAssetDataUri(url: string): string =
+  let parsed = parseUri(url)
+  if parsed.scheme.toLowerAscii() notin ["http", "https"] or parsed.hostname.len == 0:
+    return ""
+  try:
+    var client = newHttpClient()
+    let response = client.get(url)
+    if response.code.int < 200 or response.code.int >= 300 or response.body.len > 8 * 1024 * 1024:
+      return ""
+    var mime = response.headers.getOrDefault("Content-Type").split(';')[0].strip()
+    if mime.len == 0:
+      mime = assetMime(parsed.path)
+    if mime.len == 0:
+      return ""
+    "data:" & mime & ";base64," & encode(response.body)
+  except CatchableError:
+    ""
+
+proc inlineWslAssets(root, baseDir, html: string; inlineRemoteAssets = false): string =
   result = html
   var cursor = 0
   while true:
@@ -1365,6 +1388,13 @@ proc inlineWslAssets(root, baseDir, html: string): string =
       cursor = tagEnd + 1
       continue
     let relative = result[valueStart ..< valueEnd]
+    if inlineRemoteAssets and (relative.toLowerAscii().startsWith("http://") or
+        relative.toLowerAscii().startsWith("https://")):
+      let remote = remoteAssetDataUri(relative)
+      if remote.len > 0:
+        result = result[0 ..< valueStart] & remote & result[valueEnd .. ^1]
+        cursor = valueStart + remote.len + 1
+        continue
     let assetName = decodeUrl(relative.split({'?', '#'}, maxsplit = 1)[0])
     let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
@@ -1567,7 +1597,7 @@ proc loadEntry*(window: Window; entry = "index.html"): CoreResult =
       return window.loadUrl(fileUrl)
     var content = readFile(path)
     if window.app.backend == wslBackend:
-      content = inlineWslAssets(root, splitFile(path).dir, content)
+      content = inlineWslAssets(root, splitFile(path).dir, content, window.inlineRemoteAssets)
     window.loadHtml(content)
   except CatchableError:
     coreFailure(coreError(nativeFailure, "window.loadEntry",
