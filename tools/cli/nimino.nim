@@ -115,6 +115,12 @@ else:
         quit(1)
       copyFile(paths[index], directory / fileName)
       paths[index] = fileName
+  let iconIsRemote = packaged.icon.toLowerAscii().startsWith("http://") or
+    packaged.icon.toLowerAscii().startsWith("https://") or
+    packaged.icon.toLowerAscii().startsWith("data:")
+  if packaged.icon.len > 0 and not iconIsRemote and not fileExists(packaged.icon):
+    stderr.writeLine("nimino pack: local icon does not exist")
+    quit(1)
   if packaged.icon.len > 0 and fileExists(packaged.icon):
     let iconName = extractFilename(packaged.icon)
     if iconName.len == 0 or iconName in [".", ".."]:
