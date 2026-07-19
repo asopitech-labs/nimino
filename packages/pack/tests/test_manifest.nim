@@ -61,5 +61,7 @@ let whitespaceUrl = parse("name = \"Whitespace\"\nid = \"app.whitespace\"\nurl =
 doAssert not whitespaceUrl.isOk
 let missingHost = parse("name = \"Missing host\"\nid = \"app.missing\"\nurl = \"https:\"")
 doAssert not missingHost.isOk
+let invalidNavigation = parse("name = \"Navigation\"\nid = \"app.nav\"\nurl = \"https://example.com\"\n[navigation]\nallow = [\"example.com\"]")
+doAssert not invalidNavigation.isOk
 
 echo "nimino-pack manifest tests passed"

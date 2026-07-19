@@ -137,6 +137,14 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
       return failure[PackManifest](invalidManifest, "id and profile must be safe path components")
   if manifest.url.len == 0 or not validateUrl(manifest.url):
     return failure[PackManifest](invalidManifest, "url must use http, https, file, or data")
+  for pattern in manifest.navigationAllow & manifest.navigationExternal:
+    if pattern.len == 0 or pattern.find("://") <= 0:
+      return failure[PackManifest](invalidManifest,
+        "navigation URL patterns must include a scheme")
+    for character in pattern:
+      if ord(character) < 0x20 or character in {'\r', '\n'}:
+        return failure[PackManifest](invalidManifest,
+          "navigation URL patterns contain control characters")
   for permission in manifest.permissionsAllow:
     if permission notin ["microphone", "camera", "notifications", "geolocation",
                          "clipboard", "screenCapture"]:
