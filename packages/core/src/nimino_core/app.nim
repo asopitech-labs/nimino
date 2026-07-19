@@ -1397,15 +1397,8 @@ proc inlineWslAssets(root, baseDir, html: string): string =
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
       cursor = tagEnd + 1
       continue
-    let ext = splitFile(candidate).ext.toLowerAscii()
-    let mime = case ext
-      of ".png": "image/png"
-      of ".jpg", ".jpeg": "image/jpeg"
-      of ".gif": "image/gif"
-      of ".svg": "image/svg+xml"
-      of ".webp": "image/webp"
-      else: ""
-    if mime.len == 0:
+    let mime = assetMime(candidate)
+    if not mime.startsWith("image/"):
       cursor = tagEnd + 1
       continue
     let encoded = encode(readFile(candidate))
