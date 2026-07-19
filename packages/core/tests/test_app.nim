@@ -64,6 +64,11 @@ block profilePathsAreContainedAndSafe:
   doAssert not fileExists(storedPath.value)
   let cookie = ProfileCookie(name: "sid", value: "abc", domain: "example.com",
     path: "/", secure: true, expires: int64(epochTime()) + 3600)
+  let parsedCookie = parseCookieHeader("sid=abc; Path=/; HttpOnly", "example.com", "/", true)
+  doAssert parsedCookie.isOk
+  doAssert parsedCookie.value[0].name == "sid"
+  doAssert parsedCookie.value[0].value == "abc"
+  doAssert not parseCookieHeader("bad;value", "example.com", "/").isOk
   doAssert writeProfileCookie("tech.asopi.profile-test", "work", cookie).isOk
   doAssert not writeProfileCookie("tech.asopi.profile-test", "work",
     ProfileCookie(name: "bad", value: "x; secure", domain: "example.com")).isOk

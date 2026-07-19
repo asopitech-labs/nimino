@@ -31,6 +31,33 @@ type
     secure*: bool
     expires*: int64
 
+proc parseCookieHeader*(header, domain, path: string; secure = false):
+    ProfileResult[seq[ProfileCookie]] =
+  ## Parse a Set-Cookie-style header into validated profile records.  Cookie
+  ## attributes that require browser policy (SameSite, HttpOnly, Max-Age and
+  ## Expires date parsing) are deliberately not guessed here; callers must
+  ## apply those policies before persisting the returned records.
+  if domain.len == 0 or path.len == 0 or not path.startsWith("/"):
+    return ProfileResult[seq[ProfileCookie]](isOk: false,
+      error: "cookie domain and absolute path are required")
+  let first = header.split(';', maxsplit = 1)[0].strip()
+  let separator = first.find('=')
+  if separator <= 0:
+    return ProfileResult[seq[ProfileCookie]](isOk: false,
+      error: "cookie header must contain a name and value")
+  let name = first[0 ..< separator].strip()
+  let value = first[separator + 1 .. ^1].strip()
+  var safeName = name.len > 0 and name notin [".", ".."]
+  for character in name:
+    if not (character.isAlphaNumeric or character in {'-', '_', '.'}):
+      safeName = false
+  if not safeName or value.find({'\r', '\n', ';'}) >= 0:
+    return ProfileResult[seq[ProfileCookie]](isOk: false,
+      error: "cookie header contains unsafe characters")
+  ProfileResult[seq[ProfileCookie]](isOk: true, value: @[
+    ProfileCookie(name: name, value: value, domain: domain, path: path,
+      secure: secure)])
+
 proc profileSuccess(value: string): ProfilePathResult {.inline.} =
   ProfilePathResult(isOk: true, value: value)
 
