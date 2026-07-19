@@ -20,6 +20,7 @@ type
   NativeDownloadEventHandler* = proc(url: string; state: NativeDownloadState;
                                      progress: float) {.closure.}
   NativeCloseRequestedHandler* = proc(): bool {.closure.}
+  NativeClosedHandler* = proc() {.closure.}
 
   NativeState* = enum
     pending
@@ -72,6 +73,8 @@ type
     views: seq[NativeWebView]
     closeRequestedHandler: NativeCloseRequestedHandler
     closeSignalHandler: culong
+    closedHandler: NativeClosedHandler
+    closedNotified: bool
 
   NativeWebView* = ref object
     window: NativeWindow
@@ -233,6 +236,15 @@ proc dispatchCloseRequested(window: NativeWindow): bool =
   except CatchableError:
     false
 
+proc dispatchClosed(window: NativeWindow) =
+  if window.isNil or window.closedNotified:
+    return
+  window.closedNotified = true
+  if window.closedHandler.isNil:
+    return
+  try: window.closedHandler()
+  except CatchableError: discard
+
 proc dispatchNavigationCompleted(view: NativeWebView; url: string; succeeded: bool) =
   if view.isNil or view.state in {closing, closed} or
       view.navigationCompletedHandler.isNil:
@@ -381,6 +393,12 @@ proc onCloseRequested*(window: NativeWindow;
       if signal == 0:
         return failure(nativeError(webViewError, "window.onCloseRequested"))
       window.closeSignalHandler = signal
+  success()
+
+proc onClosed*(window: NativeWindow; handler: NativeClosedHandler): NativeResult =
+  if window.isNil or window.state == closed:
+    return failure(nativeError(invalidState, "window.onClosed"))
+  window.closedHandler = handler
   success()
 
 proc show*(window: NativeWindow): NativeResult =

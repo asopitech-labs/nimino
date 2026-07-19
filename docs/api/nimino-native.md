@@ -110,6 +110,7 @@ proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.}
 `onNavigationCompleted` は主frameの読込完了後に URL と成功可否を通知します。Linuxは `load-changed` と `load-failed` を併用して失敗を成功扱いせず、Windowsは `ICoreWebView2::NavigationCompleted` の `IsSuccess` を使用します。hostは `native.webview.navigationCompleted` eventとして中継します。各バックエンドはWindow破棄前にsignal/COM event登録を解除します。Linux実WebViewでの成功経路、Windows/WSLのクロスコンパイルは確認済みですが、Windows Runtime とWSL往復での実行確認は未完了です。
 
 `onCloseRequested` はユーザーまたはOSからWindow終了要求が発生した時に同期的に呼ばれ、`true`で終了を許可し、`false`で拒否します。コールバック例外は安全側（拒否）として扱います。
+`onClosed`はOS側の破棄完了後に一度だけ通知されます。coreはこの通知でWindow状態とWindow単位RPCを終了させます。
 
 `onError` はまず入力検証とmain-frame navigation失敗を通知します。入力検証では該当操作の戻り値も失敗になります。Linuxでは`load-failed`、Windowsでは`NavigationCompleted`の失敗を`webViewError`として通知します。WSL hostは`native.webview.error` eventへ`kind`、`operation`、`platformCode`、`detail`を渡します。JavaScript評価の失敗は引き続きそのFutureで返し、この通知へ二重送信しません。
 

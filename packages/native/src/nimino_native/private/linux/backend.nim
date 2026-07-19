@@ -430,6 +430,7 @@ proc linuxDisposeWindow(window: NativeWindow) =
     return
 
   window.state = closing
+  window.dispatchClosed()
   for view in window.views:
     view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
     view.linuxDisposeMessageBridge()

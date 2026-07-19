@@ -650,6 +650,7 @@ proc windowsDisposeWindow(window: NativeWindow) =
     return
 
   window.state = closing
+  window.dispatchClosed()
   if window.app.idleTimerWindow == window.platformWindow:
     window.app.windowsStopIdleTimer()
   for view in window.views:

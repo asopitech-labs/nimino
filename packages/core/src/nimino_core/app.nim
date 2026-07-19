@@ -498,6 +498,12 @@ proc configureWindow(window: Window): CoreResult =
       except CatchableError: false)
   if not closeConfigured.isOk:
     return coreFailure(closeConfigured.failure.mapNativeError())
+  let closedConfigured = native.onClosed(window.nativeWindow, proc() =
+    if window != nil and not window.closed:
+      window.closed = true
+      window.rpc.close())
+  if not closedConfigured.isOk:
+    return coreFailure(closedConfigured.failure.mapNativeError())
 
   let permissionConfigured = native.onPermissionRequested(window.nativeView,
     proc(url: string): bool = window.decidePermission(PermissionRequest(
