@@ -1444,6 +1444,37 @@ proc inlineWslAssets(root, baseDir, html: string): string =
     let dataUri = "data:" & mime & ";base64," & encode(readFile(candidate))
     result = result[0 ..< valueStart] & dataUri & result[valueEnd .. ^1]
     cursor = valueStart + dataUri.len + 1
+  cursor = 0
+  while true:
+    let start = result.find("<video", cursor)
+    if start < 0: break
+    let tagEnd = result.find('>', start)
+    if tagEnd < 0: break
+    let doublePosterStart = result.find("poster=\"", start)
+    let singlePosterStart = result.find("poster='", start)
+    let useSingle = singlePosterStart >= 0 and (doublePosterStart < 0 or singlePosterStart < doublePosterStart)
+    let posterStart = if useSingle: singlePosterStart else: doublePosterStart
+    if posterStart < 0 or posterStart > tagEnd:
+      cursor = tagEnd + 1
+      continue
+    let valueStart = posterStart + 7
+    let quote = if useSingle: '\'' else: '"'
+    let valueEnd = result.find(quote, valueStart)
+    if valueEnd < 0 or valueEnd > tagEnd:
+      cursor = tagEnd + 1
+      continue
+    let relative = result[valueStart ..< valueEnd]
+    let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
+    let candidate = (baseDir / assetName).absolutePath().normalizedPath()
+    let relativeCheck = relativePath(candidate, root)
+    let mime = assetMime(candidate)
+    if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or
+        not fileExists(candidate) or not mime.startsWith("image/"):
+      cursor = tagEnd + 1
+      continue
+    let dataUri = "data:" & mime & ";base64," & encode(readFile(candidate))
+    result = result[0 ..< valueStart] & dataUri & result[valueEnd .. ^1]
+    cursor = valueStart + dataUri.len + 1
 
 proc loadEntry*(window: Window; entry = "index.html"): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
