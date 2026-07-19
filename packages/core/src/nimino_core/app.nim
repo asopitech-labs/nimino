@@ -625,7 +625,7 @@ proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
       coreFailureOf[bool](coreError(platformUnavailable, "app.supports"))
 
 proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
-  if app.isNil or app.state != coreCreated:
+  if app.isNil or app.state notin {coreCreated, coreRunning}:
     return coreFailureOf[Window](coreError(invalidState, "window.create"))
   if options.width <= 0 or options.height <= 0:
     return coreFailureOf[Window](coreError(invalidArgument, "window.create",

@@ -125,8 +125,10 @@ type
 
 when defined(linux) and not defined(niminoWsl):
   proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.}
+  proc linuxCreateWindow(window: NativeWindow): NativeResult
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
 elif defined(windows):
+  proc windowsCreateWindow(window: NativeWindow): NativeResult
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
 
 proc completeScriptRequest(view: NativeWebView; request: NativeScriptRequest;
@@ -315,6 +317,17 @@ proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView] =
 
   let view = NativeWebView(window: window, state: pending)
   window.views.add(view)
+  if window.app.state == running:
+    when defined(linux) and not defined(niminoWsl):
+      let created = window.linuxCreateWindow()
+      if not created.isOk:
+        window.views.setLen(window.views.len - 1)
+        return failureOf[NativeWebView](created.failure)
+    elif defined(windows):
+      let created = window.windowsCreateWindow()
+      if not created.isOk:
+        window.views.setLen(window.views.len - 1)
+        return failureOf[NativeWebView](created.failure)
   successOf(view)
 
 proc setTitle*(window: NativeWindow; title: string): NativeResult =

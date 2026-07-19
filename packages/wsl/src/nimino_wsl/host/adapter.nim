@@ -190,8 +190,6 @@ proc allWindowsHaveViews(adapter: HostAdapter): bool =
   true
 
 proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
-  if adapter.uiStartRequested:
-    return errorAction("window creation is closed after the UI loop starts")
   let title = payload.requiredString("title")
   let width = payload.requiredPositiveInt("width")
   let height = payload.requiredPositiveInt("height")
