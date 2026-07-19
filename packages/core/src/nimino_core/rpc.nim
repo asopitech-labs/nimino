@@ -144,9 +144,11 @@ proc typescriptDeclarations*(registry: RpcRegistry): string =
       ", options?: { timeoutMs?: number }): Promise<" & schema.resultType & ">;\n")
   for methodName in registry.registeredNotificationMethods():
     let escaped = methodName.replace("\\", "\\\\").replace("'", "\\'")
+    let schema = registry.typeScriptSchemas.getOrDefault(methodName,
+      (paramsType: "unknown", resultType: "unknown"))
     result.add("      notify(method: '")
     result.add(escaped)
-    result.add("', params?: unknown): void;\n")
+    result.add("', params?: " & schema.paramsType & "): void;\n")
   result.add("      notify(method: string, params?: unknown): void;\n")
   result.add("    };\n  }\n}\nexport {};\n")
 
@@ -174,21 +176,25 @@ proc registerTypedNotification*[T](registry: RpcRegistry; methodName: string;
                                    handler: proc(params: T) {.closure.}): bool =
   if handler.isNil:
     return false
-  registry.registerNotification(methodName, proc(params: JsonNode) =
+  result = registry.registerNotification(methodName, proc(params: JsonNode) =
     try:
       handler(params.jsonTo(T))
     except CatchableError:
       discard)
+  if result:
+    registry.setTypeScriptSchema(methodName, typeScriptType[T](), "void")
 
 proc registerTypedNotification*(registry: RpcRegistry; methodName: string;
                                handler: proc() {.closure.}): bool =
   if handler.isNil:
     return false
-  registry.registerNotification(methodName, proc(params: JsonNode) =
+  result = registry.registerNotification(methodName, proc(params: JsonNode) =
     try:
       handler()
     except CatchableError:
       discard)
+  if result:
+    registry.setTypeScriptSchema(methodName, "void", "void")
 
 proc unregister*(registry: RpcRegistry; methodName: string): bool =
   ## Remove one explicitly registered method. Pending requests are not

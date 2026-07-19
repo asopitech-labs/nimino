@@ -157,6 +157,8 @@ block typedFireAndForgetNotification:
     "params": 7
   }))
   doAssert received == 7
+  let typedDeclarations = registry.typescriptDeclarations()
+  doAssert typedDeclarations.find("notify(method: 'counter.changed', params?: number)") >= 0
   var called = false
   doAssert registry.registerTypedNotification("heartbeat", proc() = called = true)
   doAssert registry.handleMessage($(%*{
