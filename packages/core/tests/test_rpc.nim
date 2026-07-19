@@ -157,3 +157,8 @@ block typedFireAndForgetNotification:
     "params": 7
   }))
   doAssert received == 7
+  var called = false
+  doAssert registry.registerTypedNotification("heartbeat", proc() = called = true)
+  doAssert registry.handleMessage($(%*{
+    "nimino": "rpc", "kind": "notification", "method": "heartbeat"}))
+  doAssert called

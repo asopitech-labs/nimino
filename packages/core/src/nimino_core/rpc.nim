@@ -180,6 +180,16 @@ proc registerTypedNotification*[T](registry: RpcRegistry; methodName: string;
     except CatchableError:
       discard)
 
+proc registerTypedNotification*(registry: RpcRegistry; methodName: string;
+                               handler: proc() {.closure.}): bool =
+  if handler.isNil:
+    return false
+  registry.registerNotification(methodName, proc(params: JsonNode) =
+    try:
+      handler()
+    except CatchableError:
+      discard)
+
 proc unregister*(registry: RpcRegistry; methodName: string): bool =
   ## Remove one explicitly registered method. Pending requests are not
   ## cancelled here; they retain their original handler until completion.
