@@ -55,11 +55,28 @@ proc parseStringArray(value: string): PackResult[seq[string]] =
   if body.len == 0:
     return success[seq[string]](@[])
   var values: seq[string]
-  for item in body.split(','):
-    let parsed = unquote(item)
-    if parsed.len == 0:
-      return failure[seq[string]](invalidManifest, "array items must be non-empty strings")
-    values.add(parsed)
+  var itemStart = 0
+  var quoted = false
+  var escaped = false
+  for index, character in body:
+    if quoted and escaped:
+      escaped = false
+    elif quoted and character == '\\':
+      escaped = true
+    elif character == '"':
+      quoted = not quoted
+    elif character == ',' and not quoted:
+      let parsed = unquote(body[itemStart ..< index])
+      if parsed.len == 0:
+        return failure[seq[string]](invalidManifest, "array items must be non-empty strings")
+      values.add(parsed)
+      itemStart = index + 1
+  if quoted:
+    return failure[seq[string]](invalidManifest, "unterminated array string")
+  let last = unquote(body[itemStart .. ^1])
+  if last.len == 0:
+    return failure[seq[string]](invalidManifest, "array items must be non-empty strings")
+  values.add(last)
   success(values)
 
 proc parseBool(value: string): PackResult[bool] =

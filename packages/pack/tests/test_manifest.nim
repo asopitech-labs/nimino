@@ -30,6 +30,10 @@ doAssert parsed.value.window.width == 1280
 doAssert parsed.value.navigationAllow.len == 2
 doAssert parsed.value.permissionsAllow == @["microphone", "notifications"]
 
+let commaValue = parse("name = \"Comma\"\nid = \"app.comma\"\nurl = \"https://example.com\"\n[navigation]\nallow = [\"https://example.com/a,b\", \"https://example.com/c\"]")
+doAssert commaValue.isOk
+doAssert commaValue.value.navigationAllow[0] == "https://example.com/a,b"
+
 let invalid = parse("name = \"No URL\"\nid = \"app.example\"")
 doAssert not invalid.isOk
 doAssert invalid.error.kind == invalidManifest
