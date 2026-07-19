@@ -259,8 +259,7 @@ proc clearProfileCache*(appId, profile: string): ProfilePathResult =
   if not dirExists(directory.value):
     return profileSuccess(directory.value)
   try:
-    for path in walkFiles(directory.value / "*"):
-      if fileExists(path): removeFile(path)
+    clearDirectoryContents(directory.value)
     ## WebView2 stores browser cache below the profile user-data folder.
     ## Only known cache directories are removed; cookies and local storage
     ## remain intact.
@@ -272,8 +271,7 @@ proc clearProfileCache*(appId, profile: string): ProfilePathResult =
                      "Default" / "GPUCache", "Default" / "DawnCache"]:
       let engineCache = engineRoot / relative
       if dirExists(engineCache):
-        for path in walkFiles(engineCache / "*"):
-          if fileExists(path): removeFile(path)
+        clearDirectoryContents(engineCache)
     profileSuccess(directory.value)
   except OSError:
     profileFailure("unable to clear profile cache")
@@ -285,8 +283,7 @@ proc clearProfileDownloads*(appId, profile: string): ProfilePathResult =
   if not dirExists(directory.value):
     return profileSuccess(directory.value)
   try:
-    for path in walkFiles(directory.value / "*"):
-      if fileExists(path): removeFile(path)
+    clearDirectoryContents(directory.value)
     profileSuccess(directory.value)
   except OSError:
     profileFailure("unable to clear profile downloads")
@@ -298,8 +295,7 @@ proc clearProfilePermissions*(appId, profile: string): ProfilePathResult =
   if not dirExists(directory.value):
     return profileSuccess(directory.value)
   try:
-    for path in walkFiles(directory.value / "*"):
-      if fileExists(path): removeFile(path)
+    clearDirectoryContents(directory.value)
     profileSuccess(directory.value)
   except OSError:
     profileFailure("unable to clear profile permissions")
@@ -311,8 +307,7 @@ proc clearProfileLocalStorage*(appId, profile: string): ProfilePathResult =
   if not dirExists(directory.value):
     return profileSuccess(directory.value)
   try:
-    for path in walkFiles(directory.value / "*"):
-      if fileExists(path): removeFile(path)
+    clearDirectoryContents(directory.value)
     profileSuccess(directory.value)
   except OSError:
     profileFailure("unable to clear profile local storage")

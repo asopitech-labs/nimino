@@ -142,23 +142,35 @@ block windowsCanSelectIndependentProfiles:
   let cachePath = profileDirectoryPath("tech.asopi.profile-window-test", "direct", ProfileDirectory.cache)
   doAssert cachePath.isOk
   writeFile(cachePath.value / "entry", "cache")
+  createDir(cachePath.value / "nested")
+  writeFile(cachePath.value / "nested" / "entry.bin", "cache")
   doAssert direct.value.clearCache().isOk
   doAssert not fileExists(cachePath.value / "entry")
+  doAssert not fileExists(cachePath.value / "nested" / "entry.bin")
   let downloadPath = profileDirectoryPath("tech.asopi.profile-window-test", "direct", ProfileDirectory.downloads)
   doAssert downloadPath.isOk
   writeFile(downloadPath.value / "download.tmp", "partial")
+  createDir(downloadPath.value / "nested")
+  writeFile(downloadPath.value / "nested" / "partial.bin", "partial")
   doAssert direct.value.clearDownloads().isOk
   doAssert not fileExists(downloadPath.value / "download.tmp")
+  doAssert not fileExists(downloadPath.value / "nested" / "partial.bin")
   let permissionPath = profileDirectoryPath("tech.asopi.profile-window-test", "direct", ProfileDirectory.permissions)
   doAssert permissionPath.isOk
   writeFile(permissionPath.value / "example.com.json", "{\"notifications\":\"deny\"}")
+  createDir(permissionPath.value / "nested")
+  writeFile(permissionPath.value / "nested" / "permission.json", "{}")
   doAssert direct.value.clearPermissions().isOk
   doAssert not fileExists(permissionPath.value / "example.com.json")
+  doAssert not fileExists(permissionPath.value / "nested" / "permission.json")
   let storagePath = profileDirectoryPath("tech.asopi.profile-window-test", "direct", ProfileDirectory.localStorage)
   doAssert storagePath.isOk
   writeFile(storagePath.value / "origin.json", "{}")
+  createDir(storagePath.value / "nested")
+  writeFile(storagePath.value / "nested" / "origin.db", "{}")
   doAssert direct.value.clearLocalStorage().isOk
   doAssert not fileExists(storagePath.value / "origin.json")
+  doAssert not fileExists(storagePath.value / "nested" / "origin.db")
   doAssert direct.value.writeSetting("reset", %*{"ok": true}).isOk
   doAssert direct.value.clearProfileData().isOk
   doAssert direct.value.listSettings().value.len == 0
