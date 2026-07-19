@@ -1377,6 +1377,44 @@ proc inlineWslAssets(root, baseDir, html: string): string =
     result = result[0 ..< start] & "<script>" & body & "</script>" & tail
     cursor = start + body.len + 17
   cursor = 0
+  ## Responsive images use a comma-separated `srcset` attribute.  Inline each
+  ## local candidate independently while preserving its descriptor (`1x`,
+  ## `640w`, …); unresolved or remote candidates remain untouched.
+  while true:
+    let start = result.find("srcset=", cursor)
+    if start < 0: break
+    let quoteStart = start + 7
+    if quoteStart >= result.len or (result[quoteStart] != '\"' and result[quoteStart] != '\''):
+      cursor = quoteStart
+      continue
+    let quote = result[quoteStart]
+    let valueStart = quoteStart + 1
+    let valueEnd = result.find(quote, valueStart)
+    if valueEnd < 0:
+      break
+    let original = result[valueStart ..< valueEnd]
+    var rewritten: seq[string]
+    for candidateSpec in original.split(','):
+      let spec = candidateSpec.strip()
+      if spec.len == 0:
+        continue
+      let parts = spec.splitWhitespace()
+      let relative = parts[0]
+      let assetName = decodeUrl(relative.split({'?', '#'}, maxsplit = 1)[0])
+      let candidate = (baseDir / assetName).absolutePath().normalizedPath()
+      let relativeCheck = relativePath(candidate, root)
+      let mime = assetMime(candidate)
+      var rendered = spec
+      if relativeCheck != ".." and not relativeCheck.startsWith(".." & DirSep) and
+          fileExists(candidate) and mime.startsWith("image/"):
+        rendered = "data:" & mime & ";base64," & encode(readFile(candidate))
+        if parts.len > 1:
+          rendered.add(" " & parts[1 .. ^1].join(" "))
+      rewritten.add(rendered)
+    let replacement = rewritten.join(", ")
+    result = result[0 ..< valueStart] & replacement & result[valueEnd .. ^1]
+    cursor = valueStart + replacement.len + 1
+  cursor = 0
   while true:
     let start = result.find("<link", cursor)
     if start < 0: break
