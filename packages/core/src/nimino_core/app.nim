@@ -1306,7 +1306,7 @@ proc inlineWslCssUrls(root, baseDir, css: string): string =
     if close < 0 or relative.len == 0 or relative.startsWith("data:") or relative.startsWith("#"):
       cursor = valueEnd + 1
       continue
-    let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
+    let assetName = decodeUrl(relative.split({'?', '#'}, maxsplit = 1)[0])
     let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     let mime = assetMime(candidate)
@@ -1338,7 +1338,7 @@ proc inlineWslAssets(root, baseDir, html: string): string =
       cursor = tagEnd + 1
       continue
     let relative = result[valueStart ..< valueEnd]
-    let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
+    let assetName = decodeUrl(relative.split({'?', '#'}, maxsplit = 1)[0])
     let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     let closing = result.find("</script>", tagEnd)
@@ -1368,7 +1368,7 @@ proc inlineWslAssets(root, baseDir, html: string): string =
     if valueEnd < 0 or valueEnd > tagEnd or relValue < start or relValue > tagEnd:
       cursor = tagEnd + 1
       continue
-    let assetName = result[valueStart ..< valueEnd].split({'?', '#'}, maxsplit = 1)[0]
+    let assetName = decodeUrl(result[valueStart ..< valueEnd].split({'?', '#'}, maxsplit = 1)[0])
     let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
@@ -1398,7 +1398,7 @@ proc inlineWslAssets(root, baseDir, html: string): string =
       cursor = tagEnd + 1
       continue
     let relative = result[valueStart ..< valueEnd]
-    let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
+    let assetName = decodeUrl(relative.split({'?', '#'}, maxsplit = 1)[0])
     let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
@@ -1432,7 +1432,7 @@ proc inlineWslAssets(root, baseDir, html: string): string =
       cursor = tagEnd + 1
       continue
     let relative = result[valueStart ..< valueEnd]
-    let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
+    let assetName = decodeUrl(relative.split({'?', '#'}, maxsplit = 1)[0])
     let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     let mime = assetMime(candidate)
@@ -1464,7 +1464,7 @@ proc inlineWslAssets(root, baseDir, html: string): string =
       cursor = tagEnd + 1
       continue
     let relative = result[valueStart ..< valueEnd]
-    let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
+    let assetName = decodeUrl(relative.split({'?', '#'}, maxsplit = 1)[0])
     let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     let mime = assetMime(candidate)
