@@ -80,6 +80,10 @@ block profilePathsAreContainedAndSafe:
     "http://sub.example.com/app/page")
   doAssert insecureUrl.isOk
   doAssert insecureUrl.value.len == 0
+  let uppercaseScheme = profileCookiesForUrl("tech.asopi.profile-test", "work",
+    "HTTPS://sub.example.com/app/page")
+  doAssert uppercaseScheme.isOk
+  doAssert uppercaseScheme.value.len == 1
   doAssert listProfileCookies("tech.asopi.profile-test", "work").value == "example.com__sid"
   doAssert deleteProfileCookie("tech.asopi.profile-test", "work", "example.com", "sid").isOk
 

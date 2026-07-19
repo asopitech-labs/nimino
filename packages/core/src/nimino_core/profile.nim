@@ -402,7 +402,8 @@ proc profileCookiesForUrl*(appId, profile, url: string): ProfileResult[seq[Profi
   ## Apply domain, path, secure, and expiry rules for an HTTP(S) request URL.
   try:
     let parsed = parseUri(url)
-    if parsed.scheme notin ["http", "https"] or parsed.hostname.len == 0:
+    let scheme = parsed.scheme.toLowerAscii()
+    if scheme notin ["http", "https"] or parsed.hostname.len == 0:
       return ProfileResult[seq[ProfileCookie]](isOk: false,
         error: "cookie URL must use http or https")
     let requestedDomain = parsed.hostname.toLowerAscii().strip(chars = {'.'})
@@ -428,7 +429,7 @@ proc profileCookiesForUrl*(appId, profile, url: string): ProfileResult[seq[Profi
       let pathMatches = requestedPath == cookiePath or
         (requestedPath.len > cookiePath.len and requestedPath.startsWith(cookiePath) and
          (cookiePath.endsWith("/") or requestedPath[cookiePath.len] == '/'))
-      if domainMatches and pathMatches and (not cookie.secure or parsed.scheme == "https") and
+      if domainMatches and pathMatches and (not cookie.secure or scheme == "https") and
           (cookie.expires <= 0 or cookie.expires > int64(epochTime())):
         matches.add(cookie)
     ProfileResult[seq[ProfileCookie]](isOk: true, value: matches)
