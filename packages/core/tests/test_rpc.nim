@@ -183,3 +183,4 @@ block explicitTypeScriptSchemaIsBoundToRegisteredMethod:
   doAssert declarations.find("params?: SettingsRequest") >= 0
   doAssert declarations.find("Promise<Settings>") >= 0
   doAssert not registry.registerTypeScriptSchema("settings.load", "Bad\nType", "Settings")
+  doAssert not registry.registerTypeScriptSchema("settings.load", "Bad/*x*/", "Settings")

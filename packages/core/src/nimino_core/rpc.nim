@@ -163,7 +163,8 @@ proc registerTypeScriptSchema*(registry: RpcRegistry; methodName, paramsType,
     return false
   for typeText in [paramsType, resultType]:
     for ch in typeText:
-      if ch in {'\x00', '\r', '\n', ';', '{', '}'}:
+      if not (ch.isAlphaNumeric or ch in {' ', '\t', '_', '-', '.', ',',
+          '<', '>', '[', ']', '|', '&', ':', '?', '(', ')', '\'', '"'}):
         return false
   registry.setTypeScriptSchema(methodName, paramsType, resultType)
   true
