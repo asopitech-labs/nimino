@@ -164,3 +164,9 @@ block typedFireAndForgetNotification:
   doAssert registry.handleMessage($(%*{
     "nimino": "rpc", "kind": "notification", "method": "heartbeat"}))
   doAssert called
+
+block unregisterRemovesNotificationSchema:
+  let registry = newRpcRegistry()
+  doAssert registry.registerTypedNotification("transient", proc(value: int) = discard)
+  doAssert registry.unregister("transient")
+  doAssert registry.typescriptDeclarations().find("transient") < 0
