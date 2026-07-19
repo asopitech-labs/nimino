@@ -50,6 +50,13 @@ block profilePathsAreContainedAndSafe:
   let storedPath = storeProfileDownload("tech.asopi.profile-test", "work", "payload.txt", "hello")
   doAssert storedPath.isOk
   doAssert readFile(storedPath.value) == "hello"
+  let nestedDownloadDir = parentDir(storedPath.value) / "nested"
+  createDir(nestedDownloadDir)
+  let nestedDownload = nestedDownloadDir / "nested.txt"
+  writeFile(nestedDownload, "nested")
+  let listedDownloads = listProfileDownloads("tech.asopi.profile-test", "work")
+  doAssert listedDownloads.isOk
+  doAssert nestedDownload in listedDownloads.value
   doAssert not deleteProfileDownload("tech.asopi.profile-test", "work", getHomeDir() / "outside.txt").isOk
   doAssert deleteProfileDownload("tech.asopi.profile-test", "work", storedPath.value).isOk
   doAssert not fileExists(storedPath.value)
