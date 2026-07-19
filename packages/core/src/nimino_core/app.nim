@@ -910,6 +910,55 @@ proc deleteCookie*(window: Window; domain, name: string): CoreResult =
   if deleted.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.deleteCookie", detail = deleted.error))
 
+proc evalJavaScript*(window: Window; script: string): Future[CoreResultOf[string]]
+
+proc syncDocumentCookies*(window: Window): Future[CoreResult] =
+  ## Persist non-HttpOnly cookies currently visible to the document. Browser
+  ## engines remain authoritative; this explicit operation only mirrors the
+  ## script-visible cookie string into Nimino's profile store.
+  let target = newFuture[CoreResult]("nimino.core.syncDocumentCookies")
+  if window.isNil or window.closed or window.app.isNil or window.lastUrl.len == 0:
+    target.complete(coreFailure(coreError(invalidState, "window.syncDocumentCookies")))
+    return target
+  let parsedUrl = parseUri(window.lastUrl)
+  if parsedUrl.hostname.len == 0:
+    target.complete(coreFailure(coreError(invalidArgument, "window.syncDocumentCookies",
+      detail = "current URL has no cookie domain")))
+    return target
+  let evaluation = window.evalJavaScript("document.cookie")
+  evaluation.addCallback(proc(completed: Future[CoreResultOf[string]]) {.gcsafe.} =
+    if target.finished:
+      return
+    if completed.failed:
+      target.complete(coreFailure(coreError(webViewError, "window.syncDocumentCookies")))
+      return
+    let evaluated = completed.read()
+    if not evaluated.isOk:
+      target.complete(coreFailure(evaluated.failure))
+      return
+    try:
+      for pair in evaluated.value.split(';'):
+        if pair.strip().len == 0:
+          continue
+        let parsed = parseCookieHeader(pair.strip(), parsedUrl.hostname, "/",
+          parsedUrl.scheme.toLowerAscii() == "https")
+        if not parsed.isOk:
+          target.complete(coreFailure(coreError(invalidArgument,
+            "window.syncDocumentCookies", detail = parsed.error)))
+          return
+        for cookie in parsed.value:
+          let written = writeProfileCookie(window.app.id, window.profileName, cookie)
+          if not written.isOk:
+            target.complete(coreFailure(coreError(osError,
+              "window.syncDocumentCookies", detail = written.error)))
+            return
+      target.complete(coreSuccess())
+    except CatchableError as error:
+      target.complete(coreFailure(coreError(invalidArgument,
+        "window.syncDocumentCookies", detail = error.msg)))
+  )
+  target
+
 proc clearCookies*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.clearCookies"))

@@ -63,6 +63,7 @@ window.rpc.register("files.save") do (request: SaveRequest) -> Future[SaveResult
 `window.rpc.unregister("method")`で登録済みの一つのメソッドを撤去できます。撤去後の新規呼び出しは拒否され、既に実行中のrequestは完了まで維持されます。
 
 `parseCookieHeader`はSet-Cookie形式の名前・値を共通検証し、プロファイル保存前の入力境界として利用できます。ブラウザ固有の属性ポリシーは呼び出し側で明示的に適用します。
+`window.syncDocumentCookies()`は現在の文書でスクリプトから見える`document.cookie`だけを明示的にプロファイルへ同期します。HttpOnly cookieは取得・上書きせず、ブラウザCookie managerの完全な自動同期とは異なります。
 メソッド名は制御文字・空白・引用符を含められず、256文字以内に制限されます。
 
 ```nim
