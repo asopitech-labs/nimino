@@ -1319,7 +1319,13 @@ proc inlineWslCssUrls(root, baseDir, css: string): string =
 
 proc hasStylesheetRel(tag: string): bool =
   let lower = tag.toLowerAscii()
-  let relStart = lower.find("rel=")
+  var relStart = lower.find("rel=")
+  while relStart > 0 and lower[relStart - 1] notin {' ', '\t', '\r', '\n', '<'}:
+    let next = lower.find("rel=", relStart + 4)
+    if next < 0:
+      relStart = -1
+      break
+    relStart = next
   if relStart < 0:
     return false
   let valueStart = relStart + 4
