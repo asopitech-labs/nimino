@@ -1468,7 +1468,8 @@ proc inlineWslAssets(root, baseDir, html: string; inlineRemoteAssets = false): s
   cursor = 0
   ## Responsive images use a comma-separated `srcset` attribute.  Inline each
   ## local candidate independently while preserving its descriptor (`1x`,
-  ## `640w`, …); unresolved or remote candidates remain untouched.
+  ## `640w`, …); unresolved candidates remain untouched. Remote candidates
+  ## are fetched only when the explicit remote-asset option is enabled.
   while true:
     let start = result.find("srcset=", cursor)
     if start < 0: break
@@ -1489,6 +1490,15 @@ proc inlineWslAssets(root, baseDir, html: string; inlineRemoteAssets = false): s
         continue
       let parts = spec.splitWhitespace()
       let relative = parts[0]
+      if inlineRemoteAssets and (relative.toLowerAscii().startsWith("http://") or
+          relative.toLowerAscii().startsWith("https://")):
+        let remote = remoteAssetDataUri(relative)
+        if remote.len > 0 and remote.startsWith("data:image/"):
+          var rendered = remote
+          if parts.len > 1:
+            rendered.add(" " & parts[1 .. ^1].join(" "))
+          rewritten.add(rendered)
+          continue
       let assetName = decodeUrl(relative.split({'?', '#'}, maxsplit = 1)[0])
       let candidate = (baseDir / assetName).absolutePath().normalizedPath()
       let relativeCheck = relativePath(candidate, root)
