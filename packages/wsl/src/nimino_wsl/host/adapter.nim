@@ -379,6 +379,16 @@ proc handleWindowClearCache(adapter: HostAdapter; payload: JsonNode): ProtocolRe
       return errorAction("unable to clear WebView2 cache")
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
+proc handleWindowClearDownloads(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  if not windowId.isOk: return failureOf[HostAction](windowId.failure)
+  if not adapter.windows.hasKey(windowId.value): return errorAction("unknown windowId")
+  let downloads = adapter.windows[windowId.value].profilePath / "webview2" /
+    "Default" / "Downloads"
+  if not clearDirectoryContents(downloads):
+    return errorAction("unable to clear WebView2 downloads")
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
   let windowId = payload.requiredId("windowId")
   if not windowId.isOk:
@@ -648,6 +658,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowSetPosition(payload.value)
   of "native.window.clearCache":
     adapter.handleWindowClearCache(payload.value)
+  of "native.window.clearDownloads":
+    adapter.handleWindowClearDownloads(payload.value)
   of "native.window.focus":
     adapter.handleWindowFocus(payload.value)
   of "native.webview.create":

@@ -819,6 +819,15 @@ proc clearCache*(window: Window): CoreResult =
 proc clearDownloads*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.clearDownloads"))
+  if window.app.backend == wslBackend:
+    when defined(linux):
+      let remote = window.app.wslCall("native.window.clearDownloads", $(%*{
+        "windowId": $window.windowId
+      }))
+      if not remote.isOk:
+        return coreFailure(remote.failure)
+    else:
+      return coreFailure(coreError(platformUnavailable, "window.clearDownloads"))
   let cleared = clearProfileDownloads(window.app.id, window.profileName)
   if cleared.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.clearDownloads", detail = cleared.error))
