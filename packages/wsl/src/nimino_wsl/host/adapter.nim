@@ -1,7 +1,7 @@
 ## Host-side M1 command adapter.  It owns the native object table but not the
 ## stdio transport or the Windows UI thread.
 
-import std/[asyncfutures, json, os, strutils, tables]
+import std/[asyncfutures, json, os, strutils, tables, uri]
 
 import nimino_native except success, successOf, failure, failureOf
 
@@ -71,6 +71,17 @@ type
     policyDecision*: proc(request: PolicyRequest): bool {.closure.}
     navigationDecisionHook*: proc(webViewId: uint64; url: string): bool {.closure.}
     navigationRules: Table[uint64, NavigationRules]
+
+proc suggestedDownloadName(url: string): string =
+  try:
+    let parsed = parseUri(url)
+    let parts = splitFile(decodeUrl(parsed.path))
+    let name = parts.name & parts.ext
+    if name.len > 0 and name notin [".", ".."]:
+      return name
+  except CatchableError:
+    discard
+  "download"
 
 proc newHostAdapter*(): HostAdapter =
   HostAdapter(app: newNativeApp(), nextWindowId: 1, nextWebViewId: 1)
@@ -418,7 +429,8 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
     return nativeFailure("native.webview.onPermissionRequested", permissionConfigured)
   let downloadConfigured = created.value.onDownloadStarting(proc(url: string): bool =
     let owner = cast[HostAdapter](adapterPointer)
-    let request = PolicyRequest(kind: downloadPolicy, webViewId: webViewId, url: url)
+    let request = PolicyRequest(kind: downloadPolicy, webViewId: webViewId,
+      url: url, suggestedName: suggestedDownloadName(url))
     if owner != nil:
       if not owner.policyDecision.isNil:
         return owner.policyDecision(request)
