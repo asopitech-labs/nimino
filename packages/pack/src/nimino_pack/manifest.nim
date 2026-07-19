@@ -102,7 +102,12 @@ proc validateUrl(value: string): bool =
     for c in value:
       if c in {' ', '\t', '\r', '\n'} or ord(c) < 0x20 or ord(c) == 0x7f:
         return false
-    parsed.scheme.toLowerAscii() in ["http", "https", "file", "data"]
+    let scheme = parsed.scheme.toLowerAscii()
+    if scheme in ["http", "https"]:
+      return parsed.hostname.len > 0
+    if scheme == "file":
+      return parsed.path.len > 0
+    scheme == "data" and parsed.path.len > 0
   except CatchableError:
     false
 

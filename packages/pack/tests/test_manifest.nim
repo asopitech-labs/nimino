@@ -59,5 +59,7 @@ let uppercaseScheme = parse("name = \"Upper\"\nid = \"app.upper\"\nurl = \"HTTPS
 doAssert uppercaseScheme.isOk
 let whitespaceUrl = parse("name = \"Whitespace\"\nid = \"app.whitespace\"\nurl = \"https://example.com/a b\"")
 doAssert not whitespaceUrl.isOk
+let missingHost = parse("name = \"Missing host\"\nid = \"app.missing\"\nurl = \"https:\"")
+doAssert not missingHost.isOk
 
 echo "nimino-pack manifest tests passed"
