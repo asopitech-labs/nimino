@@ -1363,7 +1363,9 @@ proc remoteAssetDataUri(url: string): string =
   if parsed.scheme.toLowerAscii() notin ["http", "https"] or parsed.hostname.len == 0:
     return ""
   try:
-    var client = newHttpClient()
+    ## Asset retrieval runs synchronously while the WSL document is prepared;
+    ## bound socket inactivity so a dead endpoint cannot stall the UI forever.
+    var client = newHttpClient(timeout = 10_000)
     let response = client.get(url)
     if response.code.int < 200 or response.code.int >= 300 or response.body.len > 8 * 1024 * 1024:
       return ""
@@ -1381,7 +1383,7 @@ proc remoteAssetText(url: string): string =
   if parsed.scheme.toLowerAscii() notin ["http", "https"] or parsed.hostname.len == 0:
     return ""
   try:
-    var client = newHttpClient()
+    var client = newHttpClient(timeout = 10_000)
     let response = client.get(url)
     if response.code.int < 200 or response.code.int >= 300 or response.body.len > 8 * 1024 * 1024:
       return ""
