@@ -189,7 +189,7 @@ type
     profileName: string
     lastUrl: string
     rpc*: RpcRegistry
-    documentStartBridgeConfigured: bool
+    documentStartBridgeUrl: string
     assetRoot: string
     navigationRules: NavigationRules
     navigationRulesConfigured: bool
@@ -401,7 +401,7 @@ proc documentStartCookieSource(window: Window; url: string): string =
     ""
 
 proc configureDocumentStartBridge(window: Window; url: string): CoreResult =
-  if window.documentStartBridgeConfigured:
+  if window.documentStartBridgeUrl == url:
     return coreSuccess()
   let source = window.documentStartCookieSource(url) & url.documentStartBridgeSource()
   if source.len == 0:
@@ -425,7 +425,7 @@ proc configureDocumentStartBridge(window: Window; url: string): CoreResult =
     else:
       configured = coreFailure(coreError(platformUnavailable, "window.loadUrl"))
   if configured.isOk:
-    window.documentStartBridgeConfigured = true
+    window.documentStartBridgeUrl = url
   configured
 
 proc sendRpcReply(window: Window; message: string) =
@@ -1192,12 +1192,14 @@ proc loadUrl*(window: Window; url: string): CoreResult =
   let bridge = window.configureDocumentStartBridge(url)
   if not bridge.isOk:
     return bridge
-  window.lastUrl = url
   case window.app.backend
   of nativeBackend:
     if window.nativeView.isNil:
       return coreFailure(coreError(invalidState, "window.loadUrl"))
-    native.loadUrl(window.nativeView, url).fromNative()
+    let loaded = native.loadUrl(window.nativeView, url).fromNative()
+    if loaded.isOk:
+      window.lastUrl = url
+    loaded
   of wslBackend:
     when defined(linux):
       let loaded = window.app.wslCall("native.webview.loadUrl", $(%*{
@@ -1206,6 +1208,7 @@ proc loadUrl*(window: Window; url: string): CoreResult =
       }))
       if loaded.isOk:
         window.app.wslUiStarted = true
+        window.lastUrl = url
         coreSuccess()
       else:
         coreFailure(loaded.failure)
