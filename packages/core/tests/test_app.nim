@@ -68,6 +68,8 @@ block profilePathsAreContainedAndSafe:
   doAssert parsedCookie.isOk
   doAssert parsedCookie.value[0].name == "sid"
   doAssert parsedCookie.value[0].value == "abc"
+  let tokenCookie = parseCookieHeader("$session+id=abc", "example.com", "/")
+  doAssert tokenCookie.isOk
   doAssert not parseCookieHeader("bad;value", "example.com", "/").isOk
   doAssert writeProfileCookie("tech.asopi.profile-test", "work", cookie).isOk
   doAssert not writeProfileCookie("tech.asopi.profile-test", "work",

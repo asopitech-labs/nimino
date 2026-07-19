@@ -31,6 +31,16 @@ type
     secure*: bool
     expires*: int64
 
+proc validCookieName(name: string): bool =
+  ## RFC 6265 cookie-octet token, restricted to path-safe ASCII.
+  if name.len == 0:
+    return false
+  for character in name:
+    if not (character in {'!', '#', '$', '%', '&', '\'', '*', '+', '-','.',
+        '^', '_', '`', '|', '~'} or character.isAlphaNumeric):
+      return false
+  true
+
 proc parseCookieHeader*(header, domain, path: string; secure = false):
     ProfileResult[seq[ProfileCookie]] =
   ## Parse a Set-Cookie-style header into validated profile records.  Cookie
@@ -47,11 +57,7 @@ proc parseCookieHeader*(header, domain, path: string; secure = false):
       error: "cookie header must contain a name and value")
   let name = first[0 ..< separator].strip()
   let value = first[separator + 1 .. ^1].strip()
-  var safeName = name.len > 0 and name notin [".", ".."]
-  for character in name:
-    if not (character.isAlphaNumeric or character in {'-', '_', '.'}):
-      safeName = false
-  if not safeName or value.find({'\r', '\n', ';'}) >= 0:
+  if not validCookieName(name) or value.find({'\r', '\n', ';'}) >= 0:
     return ProfileResult[seq[ProfileCookie]](isOk: false,
       error: "cookie header contains unsafe characters")
   ProfileResult[seq[ProfileCookie]](isOk: true, value: @[
@@ -358,7 +364,7 @@ proc cookieFileKey(cookie: ProfileCookie): string =
   cookie.domain & "__" & cookie.name
 
 proc cookiePath(appId, profile: string; cookie: ProfileCookie): ProfilePathResult =
-  if not validSettingKey(cookie.name) or not validSettingKey(cookie.domain):
+  if not validCookieName(cookie.name) or not validSettingKey(cookie.domain):
     return profileFailure("cookie name or domain contains an unsafe component")
   let directory = profileDirectoryPath(appId, profile, cookies)
   if not directory.isOk:
