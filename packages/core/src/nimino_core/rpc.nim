@@ -203,8 +203,10 @@ proc unregister*(registry: RpcRegistry; methodName: string): bool =
     return false
   if registry.handlers.hasKey(methodName):
     registry.handlers.del(methodName)
+    registry.typeScriptSchemas.del(methodName)
   elif registry.notificationHandlers.hasKey(methodName):
     registry.notificationHandlers.del(methodName)
+    registry.typeScriptSchemas.del(methodName)
   else:
     return false
   true
