@@ -941,7 +941,12 @@ proc syncDocumentCookies*(window: Window): Future[CoreResult] =
       target.complete(coreFailure(evaluated.failure))
       return
     try:
-      for pair in evaluated.value.split(';'):
+      var cookieHeader = evaluated.value
+      if cookieHeader.len >= 2 and cookieHeader[0] == '"' and cookieHeader[^1] == '"':
+        let decoded = parseJson(cookieHeader)
+        if decoded.kind == JString:
+          cookieHeader = decoded.getStr()
+      for pair in cookieHeader.split(';'):
         if pair.strip().len == 0:
           continue
         let parsed = parseCookieHeader(pair.strip(), parsedUrl.hostname, "/",
