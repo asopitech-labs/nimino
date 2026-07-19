@@ -20,6 +20,7 @@ type
     width*: int
     height*: int
     profile*: string
+    inlineRemoteAssets*: bool
 
 proc newApp*(options: AppOptions): CoreResultOf[App]
 proc newApp*(id = "tech.asopi.nimino"; name = "Nimino"): CoreResultOf[App]
