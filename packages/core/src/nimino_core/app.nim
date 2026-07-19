@@ -1129,15 +1129,18 @@ proc openExternally*(window: Window; url: string): CoreResult =
     return coreFailure(coreError(invalidArgument, "window.openExternally",
       detail = "only absolute HTTP(S) URLs without control characters are allowed"))
   var process: Process
-  when defined(windows):
-    let command = "rundll32.exe"
-    process = startProcess(command, args = @[
-      "url.dll,FileProtocolHandler", url], options = {poUsePath, poStdErrToStdOut})
-  elif defined(linux):
-    let command = if window.app.backend == wslBackend: "wslview" else: "xdg-open"
-    process = startProcess(command, args = @[url], options = {poUsePath, poStdErrToStdOut})
-  else:
-    return coreFailure(coreError(platformUnavailable, "window.openExternally"))
+  try:
+    when defined(windows):
+      let command = "rundll32.exe"
+      process = startProcess(command, args = @[
+        "url.dll,FileProtocolHandler", url], options = {poUsePath, poStdErrToStdOut})
+    elif defined(linux):
+      let command = if window.app.backend == wslBackend: "wslview" else: "xdg-open"
+      process = startProcess(command, args = @[url], options = {poUsePath, poStdErrToStdOut})
+    else:
+      return coreFailure(coreError(platformUnavailable, "window.openExternally"))
+  except CatchableError as error:
+    return coreFailure(coreError(osError, "window.openExternally", detail = error.msg))
   if process.isNil:
     return coreFailure(coreError(osError, "window.openExternally",
       detail = "default browser process could not be started"))
