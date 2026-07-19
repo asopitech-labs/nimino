@@ -455,8 +455,10 @@ proc sendRpcReply(window: Window; message: string) =
       if window.webViewId != 0:
         discard window.app.wslCall("native.webview.evalJavaScript", $(%*{
           "webViewId": $window.webViewId,
-          "script": script
+        "script": script
         }))
+
+proc syncDocumentCookies*(window: Window): Future[CoreResult]
 
 proc configureWindow(window: Window): CoreResult =
   let messageConfigured = native.onMessage(window.nativeView, proc(message: string) =
@@ -492,6 +494,8 @@ proc configureWindow(window: Window): CoreResult =
 
   let completionConfigured = native.onNavigationCompleted(window.nativeView,
     proc(url: string; succeeded: bool) =
+      if succeeded:
+        discard window.syncDocumentCookies()
       if not window.navigationCompletedHandler.isNil:
         try: window.navigationCompletedHandler(url, succeeded)
         except CatchableError: discard)
@@ -1911,8 +1915,10 @@ when defined(linux):
         for window in app.windows:
           if not window.closed and window.webViewId == webViewId and
               not window.navigationCompletedHandler.isNil:
-            try: window.navigationCompletedHandler(payload["url"].getStr(),
-              payload["succeeded"].getBool())
+            let succeeded = payload["succeeded"].getBool()
+            if succeeded:
+              discard window.syncDocumentCookies()
+            try: window.navigationCompletedHandler(payload["url"].getStr(), succeeded)
             except CatchableError: discard
             break
       except CatchableError:
