@@ -263,6 +263,8 @@ proc navigationAllowed(window: Window; url: string): bool =
       return true
   false
 
+proc openExternally*(window: Window; url: string): CoreResult
+
 proc applyNavigationDecision*(window: Window; request: NavigationRequest): bool =
   let decision = if window.navigationPolicy.isNil:
                    if window.navigationAllowed(request.url): navigationAllow else: navigationDeny
@@ -274,6 +276,11 @@ proc applyNavigationDecision*(window: Window; request: NavigationRequest): bool 
     if not window.externalNavigationHandler.isNil:
       try: window.externalNavigationHandler(request)
       except CatchableError: discard
+    else:
+      ## An explicit external decision is actionable even without a callback.
+      ## Keep the current WebView navigation cancelled regardless of launch
+      ## success; callers that need fallback UI can register the callback.
+      discard window.openExternally(request.url)
     false
 
 proc decidePermission*(window: Window; request: PermissionRequest): PermissionDecision =

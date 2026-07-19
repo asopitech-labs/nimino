@@ -247,6 +247,9 @@ block navigationRulesAreExplicit:
   doAssert not window.setNavigationRules(NavigationRules(allow: @[""], deny: @[])).isOk
   doAssert not window.openExternally("javascript:alert(1)").isOk
   doAssert not window.openExternally("https://example.com/line\nfeed").isOk
+  doAssert window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
+    navigationExternal).isOk
+  doAssert not window.applyNavigationDecision(NavigationRequest(url: "javascript:blocked"))
   var externalUrl = ""
   doAssert window.onExternalNavigation(proc(request: NavigationRequest) =
     externalUrl = request.url).isOk
