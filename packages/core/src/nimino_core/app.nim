@@ -1310,7 +1310,7 @@ proc inlineWslCssUrls(root, baseDir, css: string): string =
     result = result[0 ..< valueStart] & dataUri & result[valueEnd .. ^1]
     cursor = valueStart + dataUri.len
 
-proc inlineWslAssets(root, html: string): string =
+proc inlineWslAssets(root, baseDir, html: string): string =
   result = html
   var cursor = 0
   while true:
@@ -1332,7 +1332,7 @@ proc inlineWslAssets(root, html: string): string =
       continue
     let relative = result[valueStart ..< valueEnd]
     let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
-    let candidate = (root / assetName).absolutePath().normalizedPath()
+    let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     let closing = result.find("</script>", tagEnd)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or closing < 0 or not fileExists(candidate):
@@ -1362,7 +1362,7 @@ proc inlineWslAssets(root, html: string): string =
       cursor = tagEnd + 1
       continue
     let assetName = result[valueStart ..< valueEnd].split({'?', '#'}, maxsplit = 1)[0]
-    let candidate = (root / assetName).absolutePath().normalizedPath()
+    let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
       cursor = tagEnd + 1
@@ -1392,7 +1392,7 @@ proc inlineWslAssets(root, html: string): string =
       continue
     let relative = result[valueStart ..< valueEnd]
     let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
-    let candidate = (root / assetName).absolutePath().normalizedPath()
+    let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
       cursor = tagEnd + 1
@@ -1437,7 +1437,7 @@ proc loadEntry*(window: Window; entry = "index.html"): CoreResult =
       return window.loadUrl(fileUrl)
     var content = readFile(path)
     if window.app.backend == wslBackend:
-      content = inlineWslAssets(root, content)
+      content = inlineWslAssets(root, splitFile(path).dir, content)
     window.loadHtml(content)
   except CatchableError:
     coreFailure(coreError(nativeFailure, "window.loadEntry",
