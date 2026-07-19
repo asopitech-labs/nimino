@@ -106,6 +106,7 @@ else:
   createDir(directory)
   var packaged = loaded.value
   proc packageFiles(paths: var seq[string]) =
+    var packagedNames: seq[string]
     for index in 0 ..< paths.len:
       if not fileExists(paths[index]):
         stderr.writeLine("nimino pack: injected file does not exist: " & paths[index])
@@ -114,6 +115,13 @@ else:
       if fileName.len == 0 or fileName in [".", ".."]:
         stderr.writeLine("nimino pack: injected file path has no usable filename")
         quit(1)
+      if fileName in packagedNames:
+        stderr.writeLine("nimino pack: duplicate injected filename: " & fileName)
+        quit(1)
+      if fileExists(directory / fileName):
+        stderr.writeLine("nimino pack: output filename collision: " & fileName)
+        quit(1)
+      packagedNames.add(fileName)
       copyFile(paths[index], directory / fileName)
       paths[index] = fileName
   let iconIsRemote = packaged.icon.toLowerAscii().startsWith("http://") or
