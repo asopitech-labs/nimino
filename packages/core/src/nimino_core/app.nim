@@ -1364,8 +1364,11 @@ proc inlineWslAssets(root, baseDir, html: string): string =
       continue
     let valueStart = hrefStart + 6
     let valueEnd = result.find(if useSingle: '\'' else: '"', valueStart)
-    let relValue = result.find(if useSingle: "rel='stylesheet'" else: "rel=\"stylesheet\"", start)
-    if valueEnd < 0 or valueEnd > tagEnd or relValue < start or relValue > tagEnd:
+    let tagMarkup = result[start .. tagEnd].toLowerAscii()
+    let relValue = tagMarkup.find("rel='stylesheet'")
+    let relValueDouble = tagMarkup.find("rel=\"stylesheet\"")
+    if valueEnd < 0 or valueEnd > tagEnd or
+        (relValue < 0 and relValueDouble < 0):
       cursor = tagEnd + 1
       continue
     let assetName = decodeUrl(result[valueStart ..< valueEnd].split({'?', '#'}, maxsplit = 1)[0])
