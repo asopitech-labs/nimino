@@ -1442,6 +1442,9 @@ proc loadHtml*(window: Window; html: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.loadHtml"))
   window.lastUrl.setLen(0)
+  ## Inline documents carry their own bootstrap.  Force the next URL load to
+  ## install a fresh document-start bridge even when it reuses the prior URL.
+  window.documentStartBridgeUrl.setLen(0)
   let document = bridgeDocument(html)
   case window.app.backend
   of nativeBackend:
