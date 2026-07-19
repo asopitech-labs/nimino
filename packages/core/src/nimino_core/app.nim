@@ -1351,7 +1351,8 @@ proc inlineWslCssUrls(root, baseDir, css: string; inlineRemoteAssets = false): s
     if inlineRemoteAssets and (relative.toLowerAscii().startsWith("http://") or
         relative.toLowerAscii().startsWith("https://")):
       let remote = remoteAssetDataUri(relative)
-      if remote.len > 0:
+      if remote.len > 0 and (remote.startsWith("data:image/") or
+          remote.startsWith("data:font/")):
         result = result[0 ..< valueStart] & remote & result[valueEnd .. ^1]
         cursor = valueStart + remote.len
         continue
@@ -1449,7 +1450,7 @@ proc inlineWslAssets(root, baseDir, html: string; inlineRemoteAssets = false): s
     if inlineRemoteAssets and (relative.toLowerAscii().startsWith("http://") or
         relative.toLowerAscii().startsWith("https://")):
       let remote = remoteAssetDataUri(relative)
-      if remote.len > 0:
+      if remote.len > 0 and remote.startsWith("data:image/"):
         result = result[0 ..< valueStart] & remote & result[valueEnd .. ^1]
         cursor = valueStart + remote.len + 1
         continue
