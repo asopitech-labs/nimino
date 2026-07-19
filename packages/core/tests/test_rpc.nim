@@ -172,3 +172,14 @@ block unregisterRemovesNotificationSchema:
   doAssert registry.registerTypedNotification("transient", proc(value: int) = discard)
   doAssert registry.unregister("transient")
   doAssert registry.typescriptDeclarations().find("transient") < 0
+
+block explicitTypeScriptSchemaIsBoundToRegisteredMethod:
+  let registry = newRpcRegistry()
+  doAssert not registry.registerTypeScriptSchema("missing", "Input", "Output")
+  doAssert registry.registerSync("settings.load", proc(params: JsonNode): RpcResult =
+    rpcSuccess(%*{"theme": "dark"}))
+  doAssert registry.registerTypeScriptSchema("settings.load", "SettingsRequest", "Settings")
+  let declarations = registry.typescriptDeclarations()
+  doAssert declarations.find("params?: SettingsRequest") >= 0
+  doAssert declarations.find("Promise<Settings>") >= 0
+  doAssert not registry.registerTypeScriptSchema("settings.load", "Bad\nType", "Settings")

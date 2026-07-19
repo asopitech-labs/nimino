@@ -152,6 +152,22 @@ proc typescriptDeclarations*(registry: RpcRegistry): string =
   result.add("      notify(method: string, params?: unknown): void;\n")
   result.add("    };\n  }\n}\nexport {};\n")
 
+proc registerTypeScriptSchema*(registry: RpcRegistry; methodName, paramsType,
+                               resultType: string): bool =
+  ## Override conservative `unknown` declarations for an already registered
+  ## method. This only affects generated declarations; runtime JSON codecs and
+  ## the explicit method allow-list remain unchanged.
+  if registry.isNil or registry.closed or not validMethodName(methodName) or
+      not registry.isMethodRegistered(methodName) or paramsType.len == 0 or
+      resultType.len == 0:
+    return false
+  for typeText in [paramsType, resultType]:
+    for ch in typeText:
+      if ch in {'\x00', '\r', '\n', ';', '{', '}'}:
+        return false
+  registry.setTypeScriptSchema(methodName, paramsType, resultType)
+  true
+
 proc register*(registry: RpcRegistry; methodName: string; handler: RpcHandler): bool =
   if registry.isNil or registry.closed or not validMethodName(methodName) or handler.isNil or
       registry.notificationHandlers.hasKey(methodName):

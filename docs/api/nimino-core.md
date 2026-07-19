@@ -59,6 +59,7 @@ window.rpc.register("files.save") do (request: SaveRequest) -> Future[SaveResult
 登録APIは明示的なメソッド名を持つ許可リストです。任意のNim関数、OS API、または`ref object`を自動公開しません。各Windowは独立したRPC registryとrequest ID空間を持ち、request/response、notification、timeout、cancel、JSON errorを扱います。応答不要の通知は`registerNotification`で専用登録でき、requestとして呼び出されることはありません。
 
 `registerTyped`と`registerTypedAsync`は、引数なしまたは一つのJSON codec対応入力型を受け、戻り値（または`Future`の戻り値）をJSON化する。通知には`registerTypedNotification`（引数あり／なし）を使用できる。これらも明示メソッド名の許可リストであり、reflectionによる任意関数公開ではない。`Window.typescriptDeclarations`は登録済みメソッドだけを宣言生成し、primitive型（string、bool、数値）とそれらの`seq`配列を対応するTypeScript型へ変換し、複合型は安全に`unknown`として扱います。register macroによる複合型の自動抽出は未実装であり、native層へ追加しない。
+複合型の宣言を手動で補完する場合は、実行時に登録済みのメソッドへ`registerTypeScriptSchema(method, paramsType, resultType)`を呼び出せます。これは宣言生成だけを変更し、RPC codecや許可リストを変更しません。改行・制御文字・`{}`・`;`を含む型文字列は拒否します。
 `window.rpc.unregister("method")`で登録済みの一つのメソッドを撤去できます。撤去後の新規呼び出しは拒否され、既に実行中のrequestは完了まで維持されます。
 メソッド名は制御文字・空白・引用符を含められず、256文字以内に制限されます。
 
