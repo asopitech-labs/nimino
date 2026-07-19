@@ -65,6 +65,7 @@ type
     pendingNavigationStarts: seq[HostNavigationStarting]
     pendingNavigationCompletions: seq[HostNavigationCompleted]
     pendingDownloadEvents: seq[HostDownloadEvent]
+    pendingWindowClosed: seq[uint64]
     ## Optional synchronous decision hook owned by the transport layer.
     ## Returning false is the fail-closed default.
     policyDecision*: proc(request: PolicyRequest): bool {.closure.}
@@ -226,6 +227,12 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
     owner.policyDecision(PolicyRequest(kind: closePolicy, windowId: windowId)))
   if not closeConfigured.isOk:
     return nativeFailure("native.window.onCloseRequested", closeConfigured)
+  let closedConfigured = created.value.onClosed(proc() =
+    let owner = cast[HostAdapter](adapterPointer)
+    if not owner.isNil:
+      owner.pendingWindowClosed.add(windowId))
+  if not closedConfigured.isOk:
+    return nativeFailure("native.window.onClosed", closedConfigured)
   adapter.windows[windowId] = created.value
   adapter.windowViewCounts[windowId] = 0
   successOf(HostAction(kind: noHostAction, payload: encodedId("windowId", windowId)))
@@ -503,6 +510,12 @@ proc takeDownloadEvents*(adapter: HostAdapter): seq[HostDownloadEvent] =
     return @[]
   result = adapter.pendingDownloadEvents
   adapter.pendingDownloadEvents.setLen(0)
+
+proc takeWindowClosed*(adapter: HostAdapter): seq[uint64] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingWindowClosed
+  adapter.pendingWindowClosed.setLen(0)
 
 
 proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;

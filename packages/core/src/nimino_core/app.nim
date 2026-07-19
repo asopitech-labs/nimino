@@ -1531,6 +1531,22 @@ when defined(linux):
     case event.methodName
     of "app.closed":
       return coreSuccessOf(true)
+    of "native.window.closed":
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("windowId") or
+            payload["windowId"].kind != JString:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "Window closed event is malformed"))
+        let windowId = uint64(parseUInt(payload["windowId"].getStr()))
+        for window in app.windows:
+          if not window.closed and window.windowId == windowId:
+            window.closed = true
+            window.rpc.close()
+            break
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "Window closed event is malformed"))
     of "app.error":
       return coreFailureOf[bool](coreError(nativeFailure, "app.run",
         detail = "WSL host reported an application error"))

@@ -162,6 +162,12 @@ proc flushDownloadEvents(state: HostState) =
       discard state.adapter.app.close()
       return
 
+proc flushWindowClosed(state: HostState) =
+  for windowId in state.adapter.takeWindowClosed():
+    if not state.writeEvent("native.window.closed", $(%*{"windowId": $windowId}), ""):
+      discard state.adapter.app.close()
+      return
+
 proc requestPolicy(state: HostState; request: PolicyRequest): bool =
   ## The native callback runs on the UI thread.  Keep the relay synchronous so
   ## WebView2/GTK receives a decision before the callback returns; every error
@@ -227,6 +233,7 @@ proc pollHost(state: HostState) =
   state.flushNavigationStarts()
   state.flushNavigationCompletions()
   state.flushDownloadEvents()
+  state.flushWindowClosed()
 
 proc runHost(): int =
   let expectedToken = getEnv("NIMINO_WSL_HOST_TOKEN")
@@ -331,6 +338,7 @@ proc runHost(): int =
       state.flushNavigationStarts()
       state.flushNavigationCompletions()
       state.flushDownloadEvents()
+      state.flushWindowClosed()
       if not finished.isOk:
         stderr.writeLine("nimino-wsl-host: native UI loop failed: " &
           finished.failure.operation & " (code=" & $finished.failure.platformCode & ")")
