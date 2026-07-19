@@ -1296,7 +1296,9 @@ proc assetMime(path: string): string =
   of ".eot": "application/vnd.ms-fontobject"
   else: ""
 
-proc inlineWslCssUrls(root, baseDir, css: string): string =
+proc remoteAssetDataUri(url: string): string
+
+proc inlineWslCssUrls(root, baseDir, css: string; inlineRemoteAssets = false): string =
   result = css
   var cursor = 0
   while true:
@@ -1315,6 +1317,13 @@ proc inlineWslCssUrls(root, baseDir, css: string): string =
     if close < 0 or relative.len == 0 or relative.startsWith("data:") or relative.startsWith("#"):
       cursor = valueEnd + 1
       continue
+    if inlineRemoteAssets and (relative.toLowerAscii().startsWith("http://") or
+        relative.toLowerAscii().startsWith("https://")):
+      let remote = remoteAssetDataUri(relative)
+      if remote.len > 0:
+        result = result[0 ..< valueStart] & remote & result[valueEnd .. ^1]
+        cursor = valueStart + remote.len
+        continue
     let assetName = decodeUrl(relative.split({'?', '#'}, maxsplit = 1)[0])
     let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
@@ -1367,6 +1376,22 @@ proc remoteAssetDataUri(url: string): string =
   except CatchableError:
     ""
 
+proc remoteAssetText(url: string): string =
+  let parsed = parseUri(url)
+  if parsed.scheme.toLowerAscii() notin ["http", "https"] or parsed.hostname.len == 0:
+    return ""
+  try:
+    var client = newHttpClient()
+    let response = client.get(url)
+    if response.code.int < 200 or response.code.int >= 300 or response.body.len > 8 * 1024 * 1024:
+      return ""
+    let mime = response.headers.getOrDefault("Content-Type").split(';')[0].strip()
+    if mime.len > 0 and not (mime == "text/css" or mime == "text/plain" or mime == "text/javascript"):
+      return ""
+    response.body
+  except CatchableError:
+    ""
+
 proc inlineWslAssets(root, baseDir, html: string; inlineRemoteAssets = false): string =
   result = html
   var cursor = 0
@@ -1402,7 +1427,7 @@ proc inlineWslAssets(root, baseDir, html: string; inlineRemoteAssets = false): s
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or closing < 0 or not fileExists(candidate):
       cursor = tagEnd + 1
       continue
-    let body = inlineWslCssUrls(root, splitFile(candidate).dir, readFile(candidate))
+    let body = inlineWslCssUrls(root, splitFile(candidate).dir, readFile(candidate), inlineRemoteAssets)
     let tail = if closing + 9 < result.len: result[closing + 9 .. ^1] else: ""
     result = result[0 ..< start] & "<script>" & body & "</script>" & tail
     cursor = start + body.len + 17
@@ -1466,6 +1491,14 @@ proc inlineWslAssets(root, baseDir, html: string; inlineRemoteAssets = false): s
       cursor = tagEnd + 1
       continue
     let assetName = decodeUrl(result[valueStart ..< valueEnd].split({'?', '#'}, maxsplit = 1)[0])
+    if inlineRemoteAssets and (assetName.toLowerAscii().startsWith("http://") or
+        assetName.toLowerAscii().startsWith("https://")):
+      let remote = remoteAssetText(assetName)
+      if remote.len > 0:
+        let tail = if tagEnd + 1 < result.len: result[tagEnd + 1 .. ^1] else: ""
+        result = result[0 ..< start] & "<style>" & remote & "</style>" & tail
+        cursor = start + remote.len + 15
+        continue
     let candidate = (baseDir / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
