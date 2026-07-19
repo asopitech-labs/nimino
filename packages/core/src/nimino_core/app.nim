@@ -305,7 +305,7 @@ when defined(linux):
 
   proc mapProtocolError(operation: string; error: ProtocolError): CoreError =
     let kind = case error.kind
-      of invalidMessage, invalidFrame, unexpectedEof, frameTooLarge: nativeFailure
+      of invalidMessage, invalidFrame, unexpectedEof, frameTooLarge, timedOut: nativeFailure
       of unsupportedVersion, authenticationFailed: platformUnavailable
     coreError(kind, operation, detail = error.detail)
 
