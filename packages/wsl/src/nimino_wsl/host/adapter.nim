@@ -335,8 +335,6 @@ proc handleWindowFocus(adapter: HostAdapter; payload: JsonNode): ProtocolResultO
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
-  if adapter.uiStartRequested:
-    return errorAction("webview creation is closed after the UI loop starts")
   let windowId = payload.requiredId("windowId")
   if not windowId.isOk:
     return failureOf[HostAction](windowId.failure)

@@ -35,6 +35,15 @@ block createsWindowViewAndUrlBeforeStartingUi:
   doAssert loaded.isOk
   doAssert loaded.value.kind == startUiLoop
 
+  ## A user-initiated popup may be created after the first view starts.
+  let popup = adapter.handleRequest(requestMessage("native.window.create",
+    "{\"title\":\"Popup\",\"width\":400,\"height\":300,\"appId\":\"app.test\",\"profile\":\"popup\"}"))
+  doAssert popup.isOk
+  let popupId = parseJson(popup.value.payload)["windowId"].getStr()
+  let popupView = adapter.handleRequest(requestMessage("native.webview.create",
+    $(%*{"windowId": popupId})))
+  doAssert popupView.isOk
+
 block navigationRulesAreEvaluatedOnHostWithoutIpcWait:
   let adapter = newHostAdapter()
   let window = adapter.handleRequest(requestMessage("native.window.create",
