@@ -458,6 +458,18 @@ proc sendRpcReply(window: Window; message: string) =
         "script": script
         }))
 
+proc suggestedDownloadName(url: string): string =
+  try:
+    let parsed = parseUri(url)
+    let decoded = decodeUrl(parsed.path)
+    let parts = splitFile(decoded)
+    let name = parts.name & parts.ext
+    if name.len > 0 and name notin [".", ".."]:
+      return name
+  except CatchableError:
+    discard
+  "download"
+
 proc syncDocumentCookies*(window: Window): Future[CoreResult]
 
 proc configureWindow(window: Window): CoreResult =
@@ -528,7 +540,7 @@ proc configureWindow(window: Window): CoreResult =
 
   let downloadConfigured = native.onDownloadStarting(window.nativeView,
     proc(url: string): bool = window.decideDownload(DownloadRequest(
-      url: url, suggestedName: "download")) == downloadAllow)
+      url: url, suggestedName: suggestedDownloadName(url))) == downloadAllow)
   if not downloadConfigured.isOk:
     return coreFailure(downloadConfigured.failure.mapNativeError())
 
@@ -536,7 +548,7 @@ proc configureWindow(window: Window): CoreResult =
     proc(url: string; state: native.NativeDownloadState; progress: float) =
       if not window.downloadEventHandler.isNil:
         try: window.downloadEventHandler(DownloadEvent(
-          request: DownloadRequest(url: url, suggestedName: "download"),
+          request: DownloadRequest(url: url, suggestedName: suggestedDownloadName(url)),
           state: case state
             of native.nativeDownloadStarted: downloadStarted
             of native.nativeDownloadProgress: downloadProgress
