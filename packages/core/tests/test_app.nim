@@ -65,6 +65,10 @@ block profilePathsAreContainedAndSafe:
   let cookie = ProfileCookie(name: "sid", value: "abc", domain: "example.com",
     path: "/", secure: true, expires: int64(epochTime()) + 3600)
   doAssert writeProfileCookie("tech.asopi.profile-test", "work", cookie).isOk
+  doAssert not writeProfileCookie("tech.asopi.profile-test", "work",
+    ProfileCookie(name: "bad", value: "x; secure", domain: "example.com")).isOk
+  doAssert not writeProfileCookie("tech.asopi.profile-test", "work",
+    ProfileCookie(name: "bad-path", value: "x", domain: "example.com", path: "relative")).isOk
   let loadedCookie = readProfileCookie("tech.asopi.profile-test", "work",
     "example.com", "sid")
   doAssert loadedCookie.isOk

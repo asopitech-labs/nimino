@@ -340,6 +340,11 @@ proc cookiePath(appId, profile: string; cookie: ProfileCookie): ProfilePathResul
 
 proc writeProfileCookie*(appId, profile: string;
                         cookie: ProfileCookie): ProfilePathResult =
+  if cookie.value.find(';') >= 0 or cookie.value.find('\r') >= 0 or
+      cookie.value.find('\n') >= 0:
+    return profileFailure("cookie value contains unsafe delimiter characters")
+  if cookie.path.len > 0 and not cookie.path.startsWith("/"):
+    return profileFailure("cookie path must start with '/'")
   let layout = ensureProfileLayout(appId, profile)
   if not layout.isOk:
     return layout
