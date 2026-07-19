@@ -3,6 +3,7 @@
 type
   NativeErrorKind* = enum
     unsupported
+    invalidArgument
     invalidState
     permissionDenied
     osError

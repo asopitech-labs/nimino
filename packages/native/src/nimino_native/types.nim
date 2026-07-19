@@ -554,6 +554,10 @@ proc evalJavaScript*(view: NativeWebView; script: string): Future[NativeResultOf
   if view.isNil or view.state in {closing, closed}:
     result.complete(failureOf[string](nativeError(invalidState, "webview.evalJavaScript")))
     return
+  if script.len == 0:
+    result.complete(failureOf[string](nativeError(invalidArgument, "webview.evalJavaScript",
+      detail = "script must not be empty")))
+    return
 
   if view.state != ready or view.platformView.isNil:
     view.pendingScripts.add(request)

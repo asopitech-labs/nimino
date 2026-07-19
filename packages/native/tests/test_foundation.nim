@@ -49,6 +49,9 @@ block windowAndViewRemainSeparate:
   doAssert not view.value.loadUrl("https://example.com/has space").isOk
   doAssert notified
   doAssert view.value.loadUrl("about:blank").isOk
+  let emptyScript = view.value.evalJavaScript("")
+  doAssert emptyScript.finished
+  doAssert not emptyScript.read().isOk
   doAssert view.value.loadHtml("<main>Foundation</main>").isOk
   doAssert window.value.setTitle("Foundation updated").isOk
   doAssert view.value.onNewWindowRequested(proc(url: string) = discard).isOk

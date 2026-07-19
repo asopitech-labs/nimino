@@ -208,6 +208,7 @@ type
 proc mapNativeError(error: native.NativeError): CoreError =
   let kind = case error.kind
     of native.unsupported: platformUnavailable
+    of native.invalidArgument: invalidArgument
     of native.invalidState: invalidState
     of native.permissionDenied: permissionDenied
     of native.osError: osError
@@ -1470,6 +1471,10 @@ proc evalJavaScript*(window: Window; script: string): Future[CoreResultOf[string
   result = target
   if window.isNil or window.closed or window.app.isNil:
     target.complete(coreFailureOf[string](coreError(invalidState, "window.evalJavaScript")))
+    return
+  if script.len == 0:
+    target.complete(coreFailureOf[string](coreError(invalidArgument, "window.evalJavaScript",
+      detail = "script must not be empty")))
     return
   case window.app.backend
   of nativeBackend:
