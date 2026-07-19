@@ -198,6 +198,7 @@ type
     externalNavigationHandler*: proc(request: NavigationRequest)
     newWindowHandler*: proc(request: NewWindowRequest): bool
     closeRequestedHandler*: proc(): bool
+    closedHandler*: proc()
     errorHandler*: proc(error: WindowError)
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
@@ -501,7 +502,10 @@ proc configureWindow(window: Window): CoreResult =
   let closedConfigured = native.onClosed(window.nativeWindow, proc() =
     if window != nil and not window.closed:
       window.closed = true
-      window.rpc.close())
+      window.rpc.close()
+      if not window.closedHandler.isNil:
+        try: window.closedHandler()
+        except CatchableError: discard)
   if not closedConfigured.isOk:
     return coreFailure(closedConfigured.failure.mapNativeError())
 
@@ -1157,6 +1161,12 @@ proc onCloseRequested*(window: Window;
   window.closeRequestedHandler = handler
   coreSuccess()
 
+proc onClosed*(window: Window; handler: proc()): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onClosed"))
+  window.closedHandler = handler
+  coreSuccess()
+
 proc onError*(window: Window; handler: proc(error: WindowError)): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.onError"))
@@ -1543,6 +1553,9 @@ when defined(linux):
           if not window.closed and window.windowId == windowId:
             window.closed = true
             window.rpc.close()
+            if not window.closedHandler.isNil:
+              try: window.closedHandler()
+              except CatchableError: discard
             break
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
