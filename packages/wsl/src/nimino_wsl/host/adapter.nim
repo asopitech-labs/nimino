@@ -352,6 +352,31 @@ proc handleWindowFocus(adapter: HostAdapter; payload: JsonNode): ProtocolResultO
   if not focused.isOk: return nativeFailure("native.window.focus", focused)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
+proc clearDirectoryContents(path: string) =
+  if not dirExists(path):
+    return
+  for kind, entry in walkDir(path):
+    case kind
+    of pcFile, pcLinkToFile:
+      try: removeFile(entry)
+      except OSError: discard
+    of pcDir:
+      clearDirectoryContents(entry)
+      try: removeDir(entry)
+      except OSError: discard
+    else:
+      discard
+
+proc handleWindowClearCache(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  if not windowId.isOk: return failureOf[HostAction](windowId.failure)
+  if not adapter.windows.hasKey(windowId.value): return errorAction("unknown windowId")
+  let root = adapter.windows[windowId.value].profilePath / "webview2"
+  for relative in ["Default" / "Cache", "Default" / "Code Cache",
+                   "Default" / "GPUCache", "Default" / "DawnCache"]:
+    clearDirectoryContents(root / relative)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
   let windowId = payload.requiredId("windowId")
   if not windowId.isOk:
@@ -619,6 +644,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowSetResizable(payload.value)
   of "native.window.setPosition":
     adapter.handleWindowSetPosition(payload.value)
+  of "native.window.clearCache":
+    adapter.handleWindowClearCache(payload.value)
   of "native.window.focus":
     adapter.handleWindowFocus(payload.value)
   of "native.webview.create":

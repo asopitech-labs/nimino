@@ -803,6 +803,15 @@ proc clearSettings*(window: Window): CoreResult =
 proc clearCache*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.clearCache"))
+  if window.app.backend == wslBackend:
+    when defined(linux):
+      let remote = window.app.wslCall("native.window.clearCache", $(%*{
+        "windowId": $window.windowId
+      }))
+      if not remote.isOk:
+        return coreFailure(remote.failure)
+    else:
+      return coreFailure(coreError(platformUnavailable, "window.clearCache"))
   let cleared = clearProfileCache(window.app.id, window.profileName)
   if cleared.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.clearCache", detail = cleared.error))
