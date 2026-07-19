@@ -85,8 +85,12 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert first.isOk
   doAssert second.isOk
   doAssert first.value.onCloseRequested(proc(): bool = true).isOk
-  doAssert app.windowCount() == 2
-  doAssert app.windows().len == 2
+  let popup = first.value.openPopup(NewWindowRequest(url: "data:text/html,<p>popup</p>"),
+    title = "Popup", profile = "popup")
+  doAssert popup.isOk
+  doAssert popup.value.profilePath.endsWith("/popup") or popup.value.profilePath.endsWith("\\popup")
+  doAssert app.windowCount() == 3
+  doAssert app.windows().len == 3
   doAssert first.value.setTitle("Updated first").isOk
   doAssert first.value.setSize(640, 480).isOk
   doAssert not first.value.setSize(0, 480).isOk
@@ -103,7 +107,7 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert first.value.close().isOk
   doAssert not first.value.close().isOk
   doAssert first.value.isClosed()
-  doAssert app.windowCount() == 1
+  doAssert app.windowCount() == 2
   doAssert not first.value.rpc.registerSync("only.first", proc(params: JsonNode): RpcResult =
     rpcSuccess(newJNull())
   )

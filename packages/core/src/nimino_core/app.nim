@@ -1122,6 +1122,28 @@ proc onNewWindow*(window: Window;
   window.newWindowHandler = handler
   coreSuccess()
 
+proc loadUrl*(window: Window; url: string): CoreResult
+
+proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
+                width = 900; height = 700; profile = "default"): CoreResultOf[Window] =
+  ## Explicitly create a popup in response to an application-approved request.
+  ## Native backends never create one implicitly; callers decide when to invoke
+  ## this operation from `onNewWindow`.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[Window](coreError(invalidState, "window.openPopup"))
+  if request.url.len == 0:
+    return coreFailureOf[Window](coreError(invalidArgument, "window.openPopup",
+      detail = "popup URL must not be empty"))
+  let popup = window.app.newWindow(CoreWindowOptions(
+    title: title, width: width, height: height, profile: profile))
+  if not popup.isOk:
+    return popup
+  let loaded = popup.value.loadUrl(request.url)
+  if not loaded.isOk:
+    discard popup.value.close()
+    return coreFailureOf[Window](loaded.failure)
+  coreSuccessOf(popup.value)
+
 proc onCloseRequested*(window: Window;
                        handler: proc(): bool): CoreResult =
   if window.isNil or window.closed or window.app.isNil:

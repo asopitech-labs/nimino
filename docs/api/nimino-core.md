@@ -164,3 +164,7 @@ WSLでは認証済みIPCでWindows hostへ中継します。close後の操作と
 `app.isRunning()`と`window.isClosed()`でライフサイクル状態を照会できます。
 `window.focus()`はWindowを表示して前面化します。LinuxではGTK present、Windowsでは
 Win32 `SetForegroundWindow`、WSLではWindows hostへ中継します。
+
+`window.onNewWindow`は新規Window要求を通知します。暗黙生成は行わず、アプリケーションが
+許可した場合に`window.openPopup(request)`を呼ぶことで、実行中のWindows/Linux/WSLでも
+Popup WindowとWebViewを生成してURLを読み込みます。
