@@ -84,12 +84,29 @@ proc validateUrl(value: string): bool =
   except CatchableError:
     false
 
+proc validPathComponent(value: string): bool =
+  if value.len == 0 or value in [".", ".."] or value[^1] in {'.', ' '}:
+    return false
+  let upper = value.toUpperAscii()
+  if upper in ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4",
+               "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
+               "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"]:
+    return false
+  for character in value:
+    if character notin {'a'..'z', 'A'..'Z', '0'..'9', '-', '_', '.'}:
+      return false
+  true
+
 proc validate*(manifest: PackManifest): PackResult[PackManifest] =
-  if manifest.name.len == 0 or manifest.id.len == 0:
+  var invalidName = false
+  for character in manifest.name:
+    if ord(character) < 32:
+      invalidName = true
+  if manifest.name.len == 0 or manifest.id.len == 0 or
+      manifest.name.strip().len == 0 or invalidName:
     return failure[PackManifest](invalidManifest, "name and id are required")
   for component in [manifest.id, manifest.profile]:
-    if component.len == 0 or component in [".", ".."] or component.contains('/') or
-        component.contains('\\') or component.contains('\0'):
+    if not validPathComponent(component):
       return failure[PackManifest](invalidManifest, "id and profile must be safe path components")
   if manifest.url.len == 0 or not validateUrl(manifest.url):
     return failure[PackManifest](invalidManifest, "url must use http, https, file, or data")

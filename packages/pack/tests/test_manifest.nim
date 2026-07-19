@@ -38,4 +38,13 @@ let unsafe = parse("name = \"Unsafe\"\nid = \"../escape\"\nurl = \"https://examp
 doAssert not unsafe.isOk
 doAssert unsafe.error.kind == invalidManifest
 
+let reserved = parse("name = \"Reserved\"\nid = \"CON\"\nurl = \"https://example.com\"")
+doAssert not reserved.isOk
+let trailing = parse("name = \"Trailing\"\nid = \"app.example.\"\nurl = \"https://example.com\"")
+doAssert not trailing.isOk
+let controlName = validate(PackManifest(name: "Bad" & chr(1) & "Name",
+  id: "app.example", url: "https://example.com", profile: "default",
+  window: PackWindowOptions(width: 800, height: 600, resizable: true)))
+doAssert not controlName.isOk
+
 echo "nimino-pack manifest tests passed"
