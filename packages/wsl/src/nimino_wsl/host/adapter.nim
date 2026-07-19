@@ -372,6 +372,8 @@ proc handleWindowClearCache(adapter: HostAdapter; payload: JsonNode): ProtocolRe
   let windowId = payload.requiredId("windowId")
   if not windowId.isOk: return failureOf[HostAction](windowId.failure)
   if not adapter.windows.hasKey(windowId.value): return errorAction("unknown windowId")
+  if adapter.windows[windowId.value].profilePath.len == 0:
+    return errorAction("window profile path is unavailable")
   let root = adapter.windows[windowId.value].profilePath / "webview2"
   for relative in ["Default" / "Cache", "Default" / "Code Cache",
                    "Default" / "GPUCache", "Default" / "DawnCache"]:
@@ -383,6 +385,8 @@ proc handleWindowClearDownloads(adapter: HostAdapter; payload: JsonNode): Protoc
   let windowId = payload.requiredId("windowId")
   if not windowId.isOk: return failureOf[HostAction](windowId.failure)
   if not adapter.windows.hasKey(windowId.value): return errorAction("unknown windowId")
+  if adapter.windows[windowId.value].profilePath.len == 0:
+    return errorAction("window profile path is unavailable")
   let downloads = adapter.windows[windowId.value].profilePath / "webview2" /
     "Default" / "Downloads"
   if not clearDirectoryContents(downloads):
