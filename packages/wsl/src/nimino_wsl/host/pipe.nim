@@ -101,7 +101,7 @@ proc next*(input: HostInput; timeoutMs: uint32): ProtocolResultOf[ProtocolMessag
     if input.closed:
       return failureOf[ProtocolMessage](protocolError(unexpectedEof, "host stdin closed"))
     if getTickCount64() - started >= uint64(timeoutMs):
-      return failureOf[ProtocolMessage](protocolError(unexpectedEof, "host message timed out"))
+      return failureOf[ProtocolMessage](protocolError(timedOut, "host message timed out"))
     sleep(10)
 
 proc takePending*(input: HostInput): seq[ProtocolMessage] =

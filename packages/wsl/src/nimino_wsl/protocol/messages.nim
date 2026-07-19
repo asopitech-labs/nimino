@@ -8,6 +8,7 @@ type
     unexpectedEof
     frameTooLarge
     invalidMessage
+    timedOut
     unsupportedVersion
     authenticationFailed
 
