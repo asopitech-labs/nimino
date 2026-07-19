@@ -126,7 +126,7 @@ proc deleteProfileDownload*(appId, profile, path: string): ProfilePathResult =
   let candidate = absolutePath(path).normalizedPath()
   let root = absolutePath(directory.value).normalizedPath()
   let relative = relativePath(candidate, root)
-  if relative == ".." or relative.startsWith(".." & DirSep) or relative.contains(DirSep):
+  if relative == ".." or relative.startsWith(".." & DirSep) or relative == ".":
     return profileFailure("download path is outside the profile directory")
   if not fileExists(candidate):
     return profileSuccess(candidate)

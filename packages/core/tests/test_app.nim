@@ -57,6 +57,8 @@ block profilePathsAreContainedAndSafe:
   let listedDownloads = listProfileDownloads("tech.asopi.profile-test", "work")
   doAssert listedDownloads.isOk
   doAssert nestedDownload in listedDownloads.value
+  doAssert deleteProfileDownload("tech.asopi.profile-test", "work", nestedDownload).isOk
+  doAssert not fileExists(nestedDownload)
   doAssert not deleteProfileDownload("tech.asopi.profile-test", "work", getHomeDir() / "outside.txt").isOk
   doAssert deleteProfileDownload("tech.asopi.profile-test", "work", storedPath.value).isOk
   doAssert not fileExists(storedPath.value)
