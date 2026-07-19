@@ -143,6 +143,21 @@ proc parse*(text: string): PackResult[PackManifest] =
   var section = ""
   for rawLine in text.splitLines():
     var line = rawLine.strip()
+    var quoted = false
+    var escaped = false
+    var commentAt = -1
+    for index, character in line:
+      if quoted and escaped:
+        escaped = false
+      elif quoted and character == '\\':
+        escaped = true
+      elif character == '"':
+        quoted = not quoted
+      elif character == '#' and not quoted:
+        commentAt = index
+        break
+    if commentAt >= 0:
+      line = line[0 ..< commentAt].strip()
     if line.len == 0 or line[0] == '#':
       continue
     if line.startsWith('[') and line.endsWith(']'):

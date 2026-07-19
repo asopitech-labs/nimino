@@ -33,6 +33,9 @@ doAssert parsed.value.permissionsAllow == @["microphone", "notifications"]
 let commaValue = parse("name = \"Comma\"\nid = \"app.comma\"\nurl = \"https://example.com\"\n[navigation]\nallow = [\"https://example.com/a,b\", \"https://example.com/c\"]")
 doAssert commaValue.isOk
 doAssert commaValue.value.navigationAllow[0] == "https://example.com/a,b"
+let comments = parse("name = \"Comments\" # app name\nid = \"app.comments\" # id\nurl = \"https://example.com/#app\" # fragment\n")
+doAssert comments.isOk
+doAssert comments.value.url == "https://example.com/#app"
 
 let invalid = parse("name = \"No URL\"\nid = \"app.example\"")
 doAssert not invalid.isOk
