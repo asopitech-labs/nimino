@@ -1189,6 +1189,10 @@ proc onError*(window: Window; handler: proc(error: WindowError)): CoreResult =
 proc loadUrl*(window: Window; url: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.loadUrl"))
+  for c in url:
+    if c in {' ', '\t', '\r', '\n'} or ord(c) < 0x20 or ord(c) == 0x7f:
+      return coreFailure(coreError(webViewError, "window.loadUrl",
+        detail = "URL must not contain whitespace/control characters"))
   let bridge = window.configureDocumentStartBridge(url)
   if not bridge.isOk:
     return bridge

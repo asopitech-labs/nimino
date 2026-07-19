@@ -263,3 +263,11 @@ block permissionsAndDownloadsDefaultToDeny:
     kind: camera, url: "https://example.com")) == permissionDeny
   doAssert window.decideDownload(DownloadRequest(
     url: "https://example.com/file", suggestedName: "file")) == downloadAllow
+
+block loadUrlRejectsUnsafeInput:
+  let created = newApp(id = "tech.asopi.url-validation-test", name = "URL validation")
+  doAssert created.isOk
+  let window = created.value.newWindow(title = "URL validation").value
+  let rejected = window.loadUrl("https://example.com/has space")
+  doAssert not rejected.isOk
+  doAssert rejected.failure.kind == webViewError

@@ -46,6 +46,7 @@ block windowAndViewRemainSeparate:
     doAssert error.operation == "webview.loadUrl"
   ).isOk
   doAssert not view.value.loadUrl("").isOk
+  doAssert not view.value.loadUrl("https://example.com/has space").isOk
   doAssert notified
   doAssert view.value.loadUrl("about:blank").isOk
   doAssert view.value.loadHtml("<main>Foundation</main>").isOk

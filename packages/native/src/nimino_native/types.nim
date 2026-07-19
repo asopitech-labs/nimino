@@ -495,8 +495,15 @@ proc focus*(window: NativeWindow): NativeResult =
 proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.loadUrl"))
-  if url.len == 0:
-    let error = nativeError(webViewError, "webview.loadUrl", detail = "URL must not be empty")
+  var invalidInput = url.len == 0
+  if not invalidInput:
+    for c in url:
+      if c in {' ', '\t', '\r', '\n'} or ord(c) < 0x20 or ord(c) == 0x7f:
+        invalidInput = true
+        break
+  if invalidInput:
+    let error = nativeError(webViewError, "webview.loadUrl",
+      detail = "URL must not be empty or contain whitespace/control characters")
     view.dispatchError(error)
     return failure(error)
   view.pendingUrl = url
