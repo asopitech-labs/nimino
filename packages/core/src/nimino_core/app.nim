@@ -1331,7 +1331,8 @@ proc inlineWslAssets(root, html: string): string =
       cursor = tagEnd + 1
       continue
     let relative = result[valueStart ..< valueEnd]
-    let candidate = (root / relative).absolutePath().normalizedPath()
+    let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
+    let candidate = (root / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     let closing = result.find("</script>", tagEnd)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or closing < 0 or not fileExists(candidate):
@@ -1360,7 +1361,8 @@ proc inlineWslAssets(root, html: string): string =
     if valueEnd < 0 or valueEnd > tagEnd or relValue < start or relValue > tagEnd:
       cursor = tagEnd + 1
       continue
-    let candidate = (root / result[valueStart ..< valueEnd]).absolutePath().normalizedPath()
+    let assetName = result[valueStart ..< valueEnd].split({'?', '#'}, maxsplit = 1)[0]
+    let candidate = (root / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
       cursor = tagEnd + 1
@@ -1389,7 +1391,8 @@ proc inlineWslAssets(root, html: string): string =
       cursor = tagEnd + 1
       continue
     let relative = result[valueStart ..< valueEnd]
-    let candidate = (root / relative).absolutePath().normalizedPath()
+    let assetName = relative.split({'?', '#'}, maxsplit = 1)[0]
+    let candidate = (root / assetName).absolutePath().normalizedPath()
     let relativeCheck = relativePath(candidate, root)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or not fileExists(candidate):
       cursor = tagEnd + 1
