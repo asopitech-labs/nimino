@@ -1462,6 +1462,13 @@ when defined(linux):
           detail = policy.failure.detail))
       var allowed = false
       for window in app.windows:
+        if not window.closed and policy.value.kind == closePolicy and
+            window.windowId == policy.value.windowId:
+          allowed = if window.closeRequestedHandler.isNil: true
+                    else:
+                      try: window.closeRequestedHandler()
+                      except CatchableError: false
+          break
         if not window.closed and window.webViewId == policy.value.webViewId:
           if policy.value.kind == permissionPolicy:
             allowed = window.decidePermission(PermissionRequest(

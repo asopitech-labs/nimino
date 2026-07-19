@@ -220,6 +220,14 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
 
   let windowId = adapter.nextWindowId
   inc adapter.nextWindowId
+  let adapterPointer = cast[pointer](adapter)
+  let closeConfigured = created.value.onCloseRequested(proc(): bool =
+    let owner = cast[HostAdapter](adapterPointer)
+    if owner.isNil or owner.policyDecision.isNil:
+      return true
+    owner.policyDecision(PolicyRequest(kind: closePolicy, windowId: windowId)))
+  if not closeConfigured.isOk:
+    return nativeFailure("native.window.onCloseRequested", closeConfigured)
   adapter.windows[windowId] = created.value
   adapter.windowViewCounts[windowId] = 0
   successOf(HostAction(kind: noHostAction, payload: encodedId("windowId", windowId)))

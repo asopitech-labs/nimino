@@ -57,9 +57,11 @@ type
     permissionPolicy
     downloadPolicy
     navigationPolicy
+    closePolicy
 
   PolicyRequest* = object
     kind*: PolicyKind
+    windowId*: uint64
     webViewId*: uint64
     url*: string
     suggestedName*: string
@@ -73,10 +75,12 @@ proc `$`*(kind: PolicyKind): string =
   of permissionPolicy: "permission"
   of downloadPolicy: "download"
   of navigationPolicy: "navigation"
+  of closePolicy: "close"
 
 proc policyRequestJson*(request: PolicyRequest): string =
   $(%*{
     "kind": $request.kind,
+    "windowId": $request.windowId,
     "webViewId": $request.webViewId,
     "url": request.url,
     "suggestedName": request.suggestedName
@@ -104,23 +108,34 @@ proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
   try:
     let node = parseJson(payload)
     if node.kind != JObject or not node.hasKey("kind") or
-        node["kind"].kind != JString or not node.hasKey("webViewId") or
-        node["webViewId"].kind != JString or not node.hasKey("url") or
-        node["url"].kind != JString:
+        node["kind"].kind != JString:
       return failureOf[PolicyRequest](protocolError(invalidMessage,
         "policy request is malformed"))
     let kind = case node["kind"].getStr()
       of "permission": permissionPolicy
       of "download": downloadPolicy
       of "navigation": navigationPolicy
+      of "close": closePolicy
       else: return failureOf[PolicyRequest](protocolError(invalidMessage,
         "unknown policy kind"))
+    let windowId = if node.hasKey("windowId") and node["windowId"].kind == JString:
+        uint64(parseUInt(node["windowId"].getStr()))
+      else: 0'u64
+    let webViewId = if node.hasKey("webViewId") and node["webViewId"].kind == JString:
+        uint64(parseUInt(node["webViewId"].getStr()))
+      else: 0'u64
+    let url = if node.hasKey("url") and node["url"].kind == JString:
+        node["url"].getStr()
+      else: ""
+    if kind != closePolicy and (webViewId == 0 or not node.hasKey("url")):
+      return failureOf[PolicyRequest](protocolError(invalidMessage,
+        "policy request is missing webViewId or url"))
     let suggestedName = if node.hasKey("suggestedName") and
         node["suggestedName"].kind == JString: node["suggestedName"].getStr()
       else: ""
     successOf(PolicyRequest(kind: kind,
-      webViewId: uint64(parseUInt(node["webViewId"].getStr())),
-      url: node["url"].getStr(), suggestedName: suggestedName))
+      windowId: windowId, webViewId: webViewId,
+      url: url, suggestedName: suggestedName))
   except CatchableError:
     failureOf[PolicyRequest](protocolError(invalidMessage,
       "malformed policy request"))
