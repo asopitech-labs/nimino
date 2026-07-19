@@ -352,18 +352,19 @@ proc handleWindowFocus(adapter: HostAdapter; payload: JsonNode): ProtocolResultO
   if not focused.isOk: return nativeFailure("native.window.focus", focused)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
-proc clearDirectoryContents(path: string) =
+proc clearDirectoryContents(path: string): bool =
   if not dirExists(path):
-    return
+    return true
+  result = true
   for kind, entry in walkDir(path):
     case kind
     of pcFile, pcLinkToFile:
       try: removeFile(entry)
-      except OSError: discard
+      except OSError: result = false
     of pcDir:
-      clearDirectoryContents(entry)
+      if not clearDirectoryContents(entry): result = false
       try: removeDir(entry)
-      except OSError: discard
+      except OSError: result = false
     else:
       discard
 
@@ -374,7 +375,8 @@ proc handleWindowClearCache(adapter: HostAdapter; payload: JsonNode): ProtocolRe
   let root = adapter.windows[windowId.value].profilePath / "webview2"
   for relative in ["Default" / "Cache", "Default" / "Code Cache",
                    "Default" / "GPUCache", "Default" / "DawnCache"]:
-    clearDirectoryContents(root / relative)
+    if not clearDirectoryContents(root / relative):
+      return errorAction("unable to clear WebView2 cache")
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
