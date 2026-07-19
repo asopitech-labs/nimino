@@ -134,6 +134,24 @@ proc register*(registry: RpcRegistry; methodName: string; handler: RpcHandler): 
   registry.handlers[methodName] = handler
   true
 
+proc registerNotification*(registry: RpcRegistry; methodName: string;
+                           handler: proc(params: JsonNode) {.closure.}): bool =
+  ## Register an explicit fire-and-forget RPC method.  Notifications reuse
+  ## the same method allow-list and never create a response or pending entry.
+  if registry.isNil or registry.closed or not validMethodName(methodName) or
+      handler.isNil or registry.handlers.hasKey(methodName):
+    return false
+  registry.handlers[methodName] = proc(params: JsonNode): Future[RpcResult] =
+    let future = newFuture[RpcResult]("nimino.rpc.notification")
+    try:
+      handler(params)
+      future.complete(rpcSuccess(newJNull()))
+    except CatchableError:
+      future.complete(rpcFailure(rpcError(handlerFailed,
+        "notification handler failed")))
+    future
+  true
+
 proc unregister*(registry: RpcRegistry; methodName: string): bool =
   ## Remove one explicitly registered method. Pending requests are not
   ## cancelled here; they retain their original handler until completion.

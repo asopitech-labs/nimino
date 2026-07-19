@@ -132,3 +132,14 @@ block typedDeclarationsCarryPrimitiveTypes:
   doAssert declarations.find("method: 'files.exists', params?: string") >= 0
   doAssert declarations.find("Promise<boolean>") >= 0
   doAssert declarations.find("Promise<string[]>") >= 0
+
+block fireAndForgetNotificationRegistration:
+  let registry = newRpcRegistry()
+  var received = ""
+  doAssert registry.registerNotification("status.changed", proc(params: JsonNode) =
+    received = params["value"].getStr())
+  doAssert registry.handleMessage($(%*{
+    "nimino": "rpc", "kind": "notification", "method": "status.changed",
+    "params": {"value": "ready"}
+  }))
+  doAssert received == "ready"
