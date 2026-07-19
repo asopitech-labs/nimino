@@ -1437,7 +1437,8 @@ proc inlineWslAssets(root, baseDir, html: string): string =
     let relativeCheck = relativePath(candidate, root)
     let mime = assetMime(candidate)
     if relativeCheck == ".." or relativeCheck.startsWith(".." & DirSep) or
-        not fileExists(candidate) or not (mime.startsWith("audio/") or mime.startsWith("video/")):
+        not fileExists(candidate) or not (mime.startsWith("audio/") or
+          mime.startsWith("video/") or mime == "application/vnd.apple.mpegurl"):
       cursor = tagEnd + 1
       continue
     let dataUri = "data:" & mime & ";base64," & encode(readFile(candidate))
