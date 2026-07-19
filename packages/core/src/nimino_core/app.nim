@@ -1144,6 +1144,9 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
   if request.url.len == 0:
     return coreFailureOf[Window](coreError(invalidArgument, "window.openPopup",
       detail = "popup URL must not be empty"))
+  if not window.applyNavigationDecision(NavigationRequest(url: request.url)):
+    return coreFailureOf[Window](coreError(permissionDenied, "window.openPopup",
+      detail = "popup URL was rejected by navigation policy"))
   let popup = window.app.newWindow(CoreWindowOptions(
     title: title, width: width, height: height, profile: profile))
   if not popup.isOk:

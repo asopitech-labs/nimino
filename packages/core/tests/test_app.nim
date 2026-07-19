@@ -233,6 +233,7 @@ block navigationRulesAreExplicit:
     navigationExternal
   doAssert window.applyNavigationDecision(NavigationRequest(url: "https://outside.example")) == false
   doAssert externalUrl == "https://outside.example"
+  doAssert not window.openPopup(NewWindowRequest(url: "https://outside.example")).isOk
 
 block permissionsAndDownloadsDefaultToDeny:
   let created = newApp(id = "tech.asopi.policy-test", name = "Policy test")
