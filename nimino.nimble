@@ -42,6 +42,7 @@ task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "grep -q 'DemoUrl' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json && grep -q 'https://example.com' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json && grep -q 'icon.png' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json"
   exec "/tmp/nimino pack HTTPS://example.com --name DemoUpperUrl --id app.nimino.demo-upper-url --out /tmp/nimino-pack-cli-test/upper-url-out"
   exec "grep -q 'DemoUpperUrl' /tmp/nimino-pack-cli-test/upper-url-out/nimino-manifest.json"
+  exec "! /tmp/nimino pack https://example.com --name MissingHost --id app.nimino.missing-host --out /tmp/nimino-pack-cli-test/missing-host-out --host /tmp/nimino-pack-cli-test/no-such-host && test ! -e /tmp/nimino-pack-cli-test/missing-host-out"
   exec "/tmp/nimino pack https://example.com --name DemoLocalIcon --id app.nimino.demo-local-icon --icon /tmp/nimino-pack-cli-test/icon.png --out /tmp/nimino-pack-cli-test/local-icon-out"
   exec "test -s /tmp/nimino-pack-cli-test/local-icon-out/icon.png && grep -q '\"icon\": \"icon.png\"' /tmp/nimino-pack-cli-test/local-icon-out/nimino-manifest.json"
   exec "printf 'name = \"DemoInject\"\\nid = \"app.nimino.demo-inject\"\\nurl = \"https://example.com\"\\n\\n[injection]\\ncss = [\"/tmp/nimino-pack-cli-test/custom.css\"]\\njavascript = [\"/tmp/nimino-pack-cli-test/custom.js\"]\\n' > /tmp/nimino-pack-cli-test/inject.toml && /tmp/nimino pack /tmp/nimino-pack-cli-test/inject.toml --out /tmp/nimino-pack-cli-test/inject-out"
