@@ -46,7 +46,9 @@ if paramCount() < 2 or paramStr(1) != "pack":
   usage()
 var loaded: PackResult[PackManifest]
 let source = paramStr(2)
-if source.startsWith("http://") or source.startsWith("https://"):
+let sourceIsUrl = source.toLowerAscii().startsWith("http://") or
+  source.toLowerAscii().startsWith("https://")
+if sourceIsUrl:
   var name = ""
   var id = ""
   var profile = "default"
@@ -89,7 +91,7 @@ while index <= paramCount():
   of "--out": outputDirectory = paramStr(index + 1)
   of "--host": hostPath = paramStr(index + 1)
   of "--name", "--id", "--profile", "--icon":
-    if not (source.startsWith("http://") or source.startsWith("https://")): usage()
+    if not sourceIsUrl: usage()
   else: usage()
   index += 2
 if outputDirectory.len == 0:
