@@ -115,6 +115,22 @@ proc startHostProcess(hostExecutable: string; hostArgs: openArray[string];
     )
   startProcess(hostExecutable, args = hostArgs, env = environment, options = {poUsePath})
 
+proc sanitizeStartupDiagnostic*(diagnostic: string): string =
+  ## stderr is diagnostic-only, but it must not become a back channel for
+  ## authentication material.  Keep only host messages whose complete text is
+  ## fixed by this implementation; all other child stderr is intentionally
+  ## replaced by the generic exit-status error below.
+  case diagnostic
+  of "nimino-wsl-host: authentication is unavailable",
+     "nimino-wsl-host: standard streams are unavailable",
+     "nimino-wsl-host: handshake frame is invalid",
+     "nimino-wsl-host: authentication failed",
+     "nimino-wsl-host: random source is unavailable",
+     "nimino-wsl-host: cannot write handshake response":
+    diagnostic
+  else:
+    ""
+
 proc startupFailureDetail(process: Process): string =
   ## The host's own diagnostics are fixed, token-free strings.  Do not relay
   ## arbitrary child stderr into protocol errors or application logs.
@@ -123,8 +139,9 @@ proc startupFailureDetail(process: Process): string =
     return "Windows host closed stdout before the ready handshake"
   try:
     let diagnostic = process.errorStream.readAll().strip()
-    if diagnostic.startsWith("nimino-wsl-host:"):
-      return diagnostic
+    let sanitized = diagnostic.sanitizeStartupDiagnostic()
+    if sanitized.len > 0:
+      return sanitized
   except CatchableError:
     discard
   "Windows host exited before the ready handshake (exit code " & $exitCode & ")"
@@ -157,12 +174,10 @@ proc launchHost*(hostExecutable: string; hostArgs: openArray[string] = []):
       let detail = process.startupFailureDetail()
       osproc.close(process)
       return failureOf[WslClient](protocolError(readyMessage.failure.kind, detail))
-    if readyMessage.value.kind != ready:
+    let ready = readyMessage.value.validateReady()
+    if not ready.isOk:
       osproc.close(process)
-      return failureOf[WslClient](protocolError(invalidMessage, "host did not return ready"))
-    if not readyMessage.value.version.validateVersion.isOk:
-      osproc.close(process)
-      return failureOf[WslClient](protocolError(unsupportedVersion, "host version mismatch"))
+      return failureOf[WslClient](ready.failure)
 
     client.sessionId = readyMessage.value.sessionId
     successOf(client)

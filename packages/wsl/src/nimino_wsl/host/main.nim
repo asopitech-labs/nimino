@@ -184,8 +184,14 @@ proc requestPolicy(state: HostState; request: PolicyRequest): bool =
   if not received.isOk:
     return false
   let response = received.value
-  if response.kind != ProtocolMessageKind.response or
-      response.requestId != requestId or response.error.len != 0:
+  let validated = state.sessionId.validatePolicyResponse(requestId, response)
+  if not validated.isOk:
+    ## A malformed policy response must not be left in the input stream for a
+    ## later command.  Deny the current WebView request and tear down the
+    ## authenticated session.
+    discard state.adapter.app.close()
+    return false
+  if response.error.len != 0:
     return false
   let decision = response.payload.parsePolicyResponse()
   if not decision.isOk or not decision.value.allow:

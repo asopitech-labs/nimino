@@ -20,3 +20,18 @@ proc validateSessionMessage*(sessionId: string; message: ProtocolMessage): Proto
   if message.authenticationToken.len != 0:
     return failure(protocolError(authenticationFailed, "authentication token is only allowed in hello"))
   success()
+
+proc validatePolicyResponse*(sessionId: string; requestId: uint64;
+                             message: ProtocolMessage): ProtocolResult =
+  ## A synchronous permission/navigation callback must only consume the
+  ## response for its own authenticated request.  Treat every mismatch as a
+  ## protocol failure so the caller can deny (and close) rather than applying
+  ## a stale or injected decision.
+  let session = sessionId.validateSessionMessage(message)
+  if not session.isOk:
+    return session
+  if message.kind != ProtocolMessageKind.response:
+    return failure(protocolError(invalidMessage, "expected policy response"))
+  if requestId == 0 or message.requestId != requestId:
+    return failure(protocolError(invalidMessage, "policy response request is invalid"))
+  success()

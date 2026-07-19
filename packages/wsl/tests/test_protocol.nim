@@ -22,6 +22,23 @@ block validHello:
   let result = helloMessage().validateHello
   doAssert result.isOk
 
+block readyMustCreateANonEmptyTokenFreeSession:
+  let ready = ProtocolMessage(version: ProtocolVersion, kind: ProtocolMessageKind.ready,
+    sessionId: "0123456789abcdef0123456789abcdef")
+  doAssert ready.validateReady().isOk
+
+  var reflected = ready
+  reflected.authenticationToken = ValidToken
+  let tokenResult = reflected.validateReady()
+  doAssert not tokenResult.isOk
+  doAssert tokenResult.failure.kind == authenticationFailed
+
+  let missingSession = ProtocolMessage(version: ProtocolVersion,
+    kind: ProtocolMessageKind.ready)
+  let sessionResult = missingSession.validateReady()
+  doAssert not sessionResult.isOk
+  doAssert sessionResult.failure.kind == authenticationFailed
+
 block hostAuthenticationRequiresTheExpectedToken:
   let authenticated = ValidToken.authenticateHello(helloMessage())
   doAssert authenticated.isOk
@@ -70,11 +87,30 @@ block malformedAndOversizedFramesAreRejected:
   doAssert tooLarge.failure.kind == frameTooLarge
 
 block summariesNeverExposeTokens:
-  let summary = helloMessage().logSummary
+  var message = helloMessage()
+  message.sessionId = "session-identifier"
+  let summary = message.logSummary
   doAssert ValidToken notin summary
+  doAssert message.sessionId notin summary
   doAssert "<redacted>" == ValidToken.redactedToken
   doAssert ValidToken.secureEquals(ValidToken)
   doAssert not ValidToken.secureEquals(repeat("cd", 32))
+
+block policyResponsesMustMatchTheAuthenticatedRequest:
+  let response = ProtocolMessage(version: ProtocolVersion,
+    kind: ProtocolMessageKind.response, sessionId: "session", requestId: 7,
+    payload: "{\"allow\":false}")
+  doAssert "session".validatePolicyResponse(7, response).isOk
+
+  var wrongRequest = response
+  wrongRequest.requestId = 8
+  doAssert not "session".validatePolicyResponse(7, wrongRequest).isOk
+
+  var reflectedToken = response
+  reflectedToken.authenticationToken = ValidToken
+  let tokenResult = "session".validatePolicyResponse(7, reflectedToken)
+  doAssert not tokenResult.isOk
+  doAssert tokenResult.failure.kind == authenticationFailed
 
 block streamTransportRoundTrip:
   let stream = newStringStream()

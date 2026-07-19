@@ -197,6 +197,22 @@ proc validateHello*(message: ProtocolMessage): ProtocolResult =
     return failure(protocolError(authenticationFailed, "invalid authentication token"))
   message.version.validateVersion
 
+proc validateReady*(message: ProtocolMessage): ProtocolResult =
+  ## `stdout` is the protocol channel.  A host must never reflect the
+  ## authentication token into its ready frame, even if a caller later logs
+  ## the decoded message.
+  if message.kind != ready:
+    return failure(protocolError(invalidMessage, "expected ready message"))
+  let version = message.version.validateVersion
+  if not version.isOk:
+    return version
+  if message.sessionId.len == 0:
+    return failure(protocolError(authenticationFailed, "host session is unavailable"))
+  if message.authenticationToken.len != 0:
+    return failure(protocolError(authenticationFailed,
+      "host returned authentication material"))
+  success()
+
 proc toJson*(message: ProtocolMessage): string =
   var node = newJObject()
   node["version"] = %int(message.version)
@@ -250,7 +266,9 @@ proc fromJson*(encoded: string): ProtocolResultOf[ProtocolMessage] =
     failureOf[ProtocolMessage](protocolError(invalidMessage, "malformed protocol message"))
 
 proc logSummary*(message: ProtocolMessage): string =
-  ## Authentication material deliberately has no representation in a log line.
-  "kind=" & $message.kind & " session=" & message.sessionId &
+  ## Session and authentication material deliberately have no representation
+  ## in a log line.  A session ID is not a bearer token today, but keeping it
+  ## out of diagnostics prevents it becoming an accidental capability later.
+  "kind=" & $message.kind & " session=<redacted>" &
     " request=" & $message.requestId & " event=" & $message.eventId &
     " method=" & message.methodName
