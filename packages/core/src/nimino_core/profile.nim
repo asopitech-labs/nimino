@@ -1,4 +1,4 @@
-import std/[algorithm, json, os, strutils, times]
+import std/[algorithm, json, os, strutils, times, uri]
 
 type
   ProfilePathResult* = object
@@ -397,6 +397,43 @@ proc profileCookiesForDomain*(appId, profile, domain: string): ProfileResult[seq
           (loaded.value.expires <= 0 or loaded.value.expires > int64(epochTime())):
         matches.add(loaded.value)
   ProfileResult[seq[ProfileCookie]](isOk: true, value: matches)
+
+proc profileCookiesForUrl*(appId, profile, url: string): ProfileResult[seq[ProfileCookie]] =
+  ## Apply domain, path, secure, and expiry rules for an HTTP(S) request URL.
+  try:
+    let parsed = parseUri(url)
+    if parsed.scheme notin ["http", "https"] or parsed.hostname.len == 0:
+      return ProfileResult[seq[ProfileCookie]](isOk: false,
+        error: "cookie URL must use http or https")
+    let requestedDomain = parsed.hostname.toLowerAscii().strip(chars = {'.'})
+    let requestedPath = if parsed.path.len == 0: "/" else: parsed.path
+    let listed = listProfileCookies(appId, profile)
+    if not listed.isOk:
+      return ProfileResult[seq[ProfileCookie]](isOk: true, value: @[])
+    var matches: seq[ProfileCookie]
+    for key in listed.value.splitLines():
+      let separator = key.find("__")
+      if separator <= 0:
+        continue
+      let cookieDomain = key[0 ..< separator]
+      let cookieName = key[separator + 2 .. ^1]
+      let loaded = readProfileCookie(appId, profile, cookieDomain, cookieName)
+      if not loaded.isOk:
+        continue
+      let cookie = loaded.value
+      let storedDomain = cookie.domain.toLowerAscii().strip(chars = {'.'})
+      let domainMatches = requestedDomain == storedDomain or
+        requestedDomain.endsWith("." & storedDomain)
+      let cookiePath = if cookie.path.len == 0: "/" else: cookie.path
+      let pathMatches = requestedPath == cookiePath or
+        (requestedPath.len > cookiePath.len and requestedPath.startsWith(cookiePath) and
+         (cookiePath.endsWith("/") or requestedPath[cookiePath.len] == '/'))
+      if domainMatches and pathMatches and (not cookie.secure or parsed.scheme == "https") and
+          (cookie.expires <= 0 or cookie.expires > int64(epochTime())):
+        matches.add(cookie)
+    ProfileResult[seq[ProfileCookie]](isOk: true, value: matches)
+  except CatchableError:
+    ProfileResult[seq[ProfileCookie]](isOk: false, error: "cookie URL is invalid")
 
 proc deleteProfileCookie*(appId, profile, domain, name: string): ProfilePathResult =
   let path = cookiePath(appId, profile, ProfileCookie(domain: domain, name: name))

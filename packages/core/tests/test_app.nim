@@ -72,6 +72,14 @@ block profilePathsAreContainedAndSafe:
   let matchingCookies = profileCookiesForDomain("tech.asopi.profile-test", "work", "sub.example.com")
   doAssert matchingCookies.isOk
   doAssert matchingCookies.value.len == 1
+  let matchingUrl = profileCookiesForUrl("tech.asopi.profile-test", "work",
+    "https://sub.example.com/app/page")
+  doAssert matchingUrl.isOk
+  doAssert matchingUrl.value.len == 1
+  let insecureUrl = profileCookiesForUrl("tech.asopi.profile-test", "work",
+    "http://sub.example.com/app/page")
+  doAssert insecureUrl.isOk
+  doAssert insecureUrl.value.len == 0
   doAssert listProfileCookies("tech.asopi.profile-test", "work").value == "example.com__sid"
   doAssert deleteProfileCookie("tech.asopi.profile-test", "work", "example.com", "sid").isOk
 
@@ -193,6 +201,9 @@ block windowsCanSelectIndependentProfiles:
   doAssert visibleCookies.isOk
   doAssert visibleCookies.value.len == 1
   doAssert visibleCookies.value[0].name == "sid"
+  let visibleUrlCookies = direct.value.cookiesForUrl("https://sub.example.com/app/page")
+  doAssert visibleUrlCookies.isOk
+  doAssert visibleUrlCookies.value.len == 1
   doAssert direct.value.listCookies().value.len >= 1
   doAssert direct.value.deleteCookie("example.com", "sid").isOk
   doAssert direct.value.writeCookie(sessionCookie).isOk

@@ -875,6 +875,16 @@ proc cookiesForDomain*(window: Window; domain: string): CoreResultOf[seq[Profile
     coreFailureOf[seq[ProfileCookie]](coreError(invalidArgument,
       "window.cookiesForDomain", detail = loaded.error))
 
+proc cookiesForUrl*(window: Window; url: string): CoreResultOf[seq[ProfileCookie]] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[seq[ProfileCookie]](coreError(invalidState, "window.cookiesForUrl"))
+  let loaded = profileCookiesForUrl(window.app.id, window.profileName, url)
+  if loaded.isOk:
+    coreSuccessOf(loaded.value)
+  else:
+    coreFailureOf[seq[ProfileCookie]](coreError(invalidArgument,
+      "window.cookiesForUrl", detail = loaded.error))
+
 proc listCookies*(window: Window): CoreResultOf[seq[string]] =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailureOf[seq[string]](coreError(invalidState, "window.listCookies"))
