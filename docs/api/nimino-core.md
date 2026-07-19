@@ -144,6 +144,8 @@ WebView内部localStorageはprofileのエンジンデータ領域へ保存され
 WSLでは`clearCache()`と`clearDownloads()`がWindows hostのWebView2 `Cache`／`Code Cache`／`GPUCache`／`DawnCache`／`Downloads`にも中継されます。削除失敗は成功扱いにせずエラーを返します。
 WebViewエンジン内部のCookie/cache/localStorageは対象外です。
 
+WSL hostの低水準`native.window.resetProfile`は、実行中のWebView2 user-data folderを直接削除しません。WebView2はcontrollerとbrowser processの終了後にだけuser-data folderを削除できるため、この操作は明示的な`unsupported`エラーを返します。profile初期化が必要な呼出し側は、まず`app.restartForProfileReset`でhostを正常終了させ、browser processの終了を確認してから後続のreset手順を実行します。この再起動要求自体はprofileファイルを削除しません。
+
 `loadAssets`はrootディレクトリを正規化してWindowへ固定します。`loadEntry`はroot外の
 絶対パス、`..`による脱出、存在しないファイルを拒否してからHTMLを読み込みます。
 native backendではentryをroot内の`file:` URLとして読み込み、相対CSS/JavaScript/画像を

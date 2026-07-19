@@ -215,7 +215,7 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
       state.pendingEvaluations.add(PendingEvaluation(request: message, future: action.value.evaluation))
     else:
       discard state.writeMessage(state.responseFor(message, payload = action.value.payload))
-      if action.value.kind == shutdownHost:
+      if action.value.kind in {shutdownHost, restartHostForProfileReset}:
         discard state.adapter.app.close()
   of shutdown:
     discard state.writeMessage(state.responseFor(message, payload = "{}"))
@@ -328,7 +328,7 @@ proc runHost(): int =
       discard
     of deferredResponse:
       discard
-    of shutdownHost:
+    of shutdownHost, restartHostForProfileReset:
       discard state.adapter.app.close()
       return 0
     of startUiLoop:

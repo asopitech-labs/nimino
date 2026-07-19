@@ -45,6 +45,7 @@ type
     startUiLoop
     deferredResponse
     shutdownHost
+    restartHostForProfileReset
 
   HostAction* = object
     kind*: HostActionKind
@@ -393,6 +394,26 @@ proc handleWindowClearDownloads(adapter: HostAdapter; payload: JsonNode): Protoc
     return errorAction("unable to clear WebView2 downloads")
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
+proc handleActiveProfileReset(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  ## WebView2 owns files below its user-data folder while a controller is
+  ## running.  Do not recursively delete an active profile: the official
+  ## lifecycle requires the session and browser processes to end first.
+  let windowId = payload.requiredId("windowId")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  errorAction("active WebView2 profile reset is unsupported; request app.restartForProfileReset")
+
+proc handleRestartForProfileReset(adapter: HostAdapter): ProtocolResultOf[HostAction] =
+  ## This operation deliberately does not delete profile files.  It creates a
+  ## restart boundary so the next host lifecycle can reset a profile only after
+  ## the previous WebView2 session and its browser processes have exited.
+  if not adapter.uiStartRequested:
+    return errorAction("profile reset restart requires an active UI session")
+  successOf(HostAction(kind: restartHostForProfileReset,
+    payload: $(%*{"restartRequired": true, "reason": "profileReset"})))
+
 proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
   let windowId = payload.requiredId("windowId")
   if not windowId.isOk:
@@ -630,6 +651,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
 
   if message.methodName == "app.shutdown":
     return successOf(HostAction(kind: shutdownHost, payload: "{}"))
+  if message.methodName == "app.restartForProfileReset":
+    return adapter.handleRestartForProfileReset()
   if message.methodName == "app.capabilities":
     return adapter.handleCapabilities()
 
@@ -664,6 +687,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowClearCache(payload.value)
   of "native.window.clearDownloads":
     adapter.handleWindowClearDownloads(payload.value)
+  of "native.window.resetProfile":
+    adapter.handleActiveProfileReset(payload.value)
   of "native.window.focus":
     adapter.handleWindowFocus(payload.value)
   of "native.webview.create":

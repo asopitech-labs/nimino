@@ -103,6 +103,39 @@ block shutdownDoesNotNeedPayload:
   doAssert stopped.isOk
   doAssert stopped.value.kind == shutdownHost
 
+block activeProfileResetIsExplicitlyRefusedAndRestartIsRequestedSeparately:
+  let adapter = newHostAdapter()
+  let window = adapter.handleRequest(requestMessage("native.window.create",
+    "{\"title\":\"Reset\",\"width\":320,\"height\":200,\"appId\":\"app.test\",\"profile\":\"default\"}"))
+  doAssert window.isOk
+  let windowId = parseJson(window.value.payload)["windowId"].getStr()
+  let view = adapter.handleRequest(requestMessage("native.webview.create",
+    $(%*{"windowId": windowId})))
+  doAssert view.isOk
+  let webViewId = parseJson(view.value.payload)["webViewId"].getStr()
+  let started = adapter.handleRequest(requestMessage("native.webview.loadHtml",
+    $(%*{"webViewId": webViewId, "html": "<main>reset</main>"})))
+  doAssert started.isOk
+  doAssert started.value.kind == startUiLoop
+
+  let reset = adapter.handleRequest(requestMessage("native.window.resetProfile",
+    $(%*{"windowId": windowId})))
+  doAssert not reset.isOk
+  doAssert "active WebView2 profile reset is unsupported" in reset.failure.detail
+
+  let restart = adapter.handleRequest(requestMessage("app.restartForProfileReset", ""))
+  doAssert restart.isOk
+  doAssert restart.value.kind == restartHostForProfileReset
+  let payload = parseJson(restart.value.payload)
+  doAssert payload["restartRequired"].getBool
+  doAssert payload["reason"].getStr == "profileReset"
+
+block profileResetRestartCannotBeRequestedBeforeTheUiSession:
+  let adapter = newHostAdapter()
+  let restart = adapter.handleRequest(requestMessage("app.restartForProfileReset", ""))
+  doAssert not restart.isOk
+  doAssert "requires an active UI session" in restart.failure.detail
+
 block htmlLoadStartsTheUiLoop:
   let adapter = newHostAdapter()
   let window = adapter.handleRequest(requestMessage("native.window.create",
