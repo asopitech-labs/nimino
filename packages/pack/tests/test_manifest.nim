@@ -55,5 +55,9 @@ let controlName = validate(PackManifest(name: "Bad" & chr(1) & "Name",
 doAssert not controlName.isOk
 let unknownPermission = parse("name = \"Permission\"\nid = \"app.permission\"\nurl = \"https://example.com\"\n[permissions]\nallow = [\"teleport\"]")
 doAssert not unknownPermission.isOk
+let uppercaseScheme = parse("name = \"Upper\"\nid = \"app.upper\"\nurl = \"HTTPS://example.com\"")
+doAssert uppercaseScheme.isOk
+let whitespaceUrl = parse("name = \"Whitespace\"\nid = \"app.whitespace\"\nurl = \"https://example.com/a b\"")
+doAssert not whitespaceUrl.isOk
 
 echo "nimino-pack manifest tests passed"

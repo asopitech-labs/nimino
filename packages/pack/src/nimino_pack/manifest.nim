@@ -97,7 +97,12 @@ proc parsePositiveInt(value, field: string): PackResult[int] =
 proc validateUrl(value: string): bool =
   try:
     let parsed = parseUri(value)
-    parsed.scheme in ["http", "https", "file", "data"] and parsed.scheme.len > 0
+    if parsed.scheme.len == 0:
+      return false
+    for c in value:
+      if c in {' ', '\t', '\r', '\n'} or ord(c) < 0x20 or ord(c) == 0x7f:
+        return false
+    parsed.scheme.toLowerAscii() in ["http", "https", "file", "data"]
   except CatchableError:
     false
 
