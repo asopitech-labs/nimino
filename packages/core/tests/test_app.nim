@@ -186,8 +186,10 @@ block localAssetRootRejectsTraversal:
   doAssert not window.reload().isOk
   let assetRoot = getTempDir() / "nimino-core-asset-entry"
   createDir(assetRoot)
-  writeFile(assetRoot / "index.html", "<script src='app.js'></script>")
+  writeFile(assetRoot / "index.html", "<script src='app.js'></script><img src='sample.m4a'><a href='font.eot'>font</a>")
   writeFile(assetRoot / "app.js", "window.assetLoaded = true")
+  writeFile(assetRoot / "sample.m4a", "audio")
+  writeFile(assetRoot / "font.eot", "font")
   doAssert window.loadAssets(assetRoot).isOk
   doAssert window.loadEntry().isOk
   removeDir(assetRoot)
