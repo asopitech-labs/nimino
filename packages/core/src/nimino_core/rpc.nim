@@ -40,6 +40,7 @@ type
 
   RpcRegistry* = ref object
     handlers: Table[string, RpcHandler]
+    notificationHandlers: Table[string, proc(params: JsonNode) {.closure.}]
     typeScriptSchemas: Table[string, tuple[paramsType, resultType: string]]
     pending: Table[string, PendingRequest]
     sink: RpcReplySink
@@ -93,7 +94,8 @@ proc setReplySink*(registry: RpcRegistry; sink: RpcReplySink) =
     registry.sink = sink
 
 proc isMethodRegistered*(registry: RpcRegistry; methodName: string): bool =
-  registry != nil and registry.handlers.hasKey(methodName)
+  registry != nil and (registry.handlers.hasKey(methodName) or
+    registry.notificationHandlers.hasKey(methodName))
 
 proc validMethodName(methodName: string): bool {.inline.} =
   if methodName.len == 0 or methodName.len > 256:
@@ -109,6 +111,9 @@ proc registeredMethods*(registry: RpcRegistry): seq[string] =
     return @[]
   for methodName in registry.handlers.keys:
     result.add(methodName)
+  for methodName in registry.notificationHandlers.keys:
+    if methodName notin result:
+      result.add(methodName)
   result.sort()
 
 proc typescriptDeclarations*(registry: RpcRegistry): string =
@@ -127,7 +132,8 @@ proc typescriptDeclarations*(registry: RpcRegistry): string =
   result.add("    };\n  }\n}\nexport {};\n")
 
 proc register*(registry: RpcRegistry; methodName: string; handler: RpcHandler): bool =
-  if registry.isNil or registry.closed or not validMethodName(methodName) or handler.isNil:
+  if registry.isNil or registry.closed or not validMethodName(methodName) or handler.isNil or
+      registry.notificationHandlers.hasKey(methodName):
     return false
   if registry.handlers.hasKey(methodName):
     return false
@@ -139,26 +145,23 @@ proc registerNotification*(registry: RpcRegistry; methodName: string;
   ## Register an explicit fire-and-forget RPC method.  Notifications reuse
   ## the same method allow-list and never create a response or pending entry.
   if registry.isNil or registry.closed or not validMethodName(methodName) or
-      handler.isNil or registry.handlers.hasKey(methodName):
+      handler.isNil or registry.handlers.hasKey(methodName) or
+      registry.notificationHandlers.hasKey(methodName):
     return false
-  registry.handlers[methodName] = proc(params: JsonNode): Future[RpcResult] =
-    let future = newFuture[RpcResult]("nimino.rpc.notification")
-    try:
-      handler(params)
-      future.complete(rpcSuccess(newJNull()))
-    except CatchableError:
-      future.complete(rpcFailure(rpcError(handlerFailed,
-        "notification handler failed")))
-    future
+  registry.notificationHandlers[methodName] = handler
   true
 
 proc unregister*(registry: RpcRegistry; methodName: string): bool =
   ## Remove one explicitly registered method. Pending requests are not
   ## cancelled here; they retain their original handler until completion.
-  if registry.isNil or registry.closed or not validMethodName(methodName) or
-      not registry.handlers.hasKey(methodName):
+  if registry.isNil or registry.closed or not validMethodName(methodName):
     return false
-  registry.handlers.del(methodName)
+  if registry.handlers.hasKey(methodName):
+    registry.handlers.del(methodName)
+  elif registry.notificationHandlers.hasKey(methodName):
+    registry.notificationHandlers.del(methodName)
+  else:
+    return false
   true
 
 proc registerSync*(registry: RpcRegistry; methodName: string;
@@ -346,7 +349,13 @@ proc tick*(registry: RpcRegistry; nowMs = nowMilliseconds()) =
       registry.emitError(id, rpcError(requestTimedOut, "RPC request timed out"))
 
 proc invokeNotification(registry: RpcRegistry; methodName: string; params: JsonNode) =
-  if registry.isNil or registry.closed or not registry.handlers.hasKey(methodName):
+  if registry.isNil or registry.closed:
+    return
+  if registry.notificationHandlers.hasKey(methodName):
+    try: registry.notificationHandlers[methodName](params)
+    except CatchableError: discard
+    return
+  if not registry.handlers.hasKey(methodName):
     return
   try:
     let future = registry.handlers[methodName](params)
@@ -433,5 +442,6 @@ proc close*(registry: RpcRegistry) =
       "RPC request was cancelled because the window closed"))
   registry.closed = true
   registry.handlers.clear()
+  registry.notificationHandlers.clear()
   registry.pending.clear()
   registry.sink = nil
