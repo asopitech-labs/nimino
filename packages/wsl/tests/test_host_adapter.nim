@@ -24,6 +24,9 @@ block createsWindowViewAndUrlBeforeStartingUi:
   let view = adapter.handleRequest(requestMessage("native.webview.create",
     $(%*{"windowId": windowId})))
   doAssert view.isOk
+  let clearedCache = adapter.handleRequest(requestMessage("native.window.clearCache",
+    $(%*{"windowId": windowId})))
+  doAssert clearedCache.isOk
   let webViewId = parseJson(view.value.payload)["webViewId"].getStr()
 
   let script = adapter.handleRequest(requestMessage("native.webview.setDocumentStartScript",
