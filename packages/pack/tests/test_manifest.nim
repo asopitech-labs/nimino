@@ -46,5 +46,7 @@ let controlName = validate(PackManifest(name: "Bad" & chr(1) & "Name",
   id: "app.example", url: "https://example.com", profile: "default",
   window: PackWindowOptions(width: 800, height: 600, resizable: true)))
 doAssert not controlName.isOk
+let unknownPermission = parse("name = \"Permission\"\nid = \"app.permission\"\nurl = \"https://example.com\"\n[permissions]\nallow = [\"teleport\"]")
+doAssert not unknownPermission.isOk
 
 echo "nimino-pack manifest tests passed"

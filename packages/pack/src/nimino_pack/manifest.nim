@@ -110,6 +110,11 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
       return failure[PackManifest](invalidManifest, "id and profile must be safe path components")
   if manifest.url.len == 0 or not validateUrl(manifest.url):
     return failure[PackManifest](invalidManifest, "url must use http, https, file, or data")
+  for permission in manifest.permissionsAllow:
+    if permission notin ["microphone", "camera", "notifications", "geolocation",
+                         "clipboard", "screenCapture"]:
+      return failure[PackManifest](invalidManifest,
+        "unknown permission: " & permission)
   if manifest.window.width <= 0 or manifest.window.height <= 0:
     return failure[PackManifest](invalidManifest, "window dimensions must be positive")
   success(manifest)
