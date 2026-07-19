@@ -40,7 +40,10 @@ proc desktopEscape(value: string): string =
 
 proc cmdEscape(value: string): string =
   for character in value:
-    if character in {'^', '&', '|', '<', '>', '(', ')', '%', '!'}:
+    if character == '%':
+      result.add("%%")
+      continue
+    if character in {'^', '&', '|', '<', '>', '(', ')', '!'}:
       result.add('^')
     result.add(character)
 
