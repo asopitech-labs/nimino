@@ -125,8 +125,10 @@ block typedDeclarationsCarryPrimitiveTypes:
   let registry = newRpcRegistry()
   doAssert registry.registerTyped("system.version", proc(): string = "1.0")
   doAssert registry.registerTyped("files.exists", proc(path: string): bool = path.len > 0)
+  doAssert registry.registerTyped("files.list", proc(): seq[string] = @[])
   let declarations = registry.typescriptDeclarations()
   doAssert declarations.find("method: 'system.version', params?: void") >= 0
   doAssert declarations.find("Promise<string>") >= 0
   doAssert declarations.find("method: 'files.exists', params?: string") >= 0
   doAssert declarations.find("Promise<boolean>") >= 0
+  doAssert declarations.find("Promise<string[]>") >= 0

@@ -62,12 +62,27 @@ proc newRpcRegistry*(sink: RpcReplySink = nil): RpcRegistry =
 
 proc typeScriptType[T](): string =
   let name = name(T).toLowerAscii()
-  case name
-  of "string", "cstring": "string"
-  of "bool": "boolean"
-  of "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16",
-     "uint32", "uint64", "float", "float32", "float64": "number"
-  else: "unknown"
+  if name.startsWith("seq[") and name.endsWith("]"):
+    let element = name[4 ..< name.len - 1]
+    case element
+    of "string", "system.string", "cstring", "system.cstring": "string[]"
+    of "bool", "system.bool": "boolean[]"
+    of "int", "system.int", "int8", "system.int8", "int16", "system.int16",
+       "int32", "system.int32", "int64", "system.int64", "uint", "system.uint",
+       "uint8", "system.uint8", "uint16", "system.uint16", "uint32", "system.uint32",
+       "uint64", "system.uint64", "float", "system.float", "float32", "system.float32",
+       "float64", "system.float64": "number[]"
+    else: "unknown[]"
+  else:
+    case name
+    of "string", "system.string", "cstring", "system.cstring": "string"
+    of "bool", "system.bool": "boolean"
+    of "int", "system.int", "int8", "system.int8", "int16", "system.int16",
+       "int32", "system.int32", "int64", "system.int64", "uint", "system.uint",
+       "uint8", "system.uint8", "uint16", "system.uint16", "uint32", "system.uint32",
+       "uint64", "system.uint64", "float", "system.float", "float32", "system.float32",
+       "float64", "system.float64": "number"
+    else: "unknown"
 
 proc setTypeScriptSchema(registry: RpcRegistry; methodName, paramsType, resultType: string) =
   if registry != nil:
