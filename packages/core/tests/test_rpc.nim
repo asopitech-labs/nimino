@@ -146,3 +146,14 @@ block fireAndForgetNotificationRegistration:
   let declarations = registry.typescriptDeclarations()
   doAssert declarations.find("notify(method: 'status.changed'") >= 0
   doAssert declarations.find("invoke(method: 'status.changed'") < 0
+
+block typedFireAndForgetNotification:
+  let registry = newRpcRegistry()
+  var received = 0
+  doAssert registry.registerTypedNotification("counter.changed", proc(value: int) =
+    received = value)
+  doAssert registry.handleMessage($(%*{
+    "nimino": "rpc", "kind": "notification", "method": "counter.changed",
+    "params": 7
+  }))
+  doAssert received == 7
