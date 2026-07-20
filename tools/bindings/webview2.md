@@ -79,6 +79,52 @@ The vtable slot order and callback signatures were checked against the header
 above.  Later features must be checked against a recorded SDK version before
 adding a new slot.
 
+## M4 Profile/CookieManager ABI spike (not integrated)
+
+The following private declarations are included only to establish that
+WebView2 profile-data clearing can be connected without adopting a general
+WebView wrapper.  They are verified by fake COM-vtable tests and a Windows
+x64 cross-compile contract; no public `nimino-native` or `nimino-core` API
+calls them yet.
+
+| Purpose | Interface / method | IID / slot |
+| --- | --- | --- |
+| Obtain a cookie manager | `ICoreWebView2_2::get_CookieManager` | `9e8f0cf8-e670-4b5e-b2bc-73e061e3184c` / 66 |
+| Obtain a profile | `ICoreWebView2_13::get_Profile` | `f75f09a8-667e-4983-88d6-c8773f315e84` / 105 |
+| Clear selected data | `ICoreWebView2Profile2::ClearBrowsingData` | `fa740d4b-5eae-4344-a8ad-74be31925397` / 10 |
+| Completion callback | `ICoreWebView2ClearBrowsingDataCompletedHandler::Invoke` | `e9710a06-1d1d-49b2-8234-226f35846ae5` / 3 |
+| Delete all cookies | `ICoreWebView2CookieManager::DeleteAllCookies` | `177cd9e7-b6f5-451a-94a0-5d7a3a4c4141` / 10 |
+
+`ClearBrowsingData` is asynchronous.  A production implementation must own a
+completed-handler COM object from successful registration until `Invoke`, map
+the callback `HRESULT` to `NativeError`, and release the queried interfaces on
+the UI thread.  It must query `ICoreWebView2_13` and `ICoreWebView2Profile2`
+at runtime and return `unsupported` when an installed Evergreen Runtime does
+not expose either interface; it must not silently report success.
+
+The current focused data mapping is intentionally narrow:
+
+* cookies: `0x0040` (`COOKIES`)
+* local storage: `0x0004` (`LOCAL_STORAGE`)
+* cache: `0x0010 | 0x0100` (`CACHE_STORAGE | DISK_CACHE`)
+
+Profile reset remains a restart operation.  Microsoft documents the User Data
+Folder as in-use while a WebView2 session is active, so deleting or recreating
+the UDF remains outside this live-clear path.  `ICoreWebView2CookieManager`
+is useful for a cookies-only operation, but a unified profile-data API should
+use the asynchronous Profile2 method so its result accurately represents the
+browser operation.
+
+Run the reproducible spike through Docker only:
+
+```sh
+make webview2-profile-ffi-spike
+```
+
+The command first downloads and SHA-256 verifies the pinned official header,
+then verifies these exact IIDs and vtable slots, runs the executable
+fake-vtable test, and cross-compiles the Windows ABI contract.
+
 ## M3 document-start surface copied into Nimino
 
 * `ICoreWebView2::AddScriptToExecuteOnDocumentCreated` (vtable slot 27)

@@ -3,7 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header shell test pack-test pack-cli-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -35,6 +35,10 @@ verify-webview2-header: image ## WebView2 permission/download APIの公式ヘッ
 
 	$(COMPOSE) run --rm $(SERVICE) bash -lc 'curl --fail --silent --show-error -L -o /tmp/webview2.nupkg https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3967.48/microsoft.web.webview2.1.0.3967.48.nupkg && unzip -p /tmp/webview2.nupkg build/native/include/WebView2.h | grep -q ICoreWebView2PermissionRequestedEventHandler && unzip -p /tmp/webview2.nupkg build/native/include/WebView2.h | grep -q ICoreWebView2DownloadStartingEventHandler'
 
+verify-webview2-profile-header: image ## WebView2 Profile/CookieManager APIの公式ヘッダーを検証する
+
+	$(COMPOSE) run --rm $(SERVICE) bash tools/bindings/verify_webview2_profile_header.sh
+
 shell: image ## コンテナ内の対話shellを開く
 
 	$(COMPOSE) run --rm $(SERVICE) bash
@@ -42,6 +46,11 @@ shell: image ## コンテナ内の対話shellを開く
 test: image ## M1以降のNimbleテストをコンテナ内で実行する
 
 	$(COMPOSE) run --rm $(SERVICE) nimble test
+
+webview2-profile-ffi-spike: image verify-webview2-profile-header ## WebView2 Profile/CookieManagerのprivate ABIスパイクを検証する
+
+	$(COMPOSE) run --rm $(SERVICE) nimble testWebView2ProfileFfi
+	$(COMPOSE) run --rm $(SERVICE) nimble testWindowsProfileFfiCross
 
 pack-test: image ## nimino-packのmanifest解析テストをコンテナ内で実行する
 

@@ -7,6 +7,7 @@ requires "nim >= 2.2.0"
 
 task test, "Run Nimino unit tests in ARC mode":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-nimcache --out:/tmp/nimino-test-foundation --path:packages/native packages/native/tests/test_foundation.nim"
+  exec "nimble testWebView2ProfileFfi"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-nimcache --out:/tmp/nimino-test-core-rpc --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_rpc.nim"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-app-nimcache --out:/tmp/nimino-test-core-app --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_app.nim"
   exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-core-app"
@@ -69,6 +70,13 @@ task testCoreLinuxRpcAsyncSmoke, "Run the Linux async and timeout core RPC smoke
 task testWindowsCross, "Cross-compile the Windows native M1 smoke target":
   exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-windows-cross-nimcache --out:/tmp/nimino-windows-cross.exe --path:packages/native packages/native/tests/test_windows_cross.nim"
   exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-windows-cross.exe | grep -q 'file format pei-x86-64'"
+
+task testWebView2ProfileFfi, "Run the WebView2 Profile/CookieManager fake-vtable ABI test":
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-webview2-profile-ffi-nimcache --out:/tmp/nimino-test-webview2-profile-ffi --path:packages/native packages/native/tests/test_webview2_profile_ffi.nim"
+
+task testWindowsProfileFfiCross, "Cross-compile the Windows WebView2 Profile/CookieManager ABI contract":
+  exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-windows-profile-ffi-cross-nimcache --out:/tmp/nimino-windows-profile-ffi-cross.exe --path:packages/native packages/native/tests/test_windows_profile_ffi_cross.nim"
+  exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-windows-profile-ffi-cross.exe | grep -q 'file format pei-x86-64'"
 
 task testCoreWindowsCross, "Cross-compile the Windows core RPC facade target":
   exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-core-windows-cross-nimcache --out:/tmp/nimino-core-windows-cross.exe --path:packages/core --path:packages/native packages/core/tests/test_app.nim"
