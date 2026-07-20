@@ -16,7 +16,7 @@ type
     pending, ready, closing, closed
 
   NativeErrorKind* = enum
-    unsupported, invalidState, permissionDenied, osError, webViewError
+    unsupported, invalidArgument, invalidState, permissionDenied, osError, webViewError
 
   NativeError* = object
     kind*: NativeErrorKind
@@ -67,6 +67,8 @@ proc run*(app: NativeApp): NativeResult
 proc quit*(app: NativeApp): NativeResult
 proc close*(app: NativeApp): NativeResult
 proc postToUi*(app: NativeApp, callback: proc() {.gcsafe.}): NativeResult
+proc configureSystemTray*(app: NativeApp, items: openArray[NativeMenuItem],
+  handler: NativeMenuHandler): NativeResult
 
 proc newWindow*(app: NativeApp, options: WindowOptions): NativeResultOf[NativeWindow]
 proc close*(window: NativeWindow): NativeResult
@@ -98,6 +100,29 @@ proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.}
 ```
 
 `newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。HTMLのbase URL指定は未実装で、将来の拡張候補です。
+
+## Windows system tray（最小実装）
+
+Windows build では、`created` 状態の App に固定の context menu を一度だけ登録できます。
+Windows 以外では `configureSystemTray` は `unsupported` を返します。tray icon は最初に
+作成された native Window を owner にし、その Window または App を閉じる前に削除されます。
+この層は hide-on-close、start-to-tray、アプリ固有 icon、toast notification を実装しません。
+
+```nim
+let window = app.newWindow(title = "Nimino").value
+discard app.configureSystemTray([
+  NativeMenuItem(id: 1, title: "Show", enabled: true),
+  NativeMenuItem(id: 2, title: "Quit", enabled: true)
+], proc(itemId: uint32) =
+  case itemId
+  of 1: discard window.show()
+  of 2: discard app.quit()
+  else: discard
+)
+```
+
+ID `0`、空 title、重複 ID、nil handler は `invalidArgument` で拒否します。callback は
+native UI thread で呼ばれ、例外は Win32 callback 境界へ伝播しません。
 
 `setDocumentStartScript`は`pending`のViewに一つだけscriptを設定・置換する低水準操作です。ready後の追加・変更は`invalidState`で拒否し、次のナビゲーションへ黙って適用しません。WindowsはWebView2の非同期`AddScriptToExecuteOnDocumentCreated`完了を待ってから保留中の最初の読込を開始し、LinuxはWebKitGTKの`WebKitUserScript`をdocument-startで登録します。どちらも以後のframe/ナビゲーションへ影響し得るため、URL・origin・注入ポリシーはこの層で判断しません。`nimino-core`がその制約を用いてRPC bridgeを限定します。
 

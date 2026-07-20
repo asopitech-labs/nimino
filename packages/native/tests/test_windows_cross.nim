@@ -3,6 +3,12 @@
 import nimino_native
 
 let app = newNativeApp()
+doAssert app.supports(systemTray)
+doAssert app.supports(nativeMenu)
+doAssert app.configureSystemTray([
+  NativeMenuItem(id: 1, title: "Show Nimino", enabled: true),
+  NativeMenuItem(id: 2, title: "Quit Nimino", enabled: true)
+], proc(itemId: uint32) = discard).isOk
 let window = app.newWindow(title = "Nimino Windows M1", width = 800, height = 600)
 doAssert window.isOk
 
