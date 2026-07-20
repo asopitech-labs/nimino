@@ -25,3 +25,10 @@ if paramCount() == 1:
     let launched = launchHost(host, ["invalid-capability"])
     doAssert not launched.isOk
     doAssert launched.failure.kind == invalidMessage
+
+  block incompatibleHostVersionsAreRejectedBeforeSessionUse:
+    let host = paramStr(1)
+    for mode in ["legacy-version", "future-version"]:
+      let launched = launchHost(host, [mode])
+      doAssert not launched.isOk
+      doAssert launched.failure.kind == unsupportedVersion
