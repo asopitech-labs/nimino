@@ -888,16 +888,51 @@ proc clearProfileData*(window: Window): CoreResult =
   else: coreFailure(coreError(invalidArgument, "window.clearProfileData", detail = cleared.error))
 
 proc clearWebViewProfileData*(window: Window;
-                              kinds: set[WebViewProfileDataKind]): CoreResult =
+                              kinds: set[WebViewProfileDataKind]): Future[CoreResult] =
   ## Clear data owned by the browser engine.  This deliberately does not fall
-  ## back to deleting files below a live WebView2 user-data folder.
+  ## back to deleting files below a live WebView2 user-data folder.  WebView2
+  ## Profile2 completion is asynchronous, so even a cookies-only clear keeps
+  ## a Future return type.
+  let target = newFuture[CoreResult]("nimino.core.clearWebViewProfileData")
+  result = target
   if window.isNil or window.closed or window.app.isNil:
-    return coreFailure(coreError(invalidState, "window.clearWebViewProfileData"))
+    target.complete(coreFailure(coreError(invalidState, "window.clearWebViewProfileData")))
+    return
   if kinds == {}:
-    return coreFailure(coreError(invalidArgument, "window.clearWebViewProfileData",
-      detail = "at least one WebView profile data kind is required"))
-  coreFailure(coreError(platformUnavailable, "window.clearWebViewProfileData",
-    detail = "browser profile clearing is not implemented; WebView2 requires ICoreWebView2Profile2 ClearBrowsingData"))
+    target.complete(coreFailure(coreError(invalidArgument, "window.clearWebViewProfileData",
+      detail = "at least one WebView profile data kind is required")))
+    return
+
+  case window.app.backend
+  of nativeBackend:
+    if window.nativeView.isNil:
+      target.complete(coreFailure(coreError(invalidState, "window.clearWebViewProfileData")))
+      return
+    var nativeKinds: set[native.NativeBrowsingDataKind]
+    for kind in kinds:
+      case kind
+      of webViewCookies:
+        nativeKinds.incl(native.nativeBrowsingCookies)
+      of webViewLocalStorage:
+        nativeKinds.incl(native.nativeBrowsingLocalStorage)
+      of webViewCache:
+        nativeKinds.incl(native.nativeBrowsingCache)
+    let cleared = native.clearBrowsingData(window.nativeView, nativeKinds)
+    cleared.addCallback(proc(completed: Future[native.NativeResult]) {.gcsafe.} =
+      if target.finished:
+        return
+      if completed.failed:
+        target.complete(coreFailure(coreError(nativeFailure, "window.clearWebViewProfileData",
+          detail = "native browsing-data clear failed")))
+      else:
+        target.complete(completed.read().fromNative())
+    )
+  of wslBackend:
+    ## WSL must not tunnel this browser-engine operation opportunistically.
+    ## The Windows host protocol has no async profile-clear lifecycle yet.
+    target.complete(coreFailure(coreError(platformUnavailable,
+      "window.clearWebViewProfileData", detail =
+        "live browser profile clearing is unavailable through the WSL host")))
 
 proc writeCookie*(window: Window; cookie: ProfileCookie): CoreResult =
   if window.isNil or window.closed or window.app.isNil:

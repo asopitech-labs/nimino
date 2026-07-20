@@ -1,4 +1,4 @@
-import std/[json, os]
+import std/[asyncfutures, json, os]
 
 import nimino_core
 
@@ -13,6 +13,11 @@ doAssert created.isOk
 let app = created.value
 let window = app.newWindow(title = "WSL core test", width = 320, height = 200)
 doAssert window.isOk
+let browserData = window.value.clearWebViewProfileData({webViewCookies})
+doAssert browserData.finished
+let browserDataResult = browserData.read()
+doAssert not browserDataResult.isOk
+doAssert browserDataResult.failure.kind == platformUnavailable
 doAssert window.value.rpc.registerSync("system.version", proc(params: JsonNode): RpcResult =
   invoked = true
   rpcSuccess(%"1.0.0")

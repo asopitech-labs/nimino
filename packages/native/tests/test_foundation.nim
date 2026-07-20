@@ -88,3 +88,15 @@ block javascriptEvaluationRejectsInvalidView:
   let result = evaluation.read()
   doAssert not result.isOk
   doAssert result.failure.kind == invalidState
+
+block liveBrowserDataClearingIsExplicitlyUnavailableOffWindows:
+  let app = newNativeApp()
+  let window = app.newWindow("Browser data", 320, 200)
+  doAssert window.isOk
+  let view = window.value.newWebView()
+  doAssert view.isOk
+  let cleared = view.value.clearBrowsingData({nativeBrowsingCookies})
+  doAssert cleared.finished
+  let result = cleared.read()
+  doAssert not result.isOk
+  doAssert result.failure.kind == unsupported
