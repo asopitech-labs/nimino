@@ -26,7 +26,8 @@ block createsWindowViewAndUrlBeforeStartingUi:
   doAssert view.isOk
   let clearedCache = adapter.handleRequest(requestMessage("native.window.clearCache",
     $(%*{"windowId": windowId})))
-  doAssert clearedCache.isOk
+  doAssert not clearedCache.isOk
+  doAssert "WebView2 engine cache clearing is unsupported" in clearedCache.failure.detail
   let clearedDownloads = adapter.handleRequest(requestMessage("native.window.clearDownloads",
     $(%*{"windowId": windowId})))
   doAssert clearedDownloads.isOk

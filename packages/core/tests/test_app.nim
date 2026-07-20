@@ -180,6 +180,13 @@ block windowsCanSelectIndependentProfiles:
   doAssert direct.value.clearCache().isOk
   doAssert not fileExists(cachePath.value / "entry")
   doAssert not fileExists(cachePath.value / "nested" / "entry.bin")
+  let profileRoot = profilePath("tech.asopi.profile-window-test", "direct")
+  doAssert profileRoot.isOk
+  let engineCache = profileRoot.value / "webview2" / "Default" / "Cache"
+  createDir(engineCache)
+  writeFile(engineCache / "engine-entry", "engine cache")
+  doAssert direct.value.clearCache().isOk
+  doAssert fileExists(engineCache / "engine-entry")
   let downloadPath = profileDirectoryPath("tech.asopi.profile-window-test", "direct", ProfileDirectory.downloads)
   doAssert downloadPath.isOk
   writeFile(downloadPath.value / "download.tmp", "partial")
@@ -207,6 +214,14 @@ block windowsCanSelectIndependentProfiles:
   doAssert direct.value.writeSetting("reset", %*{"ok": true}).isOk
   doAssert direct.value.clearProfileData().isOk
   doAssert direct.value.listSettings().value.len == 0
+  doAssert fileExists(engineCache / "engine-entry")
+  let engineClear = direct.value.clearWebViewProfileData({webViewCookies,
+    webViewLocalStorage, webViewCache})
+  doAssert not engineClear.isOk
+  doAssert engineClear.failure.kind == platformUnavailable
+  let missingKinds = direct.value.clearWebViewProfileData({})
+  doAssert not missingKinds.isOk
+  doAssert missingKinds.failure.kind == invalidArgument
   let sessionCookie = ProfileCookie(name: "sid", value: "window", domain: "example.com")
   doAssert direct.value.writeCookie(sessionCookie).isOk
   let readCookie = direct.value.readCookie("example.com", "sid")

@@ -293,18 +293,6 @@ proc clearProfileCache*(appId, profile: string): ProfilePathResult =
     return profileSuccess(directory.value)
   try:
     clearDirectoryContents(directory.value)
-    ## WebView2 stores browser cache below the profile user-data folder.
-    ## Only known cache directories are removed; cookies and local storage
-    ## remain intact.
-    let root = profilePath(appId, profile)
-    if not root.isOk:
-      return profileFailure(root.error)
-    let engineRoot = root.value / "webview2"
-    for relative in ["Default" / "Cache", "Default" / "Code Cache",
-                     "Default" / "GPUCache", "Default" / "DawnCache"]:
-      let engineCache = engineRoot / relative
-      if dirExists(engineCache):
-        clearDirectoryContents(engineCache)
     profileSuccess(directory.value)
   except OSError:
     profileFailure("unable to clear profile cache")
@@ -346,13 +334,20 @@ proc clearProfileLocalStorage*(appId, profile: string): ProfilePathResult =
     profileFailure("unable to clear profile local storage")
 
 proc clearAllProfileData*(appId, profile: string): ProfilePathResult =
+  ## This is intentionally limited to Nimino-managed profile directories.
+  ## `webview2` is a live WebView2 user-data folder, not a generic cache
+  ## directory; clearing it while a controller is active can corrupt the
+  ## browser session.  Engine data needs the native Profile API instead.
   let root = profilePath(appId, profile)
   if not root.isOk:
     return root
   if not dirExists(root.value):
     return profileSuccess(root.value)
   try:
-    clearDirectoryContents(root.value)
+    for directory in ProfileDirectory:
+      let path = root.value / $directory
+      if dirExists(path):
+        clearDirectoryContents(path)
     let recreated = ensureProfileLayout(appId, profile)
     if not recreated.isOk:
       return profileFailure(recreated.error)

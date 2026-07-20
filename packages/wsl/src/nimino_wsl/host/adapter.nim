@@ -375,12 +375,7 @@ proc handleWindowClearCache(adapter: HostAdapter; payload: JsonNode): ProtocolRe
   if not adapter.windows.hasKey(windowId.value): return errorAction("unknown windowId")
   if adapter.windows[windowId.value].profilePath.len == 0:
     return errorAction("window profile path is unavailable")
-  let root = adapter.windows[windowId.value].profilePath / "webview2"
-  for relative in ["Default" / "Cache", "Default" / "Code Cache",
-                   "Default" / "GPUCache", "Default" / "DawnCache"]:
-    if not clearDirectoryContents(root / relative):
-      return errorAction("unable to clear WebView2 cache")
-  successOf(HostAction(kind: noHostAction, payload: "{}"))
+  errorAction("WebView2 engine cache clearing is unsupported; ICoreWebView2Profile2 ClearBrowsingData is not implemented")
 
 proc handleWindowClearDownloads(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
   let windowId = payload.requiredId("windowId")

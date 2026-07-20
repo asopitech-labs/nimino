@@ -125,11 +125,10 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 ```
 
 プロファイルは`app id / profile`をキーにcookie、local storage、cache、permission、download、settingの永続化ディレクトリを分離します。`ensureProfileLayout`で冪等に領域を作成でき、`writeProfileSetting` / `readProfileSetting`でJSON設定、`writeProfileCookie` / `readProfileCookie`でCookieを安全に保存・読込できます。最初のHTTP(S)読込では、対象domainとrequest pathに一致する非HttpOnly Cookieをdocument-startで復元します。LinuxはWebKitNetworkSession、Windows/WSLはWebView2 UserDataFolderをprofileへ接続するため、エンジン管理のCookie・HttpOnly Cookie・localStorageもprofile単位で永続化されます。無処理の権限要求はdenyです。
-`window.clearCookies()`で現在のprofileに保存したCookieを全削除できます。
+`window.clearCookies()`でNiminoがprofileへ明示保存したCookieを全削除できます。
 `window.cookiesForDomain(domain)`では、指定hostに可視な期限切れでないCookieをprofileから取得できます。
 `window.clearSettings()`では同じprofileのJSON設定を全削除できます。
-`window.clearCache()`ではNimino管理のprofile cacheファイルを削除できます。WebView
-Linux WebKitのcacheはprofileのcacheディレクトリへ接続され、Windows WebView2の既知のcacheディレクトリは`clearCache()`で削除されます。
+`window.clearCache()`ではNimino管理のprofile cacheファイルだけを削除できます。実行中のWebView2 user-data folderを直接走査・削除しません。
 `window.clearDownloads()`ではprofile内のNimino管理downloadファイルを削除できます。
 `window.downloadPath(suggestedName)`ではprofile内downloadsディレクトリに限定した安全な保存先を取得できます。実際の書込みはアプリケーション側で行います。
 `window.saveDownload(suggestedName, content)`は一時ファイル経由でprofile内へ保存し、成功時に実パスを返します。
@@ -139,10 +138,9 @@ Linux WebKitのcacheはprofileのcacheディレクトリへ接続され、Window
 Linux WebKitGTKでは許可したレスポンスについて、開始・進捗・完了・失敗イベントを通知します。Windows WebView2でも`BytesReceivedChanged`と`StateChanged`を購読し、進捗・完了・失敗・キャンセルを通知します。
 `window.clearPermissions()`ではprofileに保存した権限判断履歴を削除できます。
 `window.clearLocalStorage()`ではNimino管理のprofile local-storage領域を削除できます。
-WebView内部localStorageはprofileのエンジンデータ領域へ保存され、`clearProfileData()`でprofile全体とともに削除されます。
-`window.clearProfileData()`では上記のNimino管理profile領域を一括初期化できます。
-WSLでは`clearCache()`と`clearDownloads()`がWindows hostのWebView2 `Cache`／`Code Cache`／`GPUCache`／`DawnCache`／`Downloads`にも中継されます。削除失敗は成功扱いにせずエラーを返します。
-WebViewエンジン内部のCookie/cache/localStorageは対象外です。
+`window.clearProfileData()`ではNimino管理のprofile領域だけを一括初期化し、WebView engineの`webview2` user-data folderは保持します。
+`window.clearWebViewProfileData({webViewCookies, webViewLocalStorage, webViewCache})`はWebView engineが所有するCookie・localStorage・cacheを対象にする明示APIです。現在のnative FFIはWebView2 `ICoreWebView2Profile2::ClearBrowsingData`と同等のAPIを未接続のため、成功を偽装せず`platformUnavailable`を返します。
+WSL hostの低水準`native.window.clearCache`も同じ理由で明示的に未対応です。WebView engine内部のCookie/cache/localStorageは、上記の明示APIが対応するまでNimino管理領域のclear操作では削除されません。
 
 WSL hostの低水準`native.window.resetProfile`は、実行中のWebView2 user-data folderを直接削除しません。WebView2はcontrollerとbrowser processの終了後にだけuser-data folderを削除できるため、この操作は明示的な`unsupported`エラーを返します。profile初期化が必要な呼出し側は、まず`app.restartForProfileReset`でhostを正常終了させ、browser processの終了を確認してから後続のreset手順を実行します。この再起動要求自体はprofileファイルを削除しません。
 

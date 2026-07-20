@@ -166,6 +166,13 @@ type
     state*: DownloadState
     progress*: float
 
+  WebViewProfileDataKind* = enum
+    ## Data owned by the platform WebView engine, rather than Nimino's
+    ## profile metadata directories.
+    webViewCookies
+    webViewLocalStorage
+    webViewCache
+
   App* = ref object
     state: CoreAppState
     backend: CoreBackend
@@ -803,15 +810,6 @@ proc clearSettings*(window: Window): CoreResult =
 proc clearCache*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.clearCache"))
-  if window.app.backend == wslBackend:
-    when defined(linux):
-      let remote = window.app.wslCall("native.window.clearCache", $(%*{
-        "windowId": $window.windowId
-      }))
-      if not remote.isOk:
-        return coreFailure(remote.failure)
-    else:
-      return coreFailure(coreError(platformUnavailable, "window.clearCache"))
   let cleared = clearProfileCache(window.app.id, window.profileName)
   if cleared.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.clearCache", detail = cleared.error))
@@ -888,6 +886,18 @@ proc clearProfileData*(window: Window): CoreResult =
   let cleared = clearAllProfileData(window.app.id, window.profileName)
   if cleared.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.clearProfileData", detail = cleared.error))
+
+proc clearWebViewProfileData*(window: Window;
+                              kinds: set[WebViewProfileDataKind]): CoreResult =
+  ## Clear data owned by the browser engine.  This deliberately does not fall
+  ## back to deleting files below a live WebView2 user-data folder.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.clearWebViewProfileData"))
+  if kinds == {}:
+    return coreFailure(coreError(invalidArgument, "window.clearWebViewProfileData",
+      detail = "at least one WebView profile data kind is required"))
+  coreFailure(coreError(platformUnavailable, "window.clearWebViewProfileData",
+    detail = "browser profile clearing is not implemented; WebView2 requires ICoreWebView2Profile2 ClearBrowsingData"))
 
 proc writeCookie*(window: Window; cookie: ProfileCookie): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
