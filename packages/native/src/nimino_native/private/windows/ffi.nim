@@ -397,16 +397,17 @@ proc cookieManagerDeleteAllCookies*(cookieManager: pointer): HResult {.inline.} 
 
 proc core4AddDownloadStarting*(core4: pointer; handler: pointer;
                                token: ptr EventRegistrationToken): HResult {.inline.} =
-  ## Slot 72 verified from ICoreWebView2_4Vtbl in SDK 1.0.3967.48.
+  ## Slot 75 verified from ICoreWebView2_4Vtbl in SDK 1.0.3967.48.
+  ## Slots 72--74 are ClearVirtualHostNameToFolderMapping and FrameCreated.
   let dispatch = cast[proc(self: pointer; handler: pointer;
                            token: ptr EventRegistrationToken): HResult {.stdcall.}](
-    cast[ptr ComInterface](core4).vtable[72]
+    cast[ptr ComInterface](core4).vtable[75]
   )
   dispatch(core4, handler, token)
 
 proc core4RemoveDownloadStarting*(core4: pointer; token: EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
-    cast[ptr ComInterface](core4).vtable[73]
+    cast[ptr ComInterface](core4).vtable[76]
   )
   dispatch(core4, token)
 
@@ -551,15 +552,17 @@ proc coreRemoveNavigationStarting*(core: pointer; token: EventRegistrationToken)
 
 proc coreAddNewWindowRequested*(core: pointer; handler: pointer;
                                 token: ptr EventRegistrationToken): HResult {.inline.} =
+  ## ICoreWebView2::add_NewWindowRequested is vtable slot 44 in
+  ## WebView2.h 1.0.3967.48; slot 45 removes the registration.
   let dispatch = cast[proc(self: pointer; handler: pointer;
                            token: ptr EventRegistrationToken): HResult {.stdcall.}](
-    cast[ptr ComInterface](core).vtable[45]
+    cast[ptr ComInterface](core).vtable[44]
   )
   dispatch(core, handler, token)
 
 proc coreRemoveNewWindowRequested*(core: pointer; token: EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
-    cast[ptr ComInterface](core).vtable[46]
+    cast[ptr ComInterface](core).vtable[45]
   )
   dispatch(core, token)
 
