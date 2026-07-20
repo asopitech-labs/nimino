@@ -10,6 +10,10 @@ type
   WslClient* = ref object
     process: Process
     sessionId*: string
+    ## Captured once from the authenticated ready frame.  Native capability
+    ## support is static for a host session; retaining the snapshot prevents
+    ## callers from treating an unvalidated later response as negotiation.
+    capabilities*: seq[string]
     nextRequestId*: uint64
     events: seq[ProtocolMessage]
 
@@ -178,8 +182,13 @@ proc launchHost*(hostExecutable: string; hostArgs: openArray[string] = []):
     if not ready.isOk:
       osproc.close(process)
       return failureOf[WslClient](ready.failure)
+    let capabilities = readyMessage.value.payload.parseNativeCapabilities()
+    if not capabilities.isOk:
+      osproc.close(process)
+      return failureOf[WslClient](capabilities.failure)
 
     client.sessionId = readyMessage.value.sessionId
+    client.capabilities = capabilities.value
     successOf(client)
   except CatchableError:
     failureOf[WslClient](protocolError(invalidMessage, "unable to launch Windows host"))

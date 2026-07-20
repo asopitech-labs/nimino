@@ -42,7 +42,8 @@ if not hello.isOk or not hello.value.validateHello().isOk or
 doAssert output.writeMessageTo(ProtocolMessage(
   version: ProtocolVersion,
   kind: ready,
-  sessionId: SessionId
+  sessionId: SessionId,
+  payload: nativeCapabilitiesPayload(["webPermissionEvents"])
 )).isOk
 
 var nextEventId = 1'u64

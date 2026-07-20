@@ -24,7 +24,8 @@ block validHello:
 
 block readyMustCreateANonEmptyTokenFreeSession:
   let ready = ProtocolMessage(version: ProtocolVersion, kind: ProtocolMessageKind.ready,
-    sessionId: "0123456789abcdef0123456789abcdef")
+    sessionId: "0123456789abcdef0123456789abcdef",
+    payload: nativeCapabilitiesPayload(["webPermissionEvents"]))
   doAssert ready.validateReady().isOk
 
   var reflected = ready
@@ -34,7 +35,8 @@ block readyMustCreateANonEmptyTokenFreeSession:
   doAssert tokenResult.failure.kind == authenticationFailed
 
   let missingSession = ProtocolMessage(version: ProtocolVersion,
-    kind: ProtocolMessageKind.ready)
+    kind: ProtocolMessageKind.ready,
+    payload: nativeCapabilitiesPayload([]))
   let sessionResult = missingSession.validateReady()
   doAssert not sessionResult.isOk
   doAssert sessionResult.failure.kind == authenticationFailed
@@ -65,6 +67,27 @@ block unsupportedVersionIsRejected:
   let result = validateVersion(ProtocolVersion + 1'u16)
   doAssert not result.isOk
   doAssert result.failure.kind == unsupportedVersion
+
+block readyCapabilitiesAreVersionedAndFailClosed:
+  let valid = nativeCapabilitiesPayload(["multipleWebViews", "webPermissionEvents"])
+  let decoded = valid.parseNativeCapabilities()
+  doAssert decoded.isOk
+  doAssert decoded.value == @["multipleWebViews", "webPermissionEvents"]
+
+  let duplicate = parseNativeCapabilities("{\"capabilities\":[\"webPermissionEvents\",\"webPermissionEvents\"]}")
+  doAssert not duplicate.isOk
+  doAssert duplicate.failure.kind == invalidMessage
+
+  let unknown = parseNativeCapabilities("{\"capabilities\":[\"arbitraryHostFeature\"]}")
+  doAssert not unknown.isOk
+  doAssert unknown.failure.kind == invalidMessage
+
+  let staleReady = ProtocolMessage(version: ProtocolVersion - 1'u16,
+    kind: ready, sessionId: "0123456789abcdef0123456789abcdef",
+    payload: nativeCapabilitiesPayload([]))
+  let stale = staleReady.validateReady()
+  doAssert not stale.isOk
+  doAssert stale.failure.kind == unsupportedVersion
 
 block messageFrameRoundTrip:
   var message = helloMessage()

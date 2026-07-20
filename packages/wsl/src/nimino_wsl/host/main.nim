@@ -63,6 +63,16 @@ proc writeEvent(state: HostState; methodName, payload, error: string): bool =
     error: error
   ))
 
+proc readyCapabilities(state: HostState): string =
+  ## The ready frame is the negotiated native capability snapshot for this
+  ## authenticated host session.  It is generated before any Window/WebView
+  ## exists, so it cannot be affected by application-controlled Web content.
+  var capabilities: seq[string]
+  for capability in Capability:
+    if state.adapter.app.supports(capability):
+      capabilities.add($capability)
+  nativeCapabilitiesPayload(capabilities)
+
 proc stopForProtocolError(state: HostState; message: ProtocolMessage; detail: string) =
   discard state.writeMessage(state.responseFor(message, error = detail))
   discard state.adapter.app.close()
@@ -285,7 +295,8 @@ proc runHost(): int =
   if not state.writeMessage(ProtocolMessage(
     version: ProtocolVersion,
     kind: ProtocolMessageKind.ready,
-    sessionId: sessionId
+    sessionId: sessionId,
+    payload: state.readyCapabilities()
   )):
     stderr.writeLine("nimino-wsl-host: cannot write handshake response")
     return 2

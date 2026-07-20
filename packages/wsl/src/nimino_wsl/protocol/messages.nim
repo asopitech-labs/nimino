@@ -105,6 +105,37 @@ proc successOf*[T](value: T): ProtocolResultOf[T] {.inline.} =
 proc failureOf*[T](error: ProtocolError): ProtocolResultOf[T] {.inline.} =
   ProtocolResultOf[T](isOk: false, failure: error)
 
+proc isKnownNativeCapability*(value: string): bool {.inline.} =
+  ## Keep handshake capabilities closed over the native public API.  A newly
+  ## introduced native capability therefore requires an explicit protocol
+  ## update instead of becoming silently available to an older client.
+  value in NativeCapabilityNames
+
+proc nativeCapabilitiesPayload*(capabilities: openArray[string]): string =
+  var values = newJArray()
+  for capability in capabilities:
+    values.add(%capability)
+  $(%*{"capabilities": values})
+
+proc parseNativeCapabilities*(payload: string): ProtocolResultOf[seq[string]] =
+  try:
+    let node = parseJson(payload)
+    if node.kind != JObject or not node.hasKey("capabilities") or
+        node["capabilities"].kind != JArray:
+      return failureOf[seq[string]](protocolError(invalidMessage,
+        "ready payload is missing capabilities"))
+    var capabilities: seq[string]
+    for item in node["capabilities"].items:
+      if item.kind != JString or not item.getStr().isKnownNativeCapability or
+          item.getStr() in capabilities:
+        return failureOf[seq[string]](protocolError(invalidMessage,
+          "ready payload contains an invalid capability"))
+      capabilities.add(item.getStr())
+    successOf(capabilities)
+  except CatchableError:
+    failureOf[seq[string]](protocolError(invalidMessage,
+      "ready payload is malformed"))
+
 proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
   try:
     let node = parseJson(payload)
@@ -211,6 +242,9 @@ proc validateReady*(message: ProtocolMessage): ProtocolResult =
   if message.authenticationToken.len != 0:
     return failure(protocolError(authenticationFailed,
       "host returned authentication material"))
+  let capabilities = message.payload.parseNativeCapabilities()
+  if not capabilities.isOk:
+    return failure(capabilities.failure)
   success()
 
 proc toJson*(message: ProtocolMessage): string =

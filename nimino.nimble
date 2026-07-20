@@ -17,7 +17,9 @@ task test, "Run Nimino unit tests in ARC mode":
   exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-test-wsl-core-async-adapter-nimcache --out:/tmp/nimino-test-wsl-core-async-adapter --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_wsl_core_async_adapter.nim"
   exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-wsl-core-async-adapter /tmp/nimino-wsl-core-async-fake-host"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-nimcache --out:/tmp/nimino-test-protocol --path:packages/wsl --path:packages/native packages/wsl/tests/test_protocol.nim"
-  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-launcher-nimcache --out:/tmp/nimino-test-launcher --path:packages/wsl --path:packages/native packages/wsl/tests/test_launcher.nim"
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-fake-launcher-host-nimcache --out:/tmp/nimino-wsl-fake-launcher-host --path:packages/wsl packages/wsl/tests/fake_launcher_host.nim"
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-launcher-nimcache --out:/tmp/nimino-test-launcher --path:packages/wsl --path:packages/native packages/wsl/tests/test_launcher.nim"
+  exec "/tmp/nimino-test-launcher /tmp/nimino-wsl-fake-launcher-host"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-test-host-adapter --path:packages/wsl --path:packages/native packages/wsl/tests/test_host_adapter.nim"
 
 task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":

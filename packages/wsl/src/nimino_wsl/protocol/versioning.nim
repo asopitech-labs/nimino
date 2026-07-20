@@ -1,4 +1,16 @@
 const
-  ProtocolVersion* = 1'u16
+  ## Version 2 makes the authenticated `ready` payload a required capability
+  ## snapshot.  A client must not assume that a Windows host has a native
+  ## feature merely because it completed the transport handshake.
+  ProtocolVersion* = 2'u16
   MaxFrameBytes* = 1_048_576
   AuthenticationTokenHexLength* = 64
+  NativeCapabilityNames* = [
+    "multipleWebViews",
+    "transparentWindow",
+    "nativeMenu",
+    "systemTray",
+    "nativeNotification",
+    "customProtocol",
+    "webPermissionEvents"
+  ]

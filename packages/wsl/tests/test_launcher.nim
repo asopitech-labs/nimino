@@ -1,5 +1,5 @@
 import nimino_wsl
-import std/strutils
+import std/[os, strutils]
 
 block emptyHostPathIsRejectedBeforeProcessCreation:
   let launched = launchHost("")
@@ -11,3 +11,17 @@ block startupDiagnosticsNeverRelayArbitraryChildStderr:
   doAssert sanitizeStartupDiagnostic("nimino-wsl-host: authentication failed") ==
     "nimino-wsl-host: authentication failed"
   doAssert sanitizeStartupDiagnostic("nimino-wsl-host: authentication failed " & token) == ""
+
+if paramCount() == 1:
+  block authenticatedReadySnapshotsCapabilitiesAndShutdownsCleanly:
+    let host = paramStr(1)
+    let launched = launchHost(host)
+    doAssert launched.isOk
+    doAssert launched.value.capabilities == @["webPermissionEvents"]
+    doAssert launched.value.close().isOk
+
+  block malformedReadyCapabilitiesAreRejected:
+    let host = paramStr(1)
+    let launched = launchHost(host, ["invalid-capability"])
+    doAssert not launched.isOk
+    doAssert launched.failure.kind == invalidMessage
