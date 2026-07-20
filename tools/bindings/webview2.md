@@ -79,13 +79,12 @@ The vtable slot order and callback signatures were checked against the header
 above.  Later features must be checked against a recorded SDK version before
 adding a new slot.
 
-## M4 Profile/CookieManager ABI spike (not integrated)
+## M4 Profile/CookieManager (Windows implementation)
 
-The following private declarations are included only to establish that
-WebView2 profile-data clearing can be connected without adopting a general
-WebView wrapper.  They are verified by fake COM-vtable tests and a Windows
-x64 cross-compile contract; no public `nimino-native` or `nimino-core` API
-calls them yet.
+The following private declarations are used by
+`nimino-native`'s Windows backend.  `nimino-core` exposes them through the
+asynchronous `Window.clearWebViewProfileData` API.  This remains a narrow
+private implementation rather than a general WebView wrapper.
 
 | Purpose | Interface / method | IID / slot |
 | --- | --- | --- |
@@ -95,12 +94,13 @@ calls them yet.
 | Completion callback | `ICoreWebView2ClearBrowsingDataCompletedHandler::Invoke` | `e9710a06-1d1d-49b2-8234-226f35846ae5` / 3 |
 | Delete all cookies | `ICoreWebView2CookieManager::DeleteAllCookies` | `177cd9e7-b6f5-451a-94a0-5d7a3a4c4141` / 10 |
 
-`ClearBrowsingData` is asynchronous.  A production implementation must own a
-completed-handler COM object from successful registration until `Invoke`, map
-the callback `HRESULT` to `NativeError`, and release the queried interfaces on
-the UI thread.  It must query `ICoreWebView2_13` and `ICoreWebView2Profile2`
-at runtime and return `unsupported` when an installed Evergreen Runtime does
-not expose either interface; it must not silently report success.
+`ClearBrowsingData` is asynchronous.  The backend owns its completed-handler
+COM object from successful registration through `Invoke`, holds the associated
+Nim request until the callback returns, maps the callback `HRESULT` to
+`NativeError`, and releases queried interfaces on the UI thread.  It queries
+`ICoreWebView2_13` and `ICoreWebView2Profile2` at runtime and returns
+`unsupported` when an installed Evergreen Runtime does not expose either
+interface; it never reports a successful clear in that case.
 
 The current focused data mapping is intentionally narrow:
 
@@ -108,12 +108,22 @@ The current focused data mapping is intentionally narrow:
 * local storage: `0x0004` (`LOCAL_STORAGE`)
 * cache: `0x0010 | 0x0100` (`CACHE_STORAGE | DISK_CACHE`)
 
+For cookies only, the backend uses the synchronous
+`ICoreWebView2CookieManager::DeleteAllCookies` path.  Any request that also
+contains local storage or cache uses the asynchronous Profile2 path and the
+same Future result surface.
+
+This feature has a real Windows WebView2 Runtime dependency: Docker CI can
+verify the official header, fake COM dispatch, and a Windows cross-compile, but
+cannot exercise an installed Evergreen Runtime or complete a real callback.
+Linux and the WSL Windows-host adapter deliberately return `unsupported`; the
+WSL protocol has no async browser-profile-clear lifecycle yet.
+
 Profile reset remains a restart operation.  Microsoft documents the User Data
 Folder as in-use while a WebView2 session is active, so deleting or recreating
 the UDF remains outside this live-clear path.  `ICoreWebView2CookieManager`
-is useful for a cookies-only operation, but a unified profile-data API should
-use the asynchronous Profile2 method so its result accurately represents the
-browser operation.
+is used only for the cookies-only operation; broader clear requests use
+Profile2 so the result accurately represents the browser operation.
 
 Run the reproducible spike through Docker only:
 

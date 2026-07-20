@@ -19,6 +19,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; errorCode: HResult; jsonResult: WideCString): HResult {.stdcall.}
 
+  ClearBrowsingDataCompletedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; errorCode: HResult): HResult {.stdcall.}
+
   AddScriptToExecuteOnDocumentCreatedCompletedVTable = object
     queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
     addRef: proc(self: pointer): uint32 {.stdcall.}
@@ -79,6 +85,11 @@ type
 
   ExecuteScriptCompletedHandler = object
     vtable: ptr ExecuteScriptCompletedVTable
+    references: Atomic[int]
+    request: pointer
+
+  ClearBrowsingDataCompletedHandler = object
+    vtable: ptr ClearBrowsingDataCompletedVTable
     references: Atomic[int]
     request: pointer
 
@@ -203,6 +214,22 @@ proc executeScriptRelease(self: pointer): uint32 {.stdcall.} =
 proc executeScriptQueryInterface(self: pointer; iid: ptr WinGuid;
                                  outInstance: ptr pointer): HResult {.stdcall.} =
   queryCallback(self, iid, outInstance, IidExecuteScriptCompletedHandler, executeScriptAddRef)
+
+proc clearBrowsingDataAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr ClearBrowsingDataCompletedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc clearBrowsingDataRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr ClearBrowsingDataCompletedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    dealloc(handler)
+  uint32(remaining)
+
+proc clearBrowsingDataQueryInterface(self: pointer; iid: ptr WinGuid;
+                                     outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidClearBrowsingDataCompletedHandler,
+    clearBrowsingDataAddRef)
 
 proc addDocumentStartScriptAddRef(self: pointer): uint32 {.stdcall.} =
   let handler = cast[ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler](self)
@@ -419,6 +446,7 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
                       controller: pointer): HResult {.stdcall.}
 proc executeScriptInvoke(self: pointer; errorCode: HResult;
                          jsonResult: WideCString): HResult {.stdcall.}
+proc clearBrowsingDataInvoke(self: pointer; errorCode: HResult): HResult {.stdcall.}
 proc addDocumentStartScriptInvoke(self: pointer; errorCode: HResult;
                                   scriptId: WideCString): HResult {.stdcall.}
 proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
@@ -445,6 +473,13 @@ var executeScriptCompletedVTable = ExecuteScriptCompletedVTable(
   addRef: executeScriptAddRef,
   release: executeScriptRelease,
   invoke: executeScriptInvoke
+)
+
+var clearBrowsingDataCompletedVTable = ClearBrowsingDataCompletedVTable(
+  queryInterface: clearBrowsingDataQueryInterface,
+  addRef: clearBrowsingDataAddRef,
+  release: clearBrowsingDataRelease,
+  invoke: clearBrowsingDataInvoke
 )
 
 var addDocumentStartScriptCompletedVTable = AddScriptToExecuteOnDocumentCreatedCompletedVTable(
@@ -533,6 +568,15 @@ proc newExecuteScriptCompletedHandler(request: NativeScriptRequest): ptr Execute
   result.references.store(1, moRelaxed)
   result.request = cast[pointer](request)
 
+proc newClearBrowsingDataCompletedHandler(request: NativeBrowsingDataRequest):
+    ptr ClearBrowsingDataCompletedHandler =
+  result = cast[ptr ClearBrowsingDataCompletedHandler](
+    alloc0(sizeof(ClearBrowsingDataCompletedHandler))
+  )
+  result.vtable = addr clearBrowsingDataCompletedVTable
+  result.references.store(1, moRelaxed)
+  result.request = cast[pointer](request)
+
 proc newAddDocumentStartScriptCompletedHandler(view: NativeWebView):
     ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler =
   result = cast[ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler](
@@ -589,6 +633,8 @@ proc windowsDisposeView(view: NativeWebView) =
 
   view.state = closing
   view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
+  view.failOutstandingBrowsingDataRequests(nativeError(invalidState,
+    "webview.clearBrowsingData", detail = "the WebView closed before clearing completed"))
   if view.messageRegistered and view.platformView != nil:
     let token = EventRegistrationToken(value: view.messageRegistrationToken)
     discard coreRemoveWebMessageReceived(view.platformView, token)
@@ -954,6 +1000,88 @@ proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): N
     return failure(hresultError("webview.evalJavaScript", status))
   success()
 
+proc browsingDataMask(kinds: set[NativeBrowsingDataKind]): uint32 =
+  for kind in kinds:
+    case kind
+    of nativeBrowsingCookies:
+      result = result or WebView2BrowsingDataCookies
+    of nativeBrowsingLocalStorage:
+      result = result or WebView2BrowsingDataLocalStorage
+    of nativeBrowsingCache:
+      result = result or WebView2BrowsingDataCacheStorage or WebView2BrowsingDataDiskCache
+
+proc unavailableWebView2Interface(operation, interfaceName: string;
+                                  status: HResult): NativeError {.inline.} =
+  if status == E_NOINTERFACE:
+    nativeError(unsupported, operation, platformCode = status,
+      detail = interfaceName & " is unavailable in the installed WebView2 Runtime")
+  elif succeeded(status):
+    nativeError(webViewError, operation, platformCode = status,
+      detail = interfaceName & " returned a nil interface pointer")
+  else:
+    hresultError(operation, status)
+
+proc windowsClearBrowsingData(view: NativeWebView;
+                              request: NativeBrowsingDataRequest): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.clearBrowsingData"))
+
+  if request.kinds == {nativeBrowsingCookies}:
+    ## CookieManager is synchronous and avoids requiring Profile2 on older
+    ## WebView2 runtimes when the caller only asked to remove cookies.
+    var core2: pointer
+    let queried = comQueryInterface(view.platformView, addr IidCoreWebView2_2,
+      addr core2)
+    if not succeeded(queried) or core2.isNil:
+      return failure(unavailableWebView2Interface("webview.clearBrowsingData",
+        "ICoreWebView2_2", queried))
+    var cookieManager: pointer
+    let managerStatus = core2GetCookieManager(core2, addr cookieManager)
+    discard comRelease(core2)
+    if not succeeded(managerStatus) or cookieManager.isNil:
+      return failure(hresultError("webview.clearBrowsingData", managerStatus))
+    let deleted = cookieManagerDeleteAllCookies(cookieManager)
+    discard comRelease(cookieManager)
+    if not succeeded(deleted):
+      return failure(hresultError("webview.clearBrowsingData", deleted))
+    view.completeBrowsingDataRequest(request, success())
+    return success()
+
+  var core13: pointer
+  let queried = comQueryInterface(view.platformView, addr IidCoreWebView2_13,
+    addr core13)
+  if not succeeded(queried) or core13.isNil:
+    return failure(unavailableWebView2Interface("webview.clearBrowsingData",
+      "ICoreWebView2_13", queried))
+
+  var profile: pointer
+  let profileStatus = core13GetProfile(core13, addr profile)
+  discard comRelease(core13)
+  if not succeeded(profileStatus) or profile.isNil:
+    return failure(hresultError("webview.clearBrowsingData", profileStatus))
+
+  var profile2: pointer
+  let profile2Status = comQueryInterface(profile, addr IidCoreWebView2Profile2,
+    addr profile2)
+  discard comRelease(profile)
+  if not succeeded(profile2Status) or profile2.isNil:
+    return failure(unavailableWebView2Interface("webview.clearBrowsingData",
+      "ICoreWebView2Profile2", profile2Status))
+
+  let handler = newClearBrowsingDataCompletedHandler(request)
+  ## The completion handler is owned by WebView2 after successful submission.
+  ## Keep the Nim request alive until that callback returns, including while a
+  ## closing view has already completed its Future with invalidState.
+  GC_ref(request)
+  let cleared = profile2ClearBrowsingData(profile2, browsingDataMask(request.kinds),
+    cast[pointer](handler))
+  discard clearBrowsingDataRelease(handler)
+  discard comRelease(profile2)
+  if not succeeded(cleared):
+    GC_unref(request)
+    return failure(hresultError("webview.clearBrowsingData", cleared))
+  success()
+
 proc windowsConfigureMessageBridge(view: NativeWebView): NativeResult =
   if view.platformView.isNil:
     return failure(nativeError(invalidState, "webview.onMessage"))
@@ -1281,6 +1409,24 @@ proc executeScriptInvoke(self: pointer; errorCode: HResult;
   else:
     let serialized = if jsonResult.isNil: "null" else: $jsonResult
     view.completeScriptRequest(request, successOf(serialized))
+  GC_unref(request)
+  S_OK
+
+proc clearBrowsingDataInvoke(self: pointer; errorCode: HResult): HResult {.stdcall.} =
+  let handler = cast[ptr ClearBrowsingDataCompletedHandler](self)
+  let request = cast[NativeBrowsingDataRequest](handler.request)
+  if request.isNil:
+    return S_OK
+  let view = request.view
+  if view != nil:
+    if succeeded(errorCode):
+      view.completeBrowsingDataRequest(request, success())
+    else:
+      view.completeBrowsingDataRequest(request, failure(hresultError(
+        "webview.clearBrowsingData", errorCode
+      )))
+  elif request.future != nil and not request.future.finished:
+    request.future.complete(failure(nativeError(invalidState, "webview.clearBrowsingData")))
   GC_unref(request)
   S_OK
 

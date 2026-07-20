@@ -46,10 +46,22 @@ type
     urlContent
     htmlContent
 
+  NativeBrowsingDataKind* = enum
+    ## Data owned by the embedded browser engine.  These values deliberately
+    ## describe browser state only; Nimino profile files have separate APIs.
+    nativeBrowsingCookies
+    nativeBrowsingLocalStorage
+    nativeBrowsingCache
+
   NativeScriptRequest = ref object
     view: NativeWebView
     script: string
     future: Future[NativeResultOf[string]]
+
+  NativeBrowsingDataRequest = ref object
+    view: NativeWebView
+    kinds: set[NativeBrowsingDataKind]
+    future: Future[NativeResult]
 
   NativeApp* = ref object
     state: NativeAppState
@@ -138,6 +150,7 @@ type
     activeDownloadUrl: string
     pendingScripts: seq[NativeScriptRequest]
     activeScripts: seq[NativeScriptRequest]
+    activeBrowsingDataRequests: seq[NativeBrowsingDataRequest]
 
 when defined(linux) and not defined(niminoWsl):
   proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.}
@@ -146,6 +159,8 @@ when defined(linux) and not defined(niminoWsl):
 elif defined(windows):
   proc windowsCreateWindow(window: NativeWindow): NativeResult
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
+  proc windowsClearBrowsingData(view: NativeWebView;
+                                request: NativeBrowsingDataRequest): NativeResult
 
 proc completeScriptRequest(view: NativeWebView; request: NativeScriptRequest;
                            evaluation: NativeResultOf[string]) =
@@ -173,6 +188,31 @@ proc failOutstandingScripts(view: NativeWebView; error: NativeError) =
   ## Native callbacks retain their request with GC_ref until they return. Keep
   ## no Nim-side ownership after closing, but let each callback GC_unref it.
   view.activeScripts.setLen(0)
+
+when defined(windows):
+  proc completeBrowsingDataRequest(view: NativeWebView;
+                                   request: NativeBrowsingDataRequest;
+                                   cleared: NativeResult) =
+    if request.isNil:
+      return
+    if request.future != nil and not request.future.finished:
+      request.future.complete(cleared)
+    if view != nil and view.activeBrowsingDataRequests.len > 0:
+      for index in countdown(view.activeBrowsingDataRequests.high, 0):
+        if cast[pointer](view.activeBrowsingDataRequests[index]) == cast[pointer](request):
+          view.activeBrowsingDataRequests.delete(index)
+          break
+
+  proc failOutstandingBrowsingDataRequests(view: NativeWebView; error: NativeError) =
+    if view.isNil:
+      return
+    for request in view.activeBrowsingDataRequests:
+      if request.future != nil and not request.future.finished:
+        request.future.complete(failure(error))
+    ## The COM completion handler keeps each request GC-referenced until it
+    ## returns.  Do not release it here; the callback remains responsible for
+    ## the matching GC_unref even after a view has closed.
+    view.activeBrowsingDataRequests.setLen(0)
 
 proc releaseCallbackReferences(view: NativeWebView) =
   ## Native signal/COM registrations are removed by each backend before this
@@ -625,6 +665,39 @@ proc evalJavaScript*(view: NativeWebView; script: string): Future[NativeResultOf
     view.pendingScripts.add(request)
     return
   view.startScriptRequest(request)
+
+proc clearBrowsingData*(view: NativeWebView;
+                        kinds: set[NativeBrowsingDataKind]): Future[NativeResult] =
+  ## Clear live browser-engine data without deleting the active user-data
+  ## folder.  WebView2 implements the multi-kind path asynchronously, so the
+  ## low-level API always returns a Future even when a platform can complete a
+  ## cookies-only operation synchronously.
+  let request = NativeBrowsingDataRequest(
+    kinds: kinds,
+    future: newFuture[NativeResult]("nimino.native.clearBrowsingData")
+  )
+  result = request.future
+  if view.isNil or view.state in {closing, closed}:
+    result.complete(failure(nativeError(invalidState, "webview.clearBrowsingData")))
+    return
+  if kinds == {}:
+    result.complete(failure(nativeError(invalidArgument, "webview.clearBrowsingData",
+      detail = "at least one browsing data kind is required")))
+    return
+
+  when defined(windows):
+    if view.state != ready or view.platformView.isNil:
+      result.complete(failure(nativeError(invalidState, "webview.clearBrowsingData",
+        detail = "WebView2 must be ready before browser data can be cleared")))
+      return
+    request.view = view
+    view.activeBrowsingDataRequests.add(request)
+    let started = view.windowsClearBrowsingData(request)
+    if not started.isOk:
+      view.completeBrowsingDataRequest(request, started)
+  else:
+    result.complete(failure(nativeError(unsupported, "webview.clearBrowsingData",
+      detail = "live browser data clearing is currently available only on Windows WebView2")))
 
 proc onMessage*(view: NativeWebView; handler: NativeMessageHandler): NativeResult =
   if view.isNil or view.state in {closing, closed}:

@@ -1,4 +1,4 @@
-import std/[json, os, strutils, times]
+import std/[asyncfutures, json, os, strutils, times]
 
 import nimino_core
 
@@ -217,11 +217,15 @@ block windowsCanSelectIndependentProfiles:
   doAssert fileExists(engineCache / "engine-entry")
   let engineClear = direct.value.clearWebViewProfileData({webViewCookies,
     webViewLocalStorage, webViewCache})
-  doAssert not engineClear.isOk
-  doAssert engineClear.failure.kind == platformUnavailable
+  doAssert engineClear.finished
+  let engineClearResult = engineClear.read()
+  doAssert not engineClearResult.isOk
+  doAssert engineClearResult.failure.kind == platformUnavailable
   let missingKinds = direct.value.clearWebViewProfileData({})
-  doAssert not missingKinds.isOk
-  doAssert missingKinds.failure.kind == invalidArgument
+  doAssert missingKinds.finished
+  let missingKindsResult = missingKinds.read()
+  doAssert not missingKindsResult.isOk
+  doAssert missingKindsResult.failure.kind == invalidArgument
   let sessionCookie = ProfileCookie(name: "sid", value: "window", domain: "example.com")
   doAssert direct.value.writeCookie(sessionCookie).isOk
   let readCookie = direct.value.readCookie("example.com", "sid")
