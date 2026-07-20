@@ -218,6 +218,43 @@ const
     data1: 0x20d02d59'u32, data2: 0x6df2'u16, data3: 0x42dc'u16,
     data4: [0xbd'u8, 0x06'u8, 0xf9'u8, 0x8a'u8, 0x69'u8, 0x4b'u8, 0x13'u8, 0x02'u8]
   )
+  ## These interfaces are retained for the M4 WebView2 profile-data spike.
+  ## Every IID and vtable slot below was checked against the SDK version
+  ## recorded at the top of this module.
+  IidCoreWebView2_2* = WinGuid(
+    data1: 0x9e8f0cf8'u32, data2: 0xe670'u16, data3: 0x4b5e'u16,
+    data4: [0xb2'u8, 0xbc'u8, 0x73'u8, 0xe0'u8, 0x61'u8, 0xe3'u8, 0x18'u8, 0x4c'u8]
+  )
+  IidCoreWebView2_13* = WinGuid(
+    data1: 0xf75f09a8'u32, data2: 0x667e'u16, data3: 0x4983'u16,
+    data4: [0x88'u8, 0xd6'u8, 0xc8'u8, 0x77'u8, 0x3f'u8, 0x31'u8, 0x5e'u8, 0x84'u8]
+  )
+  IidCoreWebView2CookieManager* = WinGuid(
+    data1: 0x177cd9e7'u32, data2: 0xb6f5'u16, data3: 0x451a'u16,
+    data4: [0x94'u8, 0xa0'u8, 0x5d'u8, 0x7a'u8, 0x3a'u8, 0x4c'u8, 0x41'u8, 0x41'u8]
+  )
+  IidCoreWebView2Profile2* = WinGuid(
+    data1: 0xfa740d4b'u32, data2: 0x5eae'u16, data3: 0x4344'u16,
+    data4: [0xa8'u8, 0xad'u8, 0x74'u8, 0xbe'u8, 0x31'u8, 0x92'u8, 0x53'u8, 0x97'u8]
+  )
+  IidClearBrowsingDataCompletedHandler* = WinGuid(
+    data1: 0xe9710a06'u32, data2: 0x1d1d'u16, data3: 0x49b2'u16,
+    data4: [0x82'u8, 0x34'u8, 0x22'u8, 0x6f'u8, 0x35'u8, 0x84'u8, 0x6a'u8, 0xe5'u8]
+  )
+
+  ## Vtable indices include the three IUnknown entries.  Keeping them named
+  ## makes header verification and the isolated ABI test explicit.
+  Core2GetCookieManagerSlot* = 66
+  Core13GetProfileSlot* = 105
+  Profile2ClearBrowsingDataSlot* = 10
+  CookieManagerDeleteAllCookiesSlot* = 10
+
+  ## COREWEBVIEW2_BROWSING_DATA_KINDS values used by Nimino's profile-data
+  ## model.  They are flags, so callers may combine them with `or`.
+  WebView2BrowsingDataLocalStorage* = 0x0004'u32
+  WebView2BrowsingDataCacheStorage* = 0x0010'u32
+  WebView2BrowsingDataCookies* = 0x0040'u32
+  WebView2BrowsingDataDiskCache* = 0x0100'u32
 
 proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
   {.stdcall, importc: "CoInitializeEx", dynlib: "ole32.dll".}
@@ -324,6 +361,39 @@ proc comQueryInterface*(instance: pointer; iid: ptr WinGuid;
     cast[ptr ComInterface](instance).vtable[0]
   )
   dispatch(instance, iid, outInstance)
+
+proc core2GetCookieManager*(core2: pointer;
+                            cookieManager: ptr pointer): HResult {.inline.} =
+  ## ICoreWebView2_2::get_CookieManager (vtable slot 66).
+  let dispatch = cast[proc(self: pointer; cookieManager: ptr pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](core2).vtable[Core2GetCookieManagerSlot]
+  )
+  dispatch(core2, cookieManager)
+
+proc core13GetProfile*(core13: pointer; profile: ptr pointer): HResult {.inline.} =
+  ## ICoreWebView2_13::get_Profile (vtable slot 105).
+  let dispatch = cast[proc(self: pointer; profile: ptr pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](core13).vtable[Core13GetProfileSlot]
+  )
+  dispatch(core13, profile)
+
+proc profile2ClearBrowsingData*(profile2: pointer; dataKinds: uint32;
+                                handler: pointer): HResult {.inline.} =
+  ## ICoreWebView2Profile2::ClearBrowsingData (vtable slot 10).
+  ## `handler` must implement ICoreWebView2ClearBrowsingDataCompletedHandler
+  ## and remain alive until WebView2 invokes it.
+  let dispatch = cast[proc(self: pointer; dataKinds: uint32;
+                           handler: pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](profile2).vtable[Profile2ClearBrowsingDataSlot]
+  )
+  dispatch(profile2, dataKinds, handler)
+
+proc cookieManagerDeleteAllCookies*(cookieManager: pointer): HResult {.inline.} =
+  ## ICoreWebView2CookieManager::DeleteAllCookies (vtable slot 10).
+  let dispatch = cast[proc(self: pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookieManager).vtable[CookieManagerDeleteAllCookiesSlot]
+  )
+  dispatch(cookieManager)
 
 proc core4AddDownloadStarting*(core4: pointer; handler: pointer;
                                token: ptr EventRegistrationToken): HResult {.inline.} =

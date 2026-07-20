@@ -3,7 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-windows-tray-abi shell test pack-test pack-cli-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -39,6 +39,10 @@ verify-windows-tray-abi: image ## MinGW Win32 SDKのNOTIFYICONDATAW ABIを検証
 
 	$(COMPOSE) run --rm $(SERVICE) bash -lc "printf '#include <windows.h>\\n#include <shellapi.h>\\ntypedef char notify_icon_data_w_size[(sizeof(NOTIFYICONDATAW) == 976) ? 1 : -1];\\n' | x86_64-w64-mingw32-gcc -x c -c -o /tmp/nimino-notify-icon-layout.o -"
 
+verify-webview2-profile-header: image ## WebView2 Profile/CookieManager APIの公式ヘッダーを検証する
+
+	$(COMPOSE) run --rm $(SERVICE) bash tools/bindings/verify_webview2_profile_header.sh
+
 shell: image ## コンテナ内の対話shellを開く
 
 	$(COMPOSE) run --rm $(SERVICE) bash
@@ -46,6 +50,11 @@ shell: image ## コンテナ内の対話shellを開く
 test: image ## M1以降のNimbleテストをコンテナ内で実行する
 
 	$(COMPOSE) run --rm $(SERVICE) nimble test
+
+webview2-profile-ffi-spike: image verify-webview2-profile-header ## WebView2 Profile/CookieManagerのprivate ABIスパイクを検証する
+
+	$(COMPOSE) run --rm $(SERVICE) nimble testWebView2ProfileFfi
+	$(COMPOSE) run --rm $(SERVICE) nimble testWindowsProfileFfiCross
 
 pack-test: image ## nimino-packのmanifest解析テストをコンテナ内で実行する
 
