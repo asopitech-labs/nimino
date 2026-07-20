@@ -33,7 +33,7 @@ verify-env: nim-version nimble-version gtk-version webkit-version ## M0のDocker
 
 verify-webview2-header: image ## WebView2 permission/download APIの公式ヘッダーを検証する
 
-	$(COMPOSE) run --rm $(SERVICE) bash -lc 'curl --fail --silent --show-error -L -o /tmp/webview2.nupkg https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3967.48/microsoft.web.webview2.1.0.3967.48.nupkg && unzip -p /tmp/webview2.nupkg build/native/include/WebView2.h | grep -q ICoreWebView2PermissionRequestedEventHandler && unzip -p /tmp/webview2.nupkg build/native/include/WebView2.h | grep -q ICoreWebView2DownloadStartingEventHandler'
+	$(COMPOSE) run --rm $(SERVICE) bash -lc 'curl --fail --silent --show-error -L -o /tmp/webview2.nupkg https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3967.48/microsoft.web.webview2.1.0.3967.48.nupkg && bash tools/ci/verify-webview2-header.sh /tmp/webview2.nupkg'
 
 shell: image ## コンテナ内の対話shellを開く
 
@@ -102,10 +102,10 @@ wsl-host-interactive: image ## WebView2実Windowを開き、ユーザー操作�
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-interactive.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)"
 
-wsl-host-popup-smoke: image ## popupクリック後のpopup message受信を自動判定する
+wsl-host-popup-smoke: image ## WebView2新規Window要求とHandled処理を実機確認する
 
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
-	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-interactive.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -WaitForPopupMessage
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -VerifyNewWindow
 
 wsl-client-smoke: image ## WSL clientからWindows hostを起動しWindow/WebView/shutdownを実機確認する
 
