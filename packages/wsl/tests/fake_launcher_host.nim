@@ -23,19 +23,24 @@ if not hello.isOk or not hello.value.validateHello().isOk or
     not token.secureEquals(hello.value.authenticationToken):
   quit(QuitFailure)
 
-let invalidCapability = paramCount() == 1 and paramStr(1) == "invalid-capability"
+let mode = if paramCount() == 1: paramStr(1) else: ""
+let invalidCapability = mode == "invalid-capability"
+let version = case mode
+  of "legacy-version": ProtocolVersion - 1'u16
+  of "future-version": ProtocolVersion + 1'u16
+  else: ProtocolVersion
 let payload = if invalidCapability:
   "{\"capabilities\":[\"arbitraryHostFeature\"]}"
 else:
   nativeCapabilitiesPayload(["webPermissionEvents"])
 doAssert output.writeMessageTo(ProtocolMessage(
-  version: ProtocolVersion,
+  version: version,
   kind: ready,
   sessionId: SessionId,
   payload: payload
 )).isOk
 
-if invalidCapability:
+if mode.len > 0:
   quit(QuitSuccess)
 
 let shutdown = input.readMessageFrom()

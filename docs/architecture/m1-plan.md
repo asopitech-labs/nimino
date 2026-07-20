@@ -77,13 +77,14 @@ M2の縦機能として、native の `webkit_web_view_evaluate_javascript`/`_fin
 ## WSL操作一覧（M1）
 
 ```text
-client: spawn host → hello(version, token) → createWindow → loadUrl/loadHtml → shutdown
-host:   ready             → accepted             → response    → response → graceful exit
+client: spawn host → hello(v2, token) → ready(v2, Capability snapshot) → createWindow → loadUrl/loadHtml → shutdown
+host:                  version/auth check        → accepted             → response    → response → graceful exit
 ```
 
 - WSL clientはWindows Interopで`nimino-wsl-host.exe`を子プロセスとして起動します。
 - `stdin`/`stdout`はバイナリframe専用、`stderr`は診断専用です。標準出力にログを書きません。
 - frameは最大長、protocol version、session ID、request ID/event ID、method、payload、error、timeout、cancel、heartbeatを定義します。
+- protocol versionは完全一致です。v2 client/hostはv1または将来versionを互換fallbackせず、受信側validatorで`unsupportedVersion`として拒否します。認証前の旧clientに対してhostはprotocol responseを返さず終了するため、旧clientが同じerror分類を受ける保証はありません。同一versionのclient/hostを組で配布・更新します。v2の`ready.payload`は既知Capabilityの重複なしsnapshotであり、clientは検証前にsessionを使いません。
 - clientがOS CSPRNGで生成する32 byte tokenを、Windows Interop child専用の`NIMINO_WSL_HOST_TOKEN`と`WSLENV`でhostへ転送し、最初の`hello`にも含めます。hostは両値をconstant-time比較し、認証完了前に操作を処理しません。
 - hostは一client・一sessionで動作し、EOF、初期handshake timeout、またはshutdownでWindowを閉じ、native resourceを解放します。
 - listenerを開かないため、外部ホストから接続できません。WSL Interopが無効なら`unsupported`を返します。

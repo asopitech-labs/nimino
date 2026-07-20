@@ -63,10 +63,23 @@ block invalidTokenIsRejected:
   doAssert not result.isOk
   doAssert result.failure.kind == authenticationFailed
 
-block unsupportedVersionIsRejected:
-  let result = validateVersion(ProtocolVersion + 1'u16)
-  doAssert not result.isOk
-  doAssert result.failure.kind == unsupportedVersion
+block incompatibleVersionsAreRejectedInBothHandshakeDirections:
+  for version in [ProtocolVersion - 1'u16, ProtocolVersion + 1'u16]:
+    let versionResult = validateVersion(version)
+    doAssert not versionResult.isOk
+    doAssert versionResult.failure.kind == unsupportedVersion
+
+    var staleHello = helloMessage()
+    staleHello.version = version
+    let hostResult = ValidToken.authenticateHello(staleHello)
+    doAssert not hostResult.isOk
+    doAssert hostResult.failure.kind == unsupportedVersion
+
+    ## The Windows host receives framed JSON through HostInput.  `fromJson`
+    ## must reject an incompatible hello before authentication or native setup.
+    let decoded = staleHello.toJson.fromJson()
+    doAssert not decoded.isOk
+    doAssert decoded.failure.kind == unsupportedVersion
 
 block readyCapabilitiesAreVersionedAndFailClosed:
   let valid = nativeCapabilitiesPayload(["multipleWebViews", "webPermissionEvents"])
@@ -81,6 +94,12 @@ block readyCapabilitiesAreVersionedAndFailClosed:
   let unknown = parseNativeCapabilities("{\"capabilities\":[\"arbitraryHostFeature\"]}")
   doAssert not unknown.isOk
   doAssert unknown.failure.kind == invalidMessage
+
+  let missing = ProtocolMessage(version: ProtocolVersion, kind: ready,
+    sessionId: "0123456789abcdef0123456789abcdef")
+  let missingResult = missing.validateReady()
+  doAssert not missingResult.isOk
+  doAssert missingResult.failure.kind == invalidMessage
 
   let staleReady = ProtocolMessage(version: ProtocolVersion - 1'u16,
     kind: ready, sessionId: "0123456789abcdef0123456789abcdef",
