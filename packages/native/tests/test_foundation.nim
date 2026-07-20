@@ -33,6 +33,17 @@ block capabilitiesAreExplicit:
   doAssert app.supports(webPermissionEvents)
   doAssert not app.supports(multipleWebViews)
 
+block systemTrayIsExplicitlyUnsupportedOffWindows:
+  let app = newNativeApp()
+  let configured = app.configureSystemTray([
+    NativeMenuItem(id: 1, title: "Quit", enabled: true)
+  ], proc(itemId: uint32) = discard)
+  when defined(windows):
+    doAssert configured.isOk
+  else:
+    doAssert not configured.isOk
+    doAssert configured.failure.kind == unsupported
+
 block windowAndViewRemainSeparate:
   let app = newNativeApp()
   let window = app.newWindow("Foundation", 320, 200)

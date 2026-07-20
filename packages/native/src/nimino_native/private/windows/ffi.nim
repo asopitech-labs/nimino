@@ -11,6 +11,8 @@ type
   HWND* = pointer
   HInstance* = pointer
   HModule* = pointer
+  HIcon* = pointer
+  HMenu* = pointer
   WParam* = uint
   LParam* = int
   LResult* = int
@@ -31,6 +33,25 @@ type
     top*: int32
     right*: int32
     bottom*: int32
+
+  ## NOTIFYICONDATAW layout verified against the MinGW Win32 SDK header.
+  ## `version` is the uTimeout/uVersion union and must stay at this offset.
+  NotifyIconDataW* {.bycopy.} = object
+    cbSize*: uint32
+    window*: HWND
+    identifier*: uint32
+    flags*: uint32
+    callbackMessage*: uint32
+    icon*: HIcon
+    tip*: array[128, uint16]
+    state*: uint32
+    stateMask*: uint32
+    info*: array[256, uint16]
+    version*: uint32
+    infoTitle*: array[64, uint16]
+    infoFlags*: uint32
+    guidItem*: WinGuid
+    balloonIcon*: HIcon
 
   EventRegistrationToken* {.bycopy.} = object
     value*: int64
@@ -90,6 +111,12 @@ type
     versionInfo: ptr WideCString
   ): HResult {.stdcall.}
 
+when defined(windows) and defined(amd64):
+  static:
+    ## The matching C header assertion is fixed in Makefile's
+    ## verify-windows-tray-abi target.
+    doAssert sizeof(NotifyIconDataW) == 976
+
 const
   S_OK* = 0'i32
   E_NOINTERFACE* = -2147467262'i32
@@ -121,7 +148,27 @@ const
   WmNcCreate* = 0x0081'u32
   WmNcDestroy* = 0x0082'u32
   WmTimer* = 0x0113'u32
+  WmContextMenu* = 0x007B'u32
+  WmUser* = 0x0400'u32
+  WmApp* = 0x8000'u32
+  WmTrayCallback* = WmApp + 1'u32
+  NinSelect* = WmUser
+  NinKeySelect* = WmUser + 1'u32
   GwlpUserData* = -21'i32
+
+  NimAdd* = 0x00000000'u32
+  NimDelete* = 0x00000002'u32
+  NimSetFocus* = 0x00000003'u32
+  NimSetVersion* = 0x00000004'u32
+  NotifyIconVersion4* = 4'u32
+  NifMessage* = 0x00000001'u32
+  NifIcon* = 0x00000002'u32
+  NifTip* = 0x00000004'u32
+  MfString* = 0x00000000'u32
+  MfGrayed* = 0x00000001'u32
+  TpmRightButton* = 0x0002'u32
+  TpmReturnCmd* = 0x0100'u32
+  IdiApplication* = 32512'u16
 
   IidIUnknown* = WinGuid(
     data1: 0x00000000'u32, data2: 0x0000'u16, data3: 0x0000'u16,
@@ -217,6 +264,20 @@ proc updateWindow*(window: HWND): WinBool
   {.stdcall, importc: "UpdateWindow", dynlib: "user32.dll".}
 proc setForegroundWindow*(window: HWND): WinBool
   {.stdcall, importc: "SetForegroundWindow", dynlib: "user32.dll".}
+proc loadIconW*(instance: HInstance; iconName: WideCString): HIcon
+  {.stdcall, importc: "LoadIconW", dynlib: "user32.dll".}
+proc createPopupMenu*(): HMenu
+  {.stdcall, importc: "CreatePopupMenu", dynlib: "user32.dll".}
+proc appendMenuW*(menu: HMenu; flags: uint32; identifier: uint;
+                  text: WideCString): WinBool
+  {.stdcall, importc: "AppendMenuW", dynlib: "user32.dll".}
+proc trackPopupMenu*(menu: HMenu; flags: uint32; x, y: int32; reserved: uint32;
+                     window: HWND; reservedRectangle: ptr WinRect): uint32
+  {.stdcall, importc: "TrackPopupMenu", dynlib: "user32.dll".}
+proc destroyMenu*(menu: HMenu): WinBool
+  {.stdcall, importc: "DestroyMenu", dynlib: "user32.dll".}
+proc getCursorPos*(point: ptr WinPoint): WinBool
+  {.stdcall, importc: "GetCursorPos", dynlib: "user32.dll".}
 proc getClientRect*(window: HWND; rectangle: ptr WinRect): WinBool
   {.stdcall, importc: "GetClientRect", dynlib: "user32.dll".}
 proc getMessageW*(message: ptr WinMessage; window: HWND; minimum, maximum: uint32): int32
@@ -235,6 +296,12 @@ proc setTimer*(window: HWND; identifier: uint; intervalMs: uint32;
   {.stdcall, importc: "SetTimer", dynlib: "user32.dll".}
 proc killTimer*(window: HWND; identifier: uint): WinBool
   {.stdcall, importc: "KillTimer", dynlib: "user32.dll".}
+proc shellNotifyIconW*(message: uint32; data: ptr NotifyIconDataW): WinBool
+  {.stdcall, importc: "Shell_NotifyIconW", dynlib: "shell32.dll".}
+
+proc makeIntResourceW*(identifier: uint16): WideCString {.inline.} =
+  ## MAKEINTRESOURCEW without exposing a Win32 macro to public API users.
+  cast[WideCString](cast[pointer](cast[uint](identifier)))
 
 proc succeeded*(value: HResult): bool {.inline.} = value >= 0
 

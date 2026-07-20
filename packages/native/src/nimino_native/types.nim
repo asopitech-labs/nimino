@@ -21,6 +21,14 @@ type
                                      progress: float) {.closure.}
   NativeCloseRequestedHandler* = proc(): bool {.closure.}
   NativeClosedHandler* = proc() {.closure.}
+  NativeMenuHandler* = proc(itemId: uint32) {.closure.}
+
+  NativeMenuItem* = object
+    ## A command exposed in the native system-tray context menu.
+    ## ID 0 is reserved for a cancelled Win32 menu selection.
+    id*: uint32
+    title*: string
+    enabled*: bool
 
   NativeState* = enum
     pending
@@ -56,6 +64,11 @@ type
     idleTimerWindow: pointer
     idleTimerSource: uint32
     idleHandler: NativeIdleHandler
+    trayMenuItems: seq[NativeMenuItem]
+    trayMenuHandler: NativeMenuHandler
+    trayConfigured: bool
+    trayVisible: bool
+    trayWindow: pointer
     activateHandler: culong
     quitRequested: bool
     hasRunError: bool
@@ -245,6 +258,17 @@ proc dispatchClosed(window: NativeWindow) =
   try: window.closedHandler()
   except CatchableError: discard
 
+when defined(windows):
+  proc dispatchTrayMenu(app: NativeApp; itemId: uint32) =
+    ## Win32 invokes this on the UI thread.  User code must not unwind through
+    ## the window procedure.
+    if app.isNil or app.trayMenuHandler.isNil:
+      return
+    try:
+      app.trayMenuHandler(itemId)
+    except CatchableError:
+      discard
+
 proc dispatchNavigationCompleted(view: NativeWebView; url: string; succeeded: bool) =
   if view.isNil or view.state in {closing, closed} or
       view.navigationCompletedHandler.isNil:
@@ -298,9 +322,47 @@ proc newNativeApp*(): NativeApp =
   new(result)
   result.state = created
   result.capabilities = {webPermissionEvents}
+  when defined(windows):
+    result.capabilities.incl(nativeMenu)
+    result.capabilities.incl(systemTray)
 
 proc supports*(app: NativeApp; capability: Capability): bool {.inline.} =
   app.capabilities.supports(capability)
+
+proc configureSystemTray*(app: NativeApp; items: openArray[NativeMenuItem];
+                          handler: NativeMenuHandler): NativeResult =
+  ## Configures the initial Windows system-tray context menu.  It is deliberately
+  ## limited to the created state so the tray's native owner can be established
+  ## and released on the UI thread by `run`.
+  if app.isNil or app.state != created:
+    return failure(nativeError(invalidState, "app.configureSystemTray"))
+  if not app.supports(systemTray):
+    return failure(nativeError(unsupported, "app.configureSystemTray"))
+  if app.trayConfigured:
+    return failure(nativeError(invalidState, "app.configureSystemTray",
+      detail = "the system tray can only be configured once"))
+  if handler.isNil:
+    return failure(nativeError(invalidArgument, "app.configureSystemTray",
+      detail = "a menu handler is required"))
+  if items.len == 0:
+    return failure(nativeError(invalidArgument, "app.configureSystemTray",
+      detail = "at least one menu item is required"))
+
+  var copied: seq[NativeMenuItem]
+  for item in items:
+    if item.id == 0 or item.title.len == 0:
+      return failure(nativeError(invalidArgument, "app.configureSystemTray",
+        detail = "menu item IDs must be non-zero and titles must not be empty"))
+    for existing in copied:
+      if existing.id == item.id:
+        return failure(nativeError(invalidArgument, "app.configureSystemTray",
+          detail = "menu item IDs must be unique"))
+    copied.add(item)
+
+  app.trayMenuItems = copied
+  app.trayMenuHandler = handler
+  app.trayConfigured = true
+  success()
 
 proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
                 profilePath = ""):

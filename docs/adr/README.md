@@ -10,3 +10,4 @@ ADRは設計判断と、その判断を覆す条件を記録します。M0では
 6. [ADR-0006: RPC registry tick](0006-rpc-registry-tick.md)
 7. [ADR-0007: Windows native User Data Folder](0007-windows-native-user-data-folder.md)
 8. [ADR-0008: URL RPC bridge at document start](0008-document-start-rpc-bridge.md)
+9. [ADR-0012: Windows system tray context menu](0012-windows-system-tray-context-menu.md)

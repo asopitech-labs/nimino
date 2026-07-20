@@ -127,6 +127,7 @@ var downloadOperationVTable: DownloadOperationVTable
 
 proc windowsDisposeWindow(window: NativeWindow)
 proc windowsFail(app: NativeApp; error: NativeError)
+proc windowsRemoveTray(app: NativeApp)
 proc windowsResize(window: NativeWindow): NativeResult
 proc windowsLoadUrl(view: NativeWebView): NativeResult
 proc windowsFinishWebViewInitialization(view: NativeWebView): NativeResult
@@ -651,6 +652,9 @@ proc windowsDisposeWindow(window: NativeWindow) =
 
   window.state = closing
   window.dispatchClosed()
+  if window.app.trayWindow == window.platformWindow:
+    ## Shell_NotifyIcon requires the owner HWND while deleting the icon.
+    window.app.windowsRemoveTray()
   if window.app.idleTimerWindow == window.platformWindow:
     window.app.windowsStopIdleTimer()
   for view in window.views:
@@ -792,6 +796,96 @@ proc windowsSetPosition(window: NativeWindow; x, y: int): NativeResult =
       SwpNoSize or SwpNoZOrder) == 0:
     return failure(windowsError("window.setPosition", getLastError()))
   success()
+
+proc windowsCopyTrayTip(destination: var array[128, uint16]; value: string) =
+  let wide = newWideCString(value)
+  for index in 0 ..< destination.high:
+    let character = uint16(wide[index])
+    destination[index] = character
+    if character == 0'u16:
+      return
+  destination[destination.high] = 0'u16
+
+proc windowsRemoveTray(app: NativeApp) =
+  if app.isNil or not app.trayVisible:
+    return
+  if app.trayWindow != nil:
+    var notification = NotifyIconDataW(
+      cbSize: uint32(sizeof(NotifyIconDataW)),
+      window: app.trayWindow,
+      identifier: 1
+    )
+    discard shellNotifyIconW(NimDelete, addr notification)
+  app.trayVisible = false
+  app.trayWindow = nil
+
+proc windowsInstallTray(app: NativeApp; owner: NativeWindow): NativeResult =
+  if app.isNil or owner.isNil or owner.platformWindow.isNil:
+    return failure(nativeError(invalidState, "app.configureSystemTray"))
+  if app.trayVisible:
+    return success()
+
+  let icon = loadIconW(nil, makeIntResourceW(IdiApplication))
+  if icon.isNil:
+    return failure(windowsError("app.configureSystemTray", getLastError()))
+
+  var notification = NotifyIconDataW(
+    cbSize: uint32(sizeof(NotifyIconDataW)),
+    window: owner.platformWindow,
+    identifier: 1,
+    flags: NifMessage or NifIcon or NifTip,
+    callbackMessage: WmTrayCallback,
+    icon: icon
+  )
+  windowsCopyTrayTip(notification.tip, owner.title)
+  if shellNotifyIconW(NimAdd, addr notification) == 0:
+    return failure(windowsError("app.configureSystemTray", getLastError()))
+
+  notification.version = NotifyIconVersion4
+  if shellNotifyIconW(NimSetVersion, addr notification) == 0:
+    discard shellNotifyIconW(NimDelete, addr notification)
+    return failure(windowsError("app.configureSystemTray", getLastError()))
+
+  app.trayWindow = owner.platformWindow
+  app.trayVisible = true
+  success()
+
+proc windowsShowTrayMenu(app: NativeApp; owner: NativeWindow) =
+  if app.isNil or owner.isNil or owner.platformWindow.isNil or
+      not app.trayVisible or app.trayMenuItems.len == 0:
+    return
+
+  let menu = createPopupMenu()
+  if menu.isNil:
+    return
+  defer:
+    discard destroyMenu(menu)
+
+  for item in app.trayMenuItems:
+    let title = newWideCString(item.title)
+    let flags = if item.enabled: MfString else: MfString or MfGrayed
+    if appendMenuW(menu, flags, uint(item.id), title) == 0:
+      return
+
+  var point: WinPoint
+  if getCursorPos(addr point) == 0:
+    return
+  discard setForegroundWindow(owner.platformWindow)
+  let selected = trackPopupMenu(menu, TpmRightButton or TpmReturnCmd,
+    point.x, point.y, 0'u32, owner.platformWindow, nil)
+  if selected != 0:
+    app.dispatchTrayMenu(selected)
+
+  ## Required by Shell_NotifyIcon after a context menu is dismissed so keyboard
+  ## focus returns to the notification area.
+  if not app.trayVisible or app.trayWindow.isNil:
+    return
+  var notification = NotifyIconDataW(
+    cbSize: uint32(sizeof(NotifyIconDataW)),
+    window: app.trayWindow,
+    identifier: 1
+  )
+  discard shellNotifyIconW(NimSetFocus, addr notification)
 
 proc windowsLoadUrl(view: NativeWebView): NativeResult =
   if view.platformView == nil:
@@ -1055,6 +1149,12 @@ proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
       if window.app.idleHandler != nil:
         window.app.idleHandler()
       return 0
+    of WmTrayCallback:
+      let notification = uint32(cast[uint](lParam) and 0xffff'u)
+      if notification == WmContextMenu or notification == NinSelect or
+          notification == NinKeySelect:
+        window.app.windowsShowTrayMenu(window)
+      return 0
     of WmClose:
       if not window.dispatchCloseRequested():
         return 0
@@ -1299,6 +1399,14 @@ proc windowsRun(app: NativeApp): NativeResult =
         app.windowsFail(created.failure)
         break
 
+  if not app.quitRequested and app.trayMenuItems.len > 0:
+    for window in app.windows:
+      if window.platformWindow != nil:
+        let installed = app.windowsInstallTray(window)
+        if not installed.isOk:
+          app.windowsFail(installed.failure)
+        break
+
   if app.quitRequested:
     app.windowsRequestQuit()
 
@@ -1329,6 +1437,9 @@ proc windowsRun(app: NativeApp): NativeResult =
         discard destroyWindow(window.platformWindow)
       else:
         window.windowsDisposeWindow()
+  app.windowsRemoveTray()
+  app.trayMenuItems.setLen(0)
+  app.trayMenuHandler = nil
   app.windowsStopIdleTimer()
   app.windowsUnloadLoader()
   app.windowsUnregisterWindowClass()
