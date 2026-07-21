@@ -7,6 +7,21 @@ param(
 ## Keep this value in sync with packages/wsl/src/nimino_wsl/protocol/versioning.nim.
 $script:protocolVersion = 2
 
+function Assert-WebView2Runtime {
+  $roots = @(
+    (Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application"),
+    (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application")
+  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+  $versions = foreach ($root in $roots) {
+    Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' }
+  }
+  if (-not $versions) {
+    throw "WebView2 Evergreen Runtime is not installed. Run: make setup-windows-webview2"
+  }
+}
+Assert-WebView2Runtime
+
 $tokenBytes = New-Object byte[] 32
 [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($tokenBytes)
 $token = -join ($tokenBytes | ForEach-Object { $_.ToString("x2") })
