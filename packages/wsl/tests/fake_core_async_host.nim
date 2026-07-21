@@ -88,7 +88,11 @@ while true:
         "nimino": "rpc", "kind": "request", "id": "timeout-one",
         "method": "never", "params": newJNull(), "timeoutMs": 40
       })
-      for wire in [asyncRequest, completed, never]:
+      let delayedClose = $(%*{
+        "nimino": "rpc", "kind": "request", "id": "close-one",
+        "method": "close.delayed", "params": newJNull(), "timeoutMs": 1_000
+      })
+      for wire in [asyncRequest, completed, never, delayedClose]:
         let messagePayload = $(%*{"webViewId": "1", "message": wire})
         doAssert output.writeMessageTo(event("native.webview.message", messagePayload,
           nextEventId)).isOk
@@ -110,7 +114,11 @@ while true:
           "nimino": "rpc", "kind": "request", "id": "timeout-one",
           "method": "never", "params": newJNull(), "timeoutMs": 40
         })
-        for wire in [asyncRequest, completed, never]:
+        let delayedClose = $(%*{
+          "nimino": "rpc", "kind": "request", "id": "close-one",
+          "method": "close.delayed", "params": newJNull(), "timeoutMs": 1_000
+        })
+        for wire in [asyncRequest, completed, never, delayedClose]:
           let payload = $(%*{"webViewId": "1", "message": wire})
           doAssert output.writeMessageTo(event("native.webview.message", payload, nextEventId)).isOk
           inc nextEventId
@@ -118,8 +126,18 @@ while true:
         asyncReplySeen = true
       elif script.contains("timeout-one"):
         doAssert asyncReplySeen
+        ## Model the Windows host's native close callback while a registered
+        ## Nim handler still owns a delayed Future. The next `app.closed`
+        ## event gives the client a deterministic shutdown without WebView2.
+        doAssert output.writeMessageTo(event("native.window.closed",
+          "{\"windowId\":\"1\"}", nextEventId)).isOk
+        inc nextEventId
         doAssert output.writeMessageTo(event("app.closed", "{}", nextEventId)).isOk
         inc nextEventId
+      elif script.contains("close-one"):
+        ## A closed Window must not evaluate a cancellation or late-success
+        ## response into a WebView that the host has already destroyed.
+        quit(QuitFailure)
     of "native.webview.clearBrowsingData":
       let payload = parseJson(message.payload)
       doAssert payload["webViewId"].getStr() == "1"

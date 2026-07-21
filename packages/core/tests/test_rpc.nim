@@ -93,13 +93,21 @@ block timeoutAndCancelSuppressLateReplies:
 
 block closeCancelsPendingRequests:
   var messages: seq[string]
+  var pending: Future[RpcResult]
   let registry = newRpcRegistry(proc(message: string) = messages.add(message))
   doAssert registry.register("slow", proc(params: JsonNode): Future[RpcResult] =
-    newFuture[RpcResult]("nimino.rpc.test.close"))
+    pending = newFuture[RpcResult]("nimino.rpc.test.close")
+    pending)
   doAssert registry.handleMessage(request("close-one", "slow"), 3_000)
   registry.close()
   doAssert messages.len == 1
   doAssert messages.response()["error"]["code"].getStr() == "cancelled"
+  ## Closing drops the registry's ownership before a handler can complete. A
+  ## delayed Future therefore must not emit a second response into a closed
+  ## Window/WebView callback path.
+  pending.complete(rpcSuccess(%"late completion"))
+  registry.tick(3_001)
+  doAssert messages.len == 1
 
 block notificationsAndMalformedMessagesDoNotExposeHandlers:
   var notifications = 0

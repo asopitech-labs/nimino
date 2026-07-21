@@ -13,6 +13,9 @@ var unsupportedProfileDataClear: Future[CoreResult]
 var asyncRequested = false
 var asyncCompleted = false
 var neverRequested = false
+var closeRequested = false
+var closedHandlerRan = false
+var closingAsync: Future[RpcResult]
 
 proc startAsync(params: JsonNode): Future[RpcResult] =
   asyncRequested = true
@@ -30,6 +33,11 @@ proc neverCompletes(params: JsonNode): Future[RpcResult] =
   neverRequested = true
   newFuture[RpcResult]("nimino.wsl.timeout-adapter")
 
+proc completeAfterWindowClosed(params: JsonNode): Future[RpcResult] =
+  closeRequested = true
+  closingAsync = newFuture[RpcResult]("nimino.wsl.close-adapter")
+  closingAsync
+
 let created = newApp(id = "tech.asopi.wsl-core-async-test", name = "WSL core async test")
 doAssert created.isOk
 let app = created.value
@@ -40,6 +48,20 @@ let window = createdWindow.value
 doAssert window.rpc.register("async.request", startAsync)
 doAssert window.rpc.registerSync("async.complete", completeAsync)
 doAssert window.rpc.register("never", neverCompletes)
+doAssert window.rpc.register("close.delayed", completeAfterWindowClosed)
+doAssert window.onClosed(proc() =
+  ## The fake Windows host emits `native.window.closed` while this request is
+  ## still pending. `processWslEvent` must close the registry before invoking
+  ## this callback, so a late handler completion cannot reply to WebView.
+  closedHandlerRan = true
+  doAssert closingAsync != nil
+  doAssert not closingAsync.finished
+  doAssert not window.rpc.handleMessage("""{
+    "nimino":"rpc", "kind":"request", "id":"after-close",
+    "method":"close.delayed", "params":null
+  }""")
+  closingAsync.complete(rpcSuccess(%"late completion"))
+).isOk
 doAssert window.loadHtml("<main>WSL async adapter test</main>").isOk
 doAssert app.onReady(proc() =
   profileDataClear = window.clearWebViewProfileData({webViewCookies, webViewCache})
@@ -52,6 +74,11 @@ doAssert app.run().isOk
 doAssert asyncRequested
 doAssert asyncCompleted
 doAssert neverRequested
+doAssert closeRequested
+doAssert closedHandlerRan
+doAssert closingAsync != nil
+doAssert closingAsync.finished
+doAssert closingAsync.read().isOk
 doAssert profileDataClear != nil
 doAssert profileDataClear.finished
 doAssert profileDataClear.read().isOk
