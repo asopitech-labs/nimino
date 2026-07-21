@@ -146,7 +146,20 @@ type
     references: Atomic[int]
     view: pointer
 
+  ToastActivatedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
+
+  ToastActivatedHandler = object
+    vtable: ptr ToastActivatedVTable
+    references: Atomic[int]
+    app: pointer
+    notificationId: cstring
+
 var downloadOperationVTable: DownloadOperationVTable
+var toastActivatedVTable: ToastActivatedVTable
 
 proc windowsDisposeWindow(window: NativeWindow)
 proc windowsRemoveNotificationIcon(app: NativeApp)
@@ -1088,15 +1101,6 @@ proc windowsRemoveTray(app: NativeApp) =
   app.trayVisible = false
   app.trayWindow = nil
 
-proc windowsCopyNotificationText(destination: var openArray[uint16]; value: string) =
-  let wide = newWideCString(value)
-  for index in 0 ..< destination.len - 1:
-    let character = uint16(ord(wide[index]))
-    destination[index] = character
-    if character == 0'u16:
-      return
-  destination[destination.len - 1] = 0'u16
-
 proc windowsRemoveNotificationIcon(app: NativeApp) =
   if app.isNil or not app.notificationVisible:
     return
@@ -1110,44 +1114,183 @@ proc windowsRemoveNotificationIcon(app: NativeApp) =
   app.notificationWindow = nil
   app.notificationId = ""
 
+proc toastActivatedAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr ToastActivatedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc toastActivatedRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr ToastActivatedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    if handler.notificationId != nil:
+      deallocShared(cast[pointer](handler.notificationId))
+    if handler.app != nil:
+      GC_unref(cast[NativeApp](handler.app))
+    dealloc(handler)
+  uint32(remaining)
+
+proc toastActivatedQueryInterface(self: pointer; iid: ptr WinGuid;
+                                  outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidToastActivatedEventHandler,
+    toastActivatedAddRef)
+
+proc toastActivatedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  let handler = cast[ptr ToastActivatedHandler](self)
+  let app = cast[NativeApp](handler.app)
+  if not app.isNil and app.notificationActivatedHandler != nil and
+      handler.notificationId != nil:
+    try:
+      app.notificationActivatedHandler($handler.notificationId)
+    except CatchableError:
+      discard
+  S_OK
+
+proc windowsWideLength(value: WideCString): uint32 =
+  if value.isNil:
+    return 0
+  var length = 0
+  while ord(value[length]) != 0:
+    inc length
+  uint32(length)
+
+proc windowsCreateHString(value: string; outValue: ptr HString): HResult =
+  let wide = newWideCString(value)
+  windowsCreateString(wide, windowsWideLength(wide), outValue)
+
+proc windowsXmlEscape(value: string): string =
+  result = value.replace("&", "&amp;")
+  result = result.replace("<", "&lt;")
+  result = result.replace(">", "&gt;")
+  result = result.replace("\"", "&quot;")
+  result = result.replace("'", "&apos;")
+
 proc windowsSendNativeNotification*(app: NativeApp;
                                     notification: NativeNotification): NativeResult =
   if app.isNil or app.windows.len == 0 or app.windows[0].platformWindow.isNil:
     return failure(nativeError(invalidState, "app.sendNativeNotification",
       detail = "a native owner window is required"))
-  let owner = app.windows[0].platformWindow
-  if not app.notificationVisible:
-    let icon = loadIconW(nil, makeIntResourceW(IdiApplication))
-    if icon.isNil:
-      return failure(windowsError("app.sendNativeNotification", getLastError()))
-    var added = NotifyIconDataW(
-      cbSize: uint32(sizeof(NotifyIconDataW)),
-      window: owner,
-      identifier: 2,
-      flags: NifMessage or NifIcon,
-      callbackMessage: WmTrayCallback,
-      icon: icon
-    )
-    if shellNotifyIconW(NimAdd, addr added) == 0:
-      return failure(windowsError("app.sendNativeNotification", getLastError()))
-    added.version = NotifyIconVersion4
-    if shellNotifyIconW(NimSetVersion, addr added) == 0:
-      discard shellNotifyIconW(NimDelete, addr added)
-      return failure(windowsError("app.sendNativeNotification", getLastError()))
-    app.notificationVisible = true
-    app.notificationWindow = owner
-  var data = NotifyIconDataW(
-    cbSize: uint32(sizeof(NotifyIconDataW)),
-    window: owner,
-    identifier: 2,
-    flags: NifInfo,
-    infoFlags: NiifInfo
-  )
-  windowsCopyNotificationText(data.info, notification.body)
-  windowsCopyNotificationText(data.infoTitle, notification.title)
-  if shellNotifyIconW(NimModify, addr data) == 0:
-    return failure(windowsError("app.sendNativeNotification", getLastError()))
+  ## Windows Runtime Toast notifications use the application identity rather
+  ## than the legacy Shell_NotifyIcon balloon API.  The packager must register
+  ## this appId as an AppUserModelId; when it has not, the HRESULT is returned
+  ## to the caller instead of silently downgrading to a different UI surface.
+  if app.appId.len == 0:
+    return failure(nativeError(invalidArgument, "app.sendNativeNotification",
+      detail = "a non-empty AppUserModelId is required for Windows Toast"))
+
+  var managerClass, xmlClass, toastClass: HString
+  var appId, xml: HString
+  let managerStatus = windowsCreateHString(
+    "Windows.UI.Notifications.ToastNotificationManager", addr managerClass)
+  if not succeeded(managerStatus):
+    return failure(windowsError("app.sendNativeNotification", cast[uint32](managerStatus)))
+  defer:
+    if not managerClass.isNil: discard windowsDeleteString(managerClass)
+  let xmlStatus = windowsCreateHString("Windows.Data.Xml.Dom.XmlDocument", addr xmlClass)
+  if not succeeded(xmlStatus):
+    return failure(windowsError("app.sendNativeNotification", cast[uint32](xmlStatus)))
+  defer:
+    if not xmlClass.isNil: discard windowsDeleteString(xmlClass)
+  let toastStatus = windowsCreateHString(
+    "Windows.UI.Notifications.ToastNotification", addr toastClass)
+  if not succeeded(toastStatus):
+    return failure(windowsError("app.sendNativeNotification", cast[uint32](toastStatus)))
+  defer:
+    if not toastClass.isNil: discard windowsDeleteString(toastClass)
+  let appIdStatus = windowsCreateHString(app.appId, addr appId)
+  if not succeeded(appIdStatus):
+    return failure(windowsError("app.sendNativeNotification", cast[uint32](appIdStatus)))
+  defer:
+    if not appId.isNil: discard windowsDeleteString(appId)
+
+  let launch = "nimino:notification:" & windowsXmlEscape(notification.id)
+  let xmlMarkup = "<toast launch=\"" & launch & "\"><visual><binding template=\"ToastGeneric\"><text>" &
+    windowsXmlEscape(notification.title) & "</text><text>" &
+    windowsXmlEscape(notification.body) & "</text></binding></visual></toast>"
+  let markupStatus = windowsCreateHString(xmlMarkup, addr xml)
+  if not succeeded(markupStatus):
+    return failure(windowsError("app.sendNativeNotification", cast[uint32](markupStatus)))
+  defer:
+    if not xml.isNil: discard windowsDeleteString(xml)
+
+  var manager, notifier, xmlInstance, documentIo, document, factory, toast: pointer
+  var status = roGetActivationFactory(managerClass,
+    addr IidToastNotificationManagerStatics, addr manager)
+  if not succeeded(status):
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      platformCode = status, detail = "Windows Toast manager activation failed; verify the AppUserModelId registration"))
+  defer:
+    if not manager.isNil: discard winrtRelease(manager)
+
+  status = winrtToastManagerCreateNotifierWithId(manager, appId, addr notifier)
+  if not succeeded(status):
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      platformCode = status, detail = "Windows Toast requires an installed AppUserModelId/Start-menu shortcut"))
+  defer:
+    if not notifier.isNil: discard winrtRelease(notifier)
+
+  status = roActivateInstance(xmlClass, addr xmlInstance)
+  if not succeeded(status):
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      platformCode = status, detail = "Windows XML document activation failed"))
+  defer:
+    if not xmlInstance.isNil: discard winrtRelease(xmlInstance)
+  status = winrtQueryInterface(xmlInstance, addr IidXmlDocumentIo, addr documentIo)
+  if not succeeded(status):
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      platformCode = status, detail = "Windows XML document I/O interface is unavailable"))
+  defer:
+    if not documentIo.isNil: discard winrtRelease(documentIo)
+  status = winrtXmlDocumentLoadXml(documentIo, xml)
+  if not succeeded(status):
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      platformCode = status, detail = "Windows Toast XML is invalid"))
+  status = winrtQueryInterface(xmlInstance, addr IidXmlDocument, addr document)
+  if not succeeded(status):
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      platformCode = status, detail = "Windows XML document interface is unavailable"))
+  defer:
+    if not document.isNil: discard winrtRelease(document)
+
+  status = roGetActivationFactory(toastClass, addr IidToastNotificationFactory, addr factory)
+  if not succeeded(status):
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      platformCode = status, detail = "Windows Toast factory activation failed"))
+  defer:
+    if not factory.isNil: discard winrtRelease(factory)
+  status = winrtToastFactoryCreateNotification(factory, document, addr toast)
+  if not succeeded(status):
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      platformCode = status, detail = "Windows Toast object creation failed"))
+  defer:
+    if not toast.isNil: discard winrtRelease(toast)
+
   app.notificationId = notification.id
+  if not app.notificationActivatedHandler.isNil:
+    toastActivatedVTable = ToastActivatedVTable(
+      queryInterface: toastActivatedQueryInterface,
+      addRef: toastActivatedAddRef,
+      release: toastActivatedRelease,
+      invoke: toastActivatedInvoke)
+    let handler = cast[ptr ToastActivatedHandler](alloc0(sizeof(ToastActivatedHandler)))
+    handler.vtable = addr toastActivatedVTable
+    handler.references.store(1, moRelaxed)
+    handler.app = cast[pointer](app)
+    GC_ref(app)
+    handler.notificationId = cast[cstring](allocShared0(notification.id.len + 1))
+    copyMem(handler.notificationId, notification.id.cstring, notification.id.len)
+    var token: EventRegistrationToken
+    status = winrtToastAddActivated(toast, handler, addr token)
+    if not succeeded(status):
+      discard toastActivatedRelease(handler)
+      return failure(nativeError(osError, "app.sendNativeNotification",
+        platformCode = status, detail = "Windows Toast activation handler registration failed"))
+    ## The Toast object now owns the handler reference.
+    discard toastActivatedRelease(handler)
+
+  status = winrtToastNotifierShow(notifier, toast)
+  if not succeeded(status):
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      platformCode = status, detail = "Windows Toast display failed; verify notification permissions and AppUserModelId"))
   success()
 
 proc windowsInstallTray(app: NativeApp; owner: NativeWindow): NativeResult =

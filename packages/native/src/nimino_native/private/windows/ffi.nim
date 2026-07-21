@@ -12,6 +12,9 @@ type
   HInstance* = pointer
   HModule* = pointer
   HIcon* = pointer
+  ## Opaque Windows Runtime string handle.  HSTRING ownership is explicit and
+  ## must not be left to Nim's GC (WindowsCreateString/WindowsDeleteString).
+  HString* = pointer
   HMenu* = pointer
   WParam* = uint
   LParam* = int
@@ -287,7 +290,28 @@ const
   )
   IidWebResourceRequestedEventHandler* = WinGuid(
     data1: 0xab00b74c'u32, data2: 0x15f1'u16, data3: 0x4646'u16,
-    data4: [0x80'u8, 0xe8'u8, 0xe7'u8, 0x63'u8, 0x41'u8, 0xd2'u8, 0x5d'u8, 0x71'u8]
+      data4: [0x80'u8, 0xe8'u8, 0xe7'u8, 0x63'u8, 0x41'u8, 0xd2'u8, 0x5d'u8, 0x71'u8]
+  )
+  IidToastNotificationManagerStatics* = WinGuid(
+    data1: 0x50ac103f'u32, data2: 0xd235'u16, data3: 0x4598'u16,
+    data4: [0xbb'u8, 0xef'u8, 0x98'u8, 0xfe'u8, 0x4d'u8, 0x1a'u8, 0x3a'u8, 0xd4'u8]
+  )
+  IidToastNotificationFactory* = WinGuid(
+    data1: 0x04124b20'u32, data2: 0x82c6'u16, data3: 0x4229'u16,
+    data4: [0xb1'u8, 0x09'u8, 0xfd'u8, 0x9e'u8, 0xd4'u8, 0x66'u8, 0x2b'u8, 0x53'u8]
+  )
+  IidXmlDocument* = WinGuid(
+    data1: 0xf7f3a506'u32, data2: 0x1e87'u16, data3: 0x42d6'u16,
+    data4: [0xbc'u8, 0xfb'u8, 0xb8'u8, 0xc8'u8, 0x09'u8, 0xfa'u8, 0x54'u8, 0x94'u8]
+  )
+  IidXmlDocumentIo* = WinGuid(
+    data1: 0x6cd0e74e'u32, data2: 0xee65'u16, data3: 0x4489'u16,
+    data4: [0x9e'u8, 0xbf'u8, 0xca'u8, 0x43'u8, 0xe8'u8, 0x7b'u8, 0xa6'u8, 0x37'u8]
+  )
+  ## ABI IID for TypedEventHandler<ToastNotification, IInspectable>.
+  IidToastActivatedEventHandler* = WinGuid(
+    data1: 0xab54de2d'u32, data2: 0x97d9'u16, data3: 0x5528'u16,
+    data4: [0xb6'u8, 0xad'u8, 0x10'u8, 0x5a'u8, 0xfe'u8, 0x15'u8, 0x65'u8, 0x30'u8]
   )
 
   ## Vtable indices include the three IUnknown entries.  Keeping them named
@@ -309,6 +333,68 @@ proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
 proc coUninitialize*() {.stdcall, importc: "CoUninitialize", dynlib: "ole32.dll".}
 proc coTaskMemFree*(memory: pointer)
   {.stdcall, importc: "CoTaskMemFree", dynlib: "ole32.dll".}
+proc windowsCreateString*(source: WideCString; length: uint32; value: ptr HString): HResult
+  {.stdcall, importc: "WindowsCreateString", dynlib: "combase.dll".}
+proc windowsDeleteString*(value: HString): HResult
+  {.stdcall, importc: "WindowsDeleteString", dynlib: "combase.dll".}
+proc roGetActivationFactory*(classId: HString; iid: ptr WinGuid; factory: ptr pointer): HResult
+  {.stdcall, importc: "RoGetActivationFactory", dynlib: "combase.dll".}
+proc roActivateInstance*(classId: HString; instance: ptr pointer): HResult
+  {.stdcall, importc: "RoActivateInstance", dynlib: "combase.dll".}
+
+proc winrtQueryInterface*(instance: pointer; iid: ptr WinGuid;
+                          outInstance: ptr pointer): HResult {.inline.} =
+  if instance.isNil or iid.isNil or outInstance.isNil:
+    return E_POINTER
+  let vtable = cast[ptr ComInterface](instance).vtable
+  let query = cast[proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}](vtable[0])
+  query(instance, iid, outInstance)
+
+proc winrtRelease*(instance: pointer): uint32 {.inline.} =
+  if instance.isNil:
+    return 0
+  let vtable = cast[ptr ComInterface](instance).vtable
+  let release = cast[proc(self: pointer): uint32 {.stdcall.}](vtable[2])
+  release(instance)
+
+proc winrtXmlDocumentLoadXml*(documentIo: pointer; xml: HString): HResult {.inline.} =
+  if documentIo.isNil:
+    return E_POINTER
+  let vtable = cast[ptr ComInterface](documentIo).vtable
+  let loadXml = cast[proc(self: pointer; value: HString): HResult {.stdcall.}](vtable[6])
+  loadXml(documentIo, xml)
+
+proc winrtToastManagerCreateNotifierWithId*(manager: pointer; appId: HString;
+                                            notifier: ptr pointer): HResult {.inline.} =
+  if manager.isNil or notifier.isNil:
+    return E_POINTER
+  let vtable = cast[ptr ComInterface](manager).vtable
+  let create = cast[proc(self: pointer; id: HString; outInstance: ptr pointer): HResult {.stdcall.}](vtable[7])
+  create(manager, appId, notifier)
+
+proc winrtToastFactoryCreateNotification*(factory, document: pointer;
+                                           toast: ptr pointer): HResult {.inline.} =
+  if factory.isNil or document.isNil or toast.isNil:
+    return E_POINTER
+  let vtable = cast[ptr ComInterface](factory).vtable
+  let create = cast[proc(self: pointer; content: pointer; outInstance: ptr pointer): HResult {.stdcall.}](vtable[6])
+  create(factory, document, toast)
+
+proc winrtToastNotifierShow*(notifier, toast: pointer): HResult {.inline.} =
+  if notifier.isNil or toast.isNil:
+    return E_POINTER
+  let vtable = cast[ptr ComInterface](notifier).vtable
+  let show = cast[proc(self: pointer; notification: pointer): HResult {.stdcall.}](vtable[6])
+  show(notifier, toast)
+
+proc winrtToastAddActivated*(toast, handler: pointer;
+                             token: ptr EventRegistrationToken): HResult {.inline.} =
+  if toast.isNil or handler.isNil or token.isNil:
+    return E_POINTER
+  let vtable = cast[ptr ComInterface](toast).vtable
+  let add = cast[proc(self, eventHandler: pointer;
+                      token: ptr EventRegistrationToken): HResult {.stdcall.}](vtable[11])
+  add(toast, handler, token)
 proc shCreateMemStream*(data: ptr uint8; length: uint32): pointer
   {.stdcall, importc: "SHCreateMemStream", dynlib: "shlwapi.dll".}
 
