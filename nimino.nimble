@@ -48,6 +48,13 @@ task testPackManifest, "Run nimino-pack manifest tests":
 task buildPackCli, "Build the nimino-pack validation CLI":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"
 
+task buildNiminoHost, "Build the generic native Nimino host":
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-host-nimcache --out:/tmp/nimino-host --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
+
+task buildNiminoHostWindows, "Cross-compile the generic Windows Nimino host":
+  exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-host-windows-nimcache --out:/tmp/nimino-host.exe --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
+  exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-host.exe | grep -q 'file format pei-x86-64'"
+
 task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "bash tools/ci/test_pack_cli.sh /tmp/nimino"
 

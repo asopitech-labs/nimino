@@ -1,0 +1,104 @@
+name: Nimino Pack Online Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Website URL to wrap"
+        required: true
+        type: string
+      name:
+        description: "Application display name"
+        required: true
+        type: string
+      id:
+        description: "Stable application ID"
+        required: true
+        type: string
+      target:
+        description: "Package target"
+        required: true
+        type: choice
+        options:
+          - linux-deb
+          - linux-rpm
+          - windows-nsis
+      icon:
+        description: "Optional local icon path in the repository"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ inputs.target }}
+    runs-on: ubuntu-latest
+    env:
+      NIMINO_URL: ${{ inputs.url }}
+      NIMINO_NAME: ${{ inputs.name }}
+      NIMINO_ID: ${{ inputs.id }}
+      NIMINO_TARGET: ${{ inputs.target }}
+      NIMINO_ICON: ${{ inputs.icon }}
+    steps:
+      - name: Check out Nimino
+        uses: actions/checkout@v4
+
+      - name: Build pinned Docker toolchain
+        run: docker compose build nimino-dev
+
+      - name: Build and package
+        run: |
+          set -eu
+          docker compose run --rm nimino-dev bash -c '
+            set -eu
+            nimble buildPackCli
+            case "$NIMINO_TARGET" in
+              linux-deb|linux-rpm)
+                nimble buildNiminoHost
+                host=/tmp/nimino-host
+                ;;
+              windows-nsis)
+                nimble buildNiminoHostWindows
+                host=/tmp/nimino-host.exe
+                ;;
+              *)
+                echo "unsupported online build target: $NIMINO_TARGET" >&2
+                exit 2
+                ;;
+            esac
+            rm -rf /workspace/.tmp/online-bundle /workspace/.tmp/online-out
+            mkdir -p /workspace/.tmp/online-bundle /workspace/.tmp/online-out
+            icon_args=()
+            if [ -n "$NIMINO_ICON" ]; then icon_args=(--icon "$NIMINO_ICON"); fi
+            /tmp/nimino pack "$NIMINO_URL" --name "$NIMINO_NAME" --id "$NIMINO_ID" \
+              --out /workspace/.tmp/online-bundle --host "$host" "${icon_args[@]}"
+            case "$NIMINO_TARGET" in
+              linux-deb)
+                /tmp/nimino package-linux /workspace/.tmp/online-bundle --format deb \
+                  --out /workspace/.tmp/online-out --arch amd64 \
+                  --maintainer "Nimino Online Build <noreply@nimino.invalid>"
+                ;;
+              linux-rpm)
+                /tmp/nimino package-linux /workspace/.tmp/online-bundle --format rpm \
+                  --out /workspace/.tmp/online-out --arch amd64 --license MIT
+                ;;
+              windows-nsis)
+                /tmp/nimino package-windows /workspace/.tmp/online-bundle --format nsis \
+                  --out /workspace/.tmp/online-out
+                ;;
+            esac
+            sha256sum /workspace/.tmp/online-out/* /workspace/.tmp/online-bundle/nimino-sbom.cdx.json \
+              > /workspace/.tmp/online-out/SHA256SUMS
+          '
+
+      - name: Upload bundle, package, checksum, and SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: nimino-${{ inputs.id }}-${{ inputs.target }}
+          path: |
+            .tmp/online-out/*
+            .tmp/online-bundle/nimino-sbom.cdx.json
+          if-no-files-found: error
