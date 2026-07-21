@@ -54,7 +54,23 @@ categories = ["Network", "Utility"]
 
 `<id>.desktop`はreverse-DNS形式のアプリIDをファイル名に使います。`Icon`はbundleに同梱できるローカルアイコンだけを参照します。リモートURLの`--icon`は実行時に取得しないため、desktop entryの`Icon`へ書き込みません。パッケージャーはローカルアイコンを所定のicon directoryに配置する場合、生成metadataと同じアプリIDを使ってdesktop entryを調整する必要があります。
 
-これは**正式なOSパッケージを生成する機能ではありません**。MSI/NSIS、署名、`deb`/RPM/AppImage/Flatpak、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。`install-windows.ps1`もWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
+WindowsのMSI/NSIS、署名、Flatpak、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。`install-windows.ps1`もWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
+
+### Linux archive
+
+bundleを生成した後、Docker内でDebianまたはRPM archiveを生成できます。
+
+```bash
+nimino package-linux dist/discord --format deb --out dist/packages \
+  --arch amd64 --maintainer 'Example <packaging@example.invalid>'
+
+nimino package-linux dist/discord --format rpm --out dist/packages \
+  --arch amd64 --license Proprietary
+```
+
+`deb`は`/opt/nimino/<id>`と`/usr/share/applications/<id>.desktop`を含む`.deb`を、`rpm`は同じlayoutの`.rpm`を作ります。`--arch`は`amd64`または`arm64`で、bundle内host binaryと一致させる必要があります。Debianには`--maintainer`、RPMには`--license`が必須です。RPMは現時点で`major.minor.patch` release versionだけを受け付けます。
+
+AppImageは`--format appimage`として検出されますが、Docker imageに`appimagetool`を同梱していないため、固定エラーで停止します。AppImageのAppDir、GTK/WebKitGTKのdependency closure、FUSE/runtime互換性、署名を検証していない状態で、ポータブルなAppImageを生成したとは扱いません。
 
 ## 固定された検証手順
 
@@ -63,7 +79,8 @@ categories = ["Network", "Utility"]
 ```bash
 make pack-test
 make pack-cli-test
+make pack-linux-test
 make pack-archive-test
 ```
 
-`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。最後の二つはCLI実行時のローカルicon・injection assetの存在も確認します。
+`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMの内容とAppImage tool不在時の固定エラー、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。最後の三つはDockerコンテナ内で実行します。

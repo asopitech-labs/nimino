@@ -5,7 +5,44 @@ import nimino_pack
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino pack <url> --name <name> --id <id> [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   quit(2)
+
+proc packageLinuxUsage() =
+  usage()
+
+proc runPackageLinux() =
+  if paramCount() < 3:
+    packageLinuxUsage()
+  var options = LinuxPackageOptions(bundleDirectory: paramStr(2), architecture: "amd64")
+  var hasFormat = false
+  var index = 3
+  while index <= paramCount():
+    if index == paramCount(): packageLinuxUsage()
+    let flag = paramStr(index)
+    let value = paramStr(index + 1)
+    case flag
+    of "--format":
+      case value.toLowerAscii()
+      of "deb": options.format = debPackage
+      of "rpm": options.format = rpmPackage
+      of "appimage": options.format = appImagePackage
+      else: packageLinuxUsage()
+      hasFormat = true
+    of "--out": options.outputDirectory = value
+    of "--arch": options.architecture = value.toLowerAscii()
+    of "--maintainer": options.maintainer = value
+    of "--license": options.license = value
+    else: packageLinuxUsage()
+    index += 2
+  if not hasFormat or options.outputDirectory.len == 0:
+    packageLinuxUsage()
+  let built = buildLinuxPackage(options)
+  if not built.isOk:
+    stderr.writeLine("nimino package-linux: " & built.error.detail)
+    quit(1)
+  echo built.value
+  quit(0)
 
 proc manifestJson(manifest: PackManifest): JsonNode =
   %*{
@@ -202,6 +239,8 @@ proc copyGenerated(source, destination: string): bool =
     stderr.writeLine("nimino pack: unable to copy " & source)
     false
 
+if paramCount() >= 1 and paramStr(1) == "package-linux":
+  runPackageLinux()
 if paramCount() < 2 or paramStr(1) != "pack":
   usage()
 var loaded: PackResult[PackManifest]

@@ -12,6 +12,8 @@ RUN apt-get update \
       gcc-mingw-w64-x86-64 \
       git \
       pkg-config \
+      rpm \
+      desktop-file-utils \
       libgtk-4-dev \
       libwebkitgtk-6.0-dev \
       unzip \

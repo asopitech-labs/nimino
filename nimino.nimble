@@ -47,6 +47,9 @@ task buildPackCli, "Build the nimino-pack validation CLI":
 task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "bash tools/ci/test_pack_cli.sh /tmp/nimino"
 
+task testPackLinux, "Build Debian/RPM archives from nimino-pack Linux metadata":
+  exec "bash tools/ci/test_pack_linux.sh /tmp/nimino"
+
 task testPackArchive, "Verify Linux and Windows pack archives":
   exec "tar -czf /tmp/nimino-pack-cli-test/nimino-demo-linux.tar.gz -C /tmp/nimino-pack-cli-test/out ."
   exec "tar -a -cf /tmp/nimino-pack-cli-test/nimino-demo-windows.zip -C /tmp/nimino-pack-cli-test/out ."

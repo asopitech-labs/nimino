@@ -13,3 +13,4 @@ ADRは設計判断と、その判断を覆す条件を記録します。M0では
 9. [ADR-0012: Windows system tray context menu](0012-windows-system-tray-context-menu.md)
 10. [ADR-0013: Windows WebView2 new-window smoke harness](0013-windows-gui-input-harness.md)
 11. [ADR-0014: nimino-pack desktop distribution metadata](0014-pack-desktop-metadata.md)
+12. [ADR-0015: nimino-pack Linux archive generation](0015-pack-linux-archive-generation.md)
