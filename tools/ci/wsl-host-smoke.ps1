@@ -572,8 +572,11 @@ try {
 }
 finally {
   if (-not $process.HasExited) {
-    $process.Kill()
-    $process.WaitForExit()
+    & taskkill.exe /PID $process.Id /T /F *> $null
+    if (-not $process.HasExited) {
+      $process.Kill()
+      $process.WaitForExit()
+    }
   }
   $process.Dispose()
 }

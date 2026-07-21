@@ -295,6 +295,16 @@ proc handleWindowClose(adapter: HostAdapter; payload: JsonNode): ProtocolResultO
   adapter.windowViewCounts.del(windowId.value)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
+proc closeAllWindows*(adapter: HostAdapter): bool =
+  ## Explicitly close every managed window before quitting the native app.
+  ## This mirrors Tauri's managed WebviewWindow lifecycle and also ensures
+  ## popup windows receive WM_CLOSE instead of relying on process termination.
+  result = true
+  for window in adapter.windows.values:
+    let closed = window.close()
+    if not closed.isOk and closed.failure.kind != invalidState:
+      result = false
+
 proc handleWindowVisibility(adapter: HostAdapter; payload: JsonNode; visible: bool): ProtocolResultOf[HostAction] =
   let windowId = payload.requiredId("windowId")
   if not windowId.isOk:

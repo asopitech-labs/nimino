@@ -272,9 +272,11 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
     else:
       discard state.writeMessage(state.responseFor(message, payload = action.value.payload))
       if action.value.kind in {shutdownHost, restartHostForProfileReset}:
+        discard state.adapter.closeAllWindows()
         discard state.adapter.app.close()
   of shutdown:
     discard state.writeMessage(state.responseFor(message, payload = "{}"))
+    discard state.adapter.closeAllWindows()
     discard state.adapter.app.close()
   of heartbeat:
     discard state.writeMessage(state.responseFor(message, payload = "{}"))
@@ -361,6 +363,7 @@ proc runHost(): int =
 
     if message.kind == shutdown:
       discard state.writeMessage(state.responseFor(message, payload = "{}"))
+      discard state.adapter.closeAllWindows()
       discard state.adapter.app.close()
       return 0
     if message.kind == heartbeat:
@@ -393,6 +396,7 @@ proc runHost(): int =
     of deferredBrowsingDataClear:
       discard
     of shutdownHost, restartHostForProfileReset:
+      discard state.adapter.closeAllWindows()
       discard state.adapter.app.close()
       return 0
     of startUiLoop:

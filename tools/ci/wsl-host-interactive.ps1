@@ -171,5 +171,8 @@ try {
 }
 finally {
   Close-InteractiveHost
+  if ($process -and -not $process.HasExited) {
+    & taskkill.exe /PID $process.Id /T /F *> $null
+  }
   if ($process) { $process.Dispose() }
 }
