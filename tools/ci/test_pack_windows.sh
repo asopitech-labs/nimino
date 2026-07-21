@@ -31,6 +31,7 @@ test -s "$script"
 test -s "$root/bundle/register-windows-shortcut.ps1"
 grep -q '"appUserModelId": "app.nimino.windows-demo"' "$root/bundle/nimino-windows-installer.json"
 grep -q 'SetAppUserModelId' "$root/bundle/register-windows-shortcut.ps1"
+grep -q 'LASTEXITCODE' "$root/bundle/install-windows.ps1"
 test "$(od -An -tx1 -N2 "$setup" | tr -d '[:space:]')" = '4d5a'
 grep -Fx 'RequestExecutionLevel user' "$script"
 grep -Fx 'InstallDir "$LOCALAPPDATA\Nimino\app.nimino.windows-demo"' "$script"
