@@ -107,6 +107,32 @@ proc manifestJson(manifest: PackManifest): JsonNode =
     }
   }
 
+proc sbomJson(manifest: PackManifest): JsonNode =
+  ## A deterministic CycloneDX inventory for the generated wrapper.  Runtime
+  ## components are declared explicitly because Nimino does not bundle a
+  ## browser engine; deployment tooling can replace their versions with the
+  ## versions resolved by the target platform.
+  %*{
+    "bomFormat": "CycloneDX",
+    "specVersion": "1.6",
+    "serialNumber": "urn:nimino:" & manifest.id,
+    "version": 1,
+    "metadata": {"component": {
+      "type": "application",
+      "bom-ref": manifest.id,
+      "name": manifest.name,
+      "version": manifest.package.version
+    }},
+    "components": [
+      {"type": "application", "bom-ref": "nimino-core",
+       "name": "nimino-core", "version": "workspace"},
+      {"type": "library", "bom-ref": "webview2-evergreen",
+       "name": "Microsoft.Web.WebView2", "version": "evergreen"},
+      {"type": "library", "bom-ref": "webkitgtk-6.0",
+       "name": "WebKitGTK", "version": "6.0"}
+    ]
+  }
+
 proc desktopEscape(value: string): string =
   ## Exec entries use desktop-entry escaping rather than shell quoting.
   for character in value:
@@ -389,6 +415,9 @@ else:
   output = manifestJson(packaged).pretty()
   let manifestPath = directory / "nimino-manifest.json"
   if not writeGenerated(manifestPath, output & "\n"):
+    quit(1)
+  let sbomPath = directory / "nimino-sbom.cdx.json"
+  if not writeGenerated(sbomPath, packaged.sbomJson().pretty() & "\n"):
     quit(1)
   let launcherPath = directory / "run-nimino.sh"
   let hostName = if hostPath.len > 0:
