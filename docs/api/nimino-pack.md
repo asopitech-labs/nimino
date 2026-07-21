@@ -54,7 +54,7 @@ categories = ["Network", "Utility"]
 
 `<id>.desktop`はreverse-DNS形式のアプリIDをファイル名に使います。`Icon`はbundleに同梱できるローカルアイコンだけを参照します。リモートURLの`--icon`は実行時に取得しないため、desktop entryの`Icon`へ書き込みません。パッケージャーはローカルアイコンを所定のicon directoryに配置する場合、生成metadataと同じアプリIDを使ってdesktop entryを調整する必要があります。
 
-WindowsのMSI、署名、Flatpak、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。NSIS setupは下記のDocker生成経路で実装済みです。`install-windows.ps1`はWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
+署名済みMSI、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。NSIS setupは下記のDocker生成経路で実装済みです。`install-windows.ps1`はWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
 
 ### Windows NSIS setup
 
@@ -89,6 +89,14 @@ nimino package-linux dist/discord --format appimage --out dist/packages --arch a
 AppImageはchecksum固定済みの公式`appimagetool`で、`AppRun`、移植可能なdesktop entry、対応icon、`usr/bin`起動器、bundle本体を含むType 2 AppImageを生成します。ローカルiconを同梱したbundleが必須で、現時点のDocker imageはx86_64 toolを使うため`--arch amd64`だけを受け付けます。生成時はDocker内でFUSEを使わずtoolを自己展開して実行しますが、配布先でのAppImage runtime/FUSE互換性は別途確認が必要です。
 
 この段階ではNimino host、GTK、WebKitGTKなどの動的依存ライブラリのdependency closure、署名、update information、各ディストリビューション実機での起動確認は実装していません。bundleにはCycloneDX 1.6の`nimino-sbom.cdx.json`を生成しますが、これは依存関係の宣言であり、動的ライブラリの同梱や署名を保証しません。したがって「単一ファイルを配布できる」ことは保証しますが、「追加のsystem libraryなしで任意のLinux上で起動できる」ことは保証しません。
+
+Flatpak build contextは次で生成できます。
+
+```bash
+nimino package-linux dist/discord --format flatpak --out dist/packages
+```
+
+`<id>-<version>-flatpak/`に、bundleを`bundle/` sourceとして参照する固定GNOME runtime/SDK manifestを生成します。`flatpak-builder`による実bundle生成、runtimeの署名、clean Flatpak環境でのinstall/run/uninstallは別SDK環境で検証します。
 
 ## 固定された検証手順
 
