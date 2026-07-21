@@ -42,6 +42,8 @@ make setup
 
 Linux配布物は`make pack-linux-test`でDebian/RPM生成、Flatpak build context、archive内容をDocker内で検証します。`make pack-appimage-guardrails`は固定toolchain・GTK4/WebKitGTK6資産・静的dependency reportの検査と、不完全なAppImageが成果物を残さず明示的に失敗することを検証します。Flatpakは固定GNOME runtimeを参照するmanifestとbundle sourceを生成しますが、flatpak-builderによる実bundle生成は別のFlatpak SDK環境で行います。
 
+Popular Packagesは`catalog/popular-packages.json`を厳格に読み込む公開pack APIを持ちます。未検証artifactは登録せず、現時点の正式catalogは空です。登録時にはversion付きrelease URL、artifact/SBOMのSHA-256、生成commit/workflow/run IDをminisign署名へ結合し、別経路で信頼した公開鍵による検証を必須とします。
+
 Windows配布物は`make pack-windows-test`でDocker内のNSISを使いper-user setup EXEをクロス生成します。setupのWindows実機でのinstall/uninstall/upgradeとcode signingは別途検証が必要です。
 
 WSLの自動smokeは既定120秒でhostを回収します。環境に応じて`WSL_SMOKE_TIMEOUT=30 make wsl-host-popup-smoke`のように短縮できます。手動操作用`wsl-host-interactive`は既定300秒で、`WSL_INTERACTIVE_TIMEOUT=600 make wsl-host-interactive`のように延長できます。
@@ -103,7 +105,7 @@ URLのRPC bridgeはViewが`pending`の間の最初の対象`loadUrl`前に登録
 
 ### 追加ゴール: 初心者向け配布導線
 
-PakeのPopular Packages／Online Buildingに相当する導線を`nimino-pack`へ追加します。GitHub Actionsの`workflow_dispatch`から固定Docker toolchainで汎用`nimino-host`をビルドし、URLからbundleとDebian/RPM/NSIS artifact、checksum、SBOMを生成するオンラインビルドを実装済みです。利用者のローカルへNim、Nimble、Dockerを要求しません。checksum・署名・生成元付きPopular Packagesカタログは後続作業です。仕様と受け入れ条件は[ADR 0018](docs/adr/0018-pack-online-build-and-popular-catalog.md)に記録しています。未実装形式をworkflowが成功扱いしないことも要件です。
+PakeのPopular Packages／Online Buildingに相当する導線を`nimino-pack`へ追加します。GitHub Actionsの`workflow_dispatch`から固定Docker toolchainで汎用`nimino-host`をビルドし、URLからbundleとDebian/RPM/NSIS artifact、checksum、SBOMを生成するオンラインビルドを実装済みです。利用者のローカルへNim、Nimble、Dockerを要求しません。checksum・署名・生成元を厳格に検証するPopular Packages APIと空の正式catalogも実装済みで、署名済みreleaseだけを登録します。仕様と受け入れ条件は[ADR 0018](docs/adr/0018-pack-online-build-and-popular-catalog.md)に記録しています。未実装形式をworkflowが成功扱いしないことも要件です。
 
 ## 文書
 

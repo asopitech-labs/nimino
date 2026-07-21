@@ -20,6 +20,7 @@ RUN apt-get update \
       squashfs-tools \
       libgtk-4-dev \
       libwebkitgtk-6.0-dev \
+      minisign \
       unzip \
       xauth \
       xvfb \
