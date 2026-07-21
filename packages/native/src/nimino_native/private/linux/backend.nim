@@ -269,12 +269,16 @@ proc linuxConfigureMessageBridge(view: NativeWebView): NativeResult =
   success()
 
 proc linuxConfigureDocumentStartScript(view: NativeWebView): NativeResult =
-  if view.documentStartScript.len == 0:
-    return success()
   let manager = webkit_web_view_get_user_content_manager(cast[ptr WebKitWebView](view.platformView))
   if manager.isNil:
     return failure(nativeError(webViewError, "webview.setDocumentStartScript",
       detail = "WebKitGTK user content manager is unavailable"))
+  ## WebKitGTK exposes remove-all rather than a per-script removal API.  The
+  ## manager currently owns only Nimino's document-start bridge, so replacing
+  ## that managed set is deterministic and keeps navigation-time updates safe.
+  webkit_user_content_manager_remove_all_scripts(manager)
+  if view.documentStartScript.len == 0:
+    return success()
   let source = view.documentStartScript
   let script = webkit_user_script_new(
     cstring(source),
@@ -457,11 +461,40 @@ proc linuxConfigureNavigationStarting(view: NativeWebView): NativeResult =
   view.policyDecisionSignalHandler = signal
   success()
 
+proc linuxPermissionKind(request: ptr WebKitPermissionRequest): string =
+  if request.isNil:
+    return "unknown"
+  let raw = cast[pointer](request)
+  if g_type_check_instance_is_a(raw, webkit_user_media_permission_request_get_type()) != 0:
+    ## A WebKitGTK user-media request may contain multiple device classes. A
+    ## combined request cannot be represented by one PermissionKind, so fail
+    ## closed instead of turning a camera+microphone request into an implicit
+    ## grant for only one class.
+    let audio = webkit_user_media_permission_is_for_audio_device(raw) != 0
+    let video = webkit_user_media_permission_is_for_video_device(raw) != 0
+    let display = webkit_user_media_permission_is_for_display_device(raw) != 0
+    if (audio and video) or (audio and display) or (video and display):
+      return "unknown"
+    if video:
+      return "camera"
+    if audio:
+      return "microphone"
+    if display:
+      return "screenCapture"
+  if g_type_check_instance_is_a(raw, webkit_geolocation_permission_request_get_type()) != 0:
+    return "geolocation"
+  if g_type_check_instance_is_a(raw, webkit_notification_permission_request_get_type()) != 0:
+    return "notifications"
+  if g_type_check_instance_is_a(raw, webkit_clipboard_permission_request_get_type()) != 0:
+    return "clipboard"
+  "unknown"
+
 proc linuxPermissionRequested(webView: pointer; request: ptr WebKitPermissionRequest;
                               userData: pointer): cint {.cdecl.} =
   let view = cast[NativeWebView](userData)
   let uri = webkit_web_view_get_uri(cast[ptr WebKitWebView](webView))
-  let allowed = if uri.isNil: false else: view.dispatchPermissionRequested($uri)
+  let allowed = if uri.isNil: false else: view.dispatchPermissionRequested(
+    linuxPermissionKind(request), $uri)
   if not request.isNil:
     if allowed:
       webkit_permission_request_allow(request)

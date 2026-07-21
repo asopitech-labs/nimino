@@ -128,6 +128,12 @@ const
   CwUseDefault* = -2147483648'i32
   WebView2PermissionStateDeny* = 2'i32
   WebView2PermissionStateAllow* = 1'i32
+  ## COREWEBVIEW2_PERMISSION_KIND values from WebView2.h 1.0.3967.48.
+  WebView2PermissionKindMicrophone* = 1'i32
+  WebView2PermissionKindCamera* = 2'i32
+  WebView2PermissionKindGeolocation* = 3'i32
+  WebView2PermissionKindNotifications* = 4'i32
+  WebView2PermissionKindClipboardRead* = 6'i32
   WsOverlappedWindow* = 0x00CF0000'u32
   WsThickFrame* = 0x00040000'u32
   WsMaximizeBox* = 0x00010000'u32
@@ -472,6 +478,14 @@ proc permissionArgsPutState*(args: pointer; state: int32): HResult {.inline.} =
   )
   dispatch(args, state)
 
+proc permissionArgsGetPermissionKind*(args: pointer; kind: ptr int32): HResult {.inline.} =
+  ## ICoreWebView2PermissionRequestedEventArgs::get_PermissionKind
+  ## (vtable slot 4).
+  let dispatch = cast[proc(self: pointer; kind: ptr int32): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[4]
+  )
+  dispatch(args, kind)
+
 proc downloadArgsPutCancel*(args: pointer; cancel: WinBool): HResult {.inline.} =
   ## ICoreWebView2DownloadStartingEventArgs::put_Cancel (vtable slot 6).
   let dispatch = cast[proc(self: pointer; cancel: WinBool): HResult {.stdcall.}](
@@ -585,6 +599,13 @@ proc coreAddScriptToExecuteOnDocumentCreated*(core: pointer; script: WideCString
     cast[ptr ComInterface](core).vtable[27]
   )
   dispatch(core, script, handler)
+
+proc coreRemoveScriptToExecuteOnDocumentCreated*(core: pointer;
+                                                  scriptId: WideCString): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; scriptId: WideCString): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[28]
+  )
+  dispatch(core, scriptId)
 
 proc coreAddNavigationCompleted*(core: pointer; handler: pointer;
                                  token: ptr EventRegistrationToken): HResult {.inline.} =

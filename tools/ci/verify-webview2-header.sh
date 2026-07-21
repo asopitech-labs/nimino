@@ -9,6 +9,8 @@ unzip -p "$package_path" build/native/include/WebView2.h >"$header_path"
 
 grep -q 'ICoreWebView2PermissionRequestedEventHandler' "$header_path"
 grep -q 'ICoreWebView2DownloadStartingEventHandler' "$header_path"
+grep -q 'COREWEBVIEW2_PERMISSION_KIND_MICROPHONE' "$header_path"
+grep -q 'COREWEBVIEW2_PERMISSION_KIND_CAMERA' "$header_path"
 
 verify_slots() {
   local table_name="$1"
@@ -51,3 +53,4 @@ verify_slots() {
 
 verify_slots ICoreWebView2 add_NewWindowRequested 44 remove_NewWindowRequested 45
 verify_slots ICoreWebView2_4 add_DownloadStarting 75 remove_DownloadStarting 76
+verify_slots ICoreWebView2PermissionRequestedEventArgs get_PermissionKind 4 put_State 7

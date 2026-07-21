@@ -326,6 +326,23 @@ when defined(linux):
   const WslRpcPollIntervalMs = 10
 
   proc mapProtocolError(operation: string; error: ProtocolError): CoreError =
+    if error.nativeKind.len > 0:
+      let kind = case error.nativeKind
+        of "unsupported": platformUnavailable
+        of "invalidArgument": invalidArgument
+        of "invalidState": invalidState
+        of "permissionDenied": permissionDenied
+        of "osError": osError
+        of "webViewError": webViewError
+        else: nativeFailure
+      let nativeOperation = if error.nativeOperation.len > 0:
+          error.nativeOperation
+        else: operation
+      let nativeDetail = if error.nativeDetail.len > 0:
+          error.nativeDetail
+        else: error.detail
+      return coreError(kind, nativeOperation,
+        platformCode = error.nativePlatformCode, detail = nativeDetail)
     let kind = case error.kind
       of invalidMessage, invalidFrame, unexpectedEof, frameTooLarge, timedOut: nativeFailure
       of unsupportedVersion, authenticationFailed: platformUnavailable
@@ -450,7 +467,7 @@ proc documentStartCookieSource(window: Window; url: string): string =
 
 proc configureDocumentStartBridge(window: Window; url: string): CoreResult =
   let source = window.documentStartCookieSource(url) & url.documentStartBridgeSource()
-  if source.len == 0:
+  if source.len == 0 and window.documentStartBridgeScript.len == 0:
     return coreSuccess()
   ## HTTP(S) bridge guards are origin-scoped, so two paths commonly produce
   ## exactly the same script.  Compare the effective script rather than the
@@ -574,8 +591,17 @@ proc configureWindow(window: Window): CoreResult =
     return coreFailure(closedConfigured.failure.mapNativeError())
 
   let permissionConfigured = native.onPermissionRequested(window.nativeView,
-    proc(url: string): bool = window.decidePermission(PermissionRequest(
-      kind: microphone, url: url)) == permissionGrant)
+    proc(kind, url: string): bool =
+      let permissionKind = case kind
+        of "microphone": microphone
+        of "camera": camera
+        of "notifications": notifications
+        of "geolocation": geolocation
+        of "clipboard": clipboard
+        of "screenCapture": screenCapture
+        else: return false
+      window.decidePermission(PermissionRequest(
+        kind: permissionKind, url: url)) == permissionGrant)
   if not permissionConfigured.isOk:
     return coreFailure(permissionConfigured.failure.mapNativeError())
 

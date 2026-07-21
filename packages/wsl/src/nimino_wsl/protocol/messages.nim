@@ -78,6 +78,7 @@ type
     kind*: PolicyKind
     windowId*: uint64
     webViewId*: uint64
+    permissionKind*: string
     url*: string
     suggestedName*: string
 
@@ -97,6 +98,7 @@ proc policyRequestJson*(request: PolicyRequest): string =
     "kind": $request.kind,
     "windowId": $request.windowId,
     "webViewId": $request.webViewId,
+    "permissionKind": request.permissionKind,
     "url": request.url,
     "suggestedName": request.suggestedName
   })
@@ -187,6 +189,12 @@ proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
     let suggestedName = if node.hasKey("suggestedName") and
         node["suggestedName"].kind == JString: node["suggestedName"].getStr()
       else: ""
+    let permissionKind = if node.hasKey("permissionKind") and
+        node["permissionKind"].kind == JString: node["permissionKind"].getStr()
+      else: "unknown"
+    if kind == permissionPolicy and permissionKind.len == 0:
+      return failureOf[PolicyRequest](protocolError(invalidMessage,
+        "permission policy request is missing permissionKind"))
     if kind == downloadPolicy:
       if suggestedName.len > 255 or suggestedName.find({'/', '\\', '\r', '\n', '\x00'}) >= 0 or
           suggestedName in [".", ".."]:
@@ -194,7 +202,7 @@ proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
           "download suggestedName is unsafe"))
     successOf(PolicyRequest(kind: kind,
       windowId: windowId, webViewId: webViewId,
-      url: url, suggestedName: suggestedName))
+      permissionKind: permissionKind, url: url, suggestedName: suggestedName))
   except CatchableError:
     failureOf[PolicyRequest](protocolError(invalidMessage,
       "malformed policy request"))

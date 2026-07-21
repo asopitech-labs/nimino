@@ -97,6 +97,7 @@ type
     vtable: ptr AddScriptToExecuteOnDocumentCreatedCompletedVTable
     references: Atomic[int]
     view: pointer
+    initialization: bool
 
   WebMessageReceivedHandler = object
     vtable: ptr WebMessageReceivedVTable
@@ -330,9 +331,21 @@ proc permissionInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
   let handler = cast[ptr PermissionRequestedHandler](self)
   var allowed = false
   if not handler.view.isNil:
+    var permissionKind = "unknown"
+    if not args.isNil:
+      var kind: int32
+      if succeeded(permissionArgsGetPermissionKind(args, addr kind)):
+        permissionKind = case kind
+          of WebView2PermissionKindMicrophone: "microphone"
+          of WebView2PermissionKindCamera: "camera"
+          of WebView2PermissionKindGeolocation: "geolocation"
+          of WebView2PermissionKindNotifications: "notifications"
+          of WebView2PermissionKindClipboardRead: "clipboard"
+          else: "unknown"
     var source: WideCString
     if succeeded(coreGetSource(handler.view, addr source)):
-      allowed = dispatchPermissionRequested(cast[NativeWebView](handler.view), $source)
+      allowed = dispatchPermissionRequested(cast[NativeWebView](handler.view),
+        permissionKind, $source)
       coTaskMemFree(cast[pointer](source))
   if not args.isNil:
     discard permissionArgsPutState(args, if allowed: WebView2PermissionStateAllow else: WebView2PermissionStateDeny)
@@ -586,6 +599,12 @@ proc newAddDocumentStartScriptCompletedHandler(view: NativeWebView):
   result.vtable = addr addDocumentStartScriptCompletedVTable
   result.references.store(1, moRelaxed)
   result.view = cast[pointer](view)
+
+proc newAddDocumentStartScriptCompletedHandler(view: NativeWebView;
+                                               initialization: bool):
+    ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler =
+  result = newAddDocumentStartScriptCompletedHandler(view)
+  result.initialization = initialization
 
 proc newWebMessageReceivedHandler(view: NativeWebView): ptr WebMessageReceivedHandler =
   result = cast[ptr WebMessageReceivedHandler](alloc0(sizeof(WebMessageReceivedHandler)))
@@ -964,6 +983,8 @@ proc windowsLoadHtml(view: NativeWebView): NativeResult =
   success()
 
 proc windowsLoadPendingContent(view: NativeWebView): NativeResult =
+  if view.documentStartScriptUpdatePending:
+    return success()
   case view.pendingContentKind
   of urlContent:
     view.windowsLoadUrl()
@@ -987,7 +1008,7 @@ proc windowsConfigureDocumentStartScript(view: NativeWebView): NativeResult =
     return success()
   if view.platformView.isNil:
     return failure(nativeError(invalidState, "webview.setDocumentStartScript"))
-  let handler = newAddDocumentStartScriptCompletedHandler(view)
+  let handler = newAddDocumentStartScriptCompletedHandler(view, true)
   let script = newWideCString(view.documentStartScript)
   let status = coreAddScriptToExecuteOnDocumentCreated(
     view.platformView,
@@ -996,6 +1017,33 @@ proc windowsConfigureDocumentStartScript(view: NativeWebView): NativeResult =
   )
   discard addDocumentStartScriptRelease(handler)
   if not succeeded(status):
+    return failure(hresultError("webview.setDocumentStartScript", status))
+  success()
+
+proc windowsReplaceDocumentStartScript(view: NativeWebView;
+                                       script: string): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.setDocumentStartScript"))
+  if view.documentStartScriptId.len > 0:
+    let oldId = newWideCString(view.documentStartScriptId)
+    let removed = coreRemoveScriptToExecuteOnDocumentCreated(view.platformView, oldId)
+    if not succeeded(removed):
+      return failure(hresultError("webview.setDocumentStartScript", removed))
+    view.documentStartScriptId.setLen(0)
+  if script.len == 0:
+    view.documentStartScriptUpdatePending = false
+    return success()
+  view.documentStartScriptUpdatePending = true
+  let handler = newAddDocumentStartScriptCompletedHandler(view, false)
+  let source = newWideCString(script)
+  let status = coreAddScriptToExecuteOnDocumentCreated(
+    view.platformView,
+    source,
+    cast[pointer](handler)
+  )
+  discard addDocumentStartScriptRelease(handler)
+  if not succeeded(status):
+    view.documentStartScriptUpdatePending = false
     return failure(hresultError("webview.setDocumentStartScript", status))
   success()
 
@@ -1449,11 +1497,19 @@ proc addDocumentStartScriptInvoke(self: pointer; errorCode: HResult;
   if view.isNil or view.window.app.state != running or view.state in {closing, closed}:
     return S_OK
   if not succeeded(errorCode):
+    view.documentStartScriptUpdatePending = false
     view.window.app.windowsFail(hresultError("webview.setDocumentStartScript", errorCode))
     return S_OK
-  let initialized = view.windowsFinishWebViewInitialization()
-  if not initialized.isOk:
-    view.window.app.windowsFail(initialized.failure)
+  view.documentStartScriptId = if scriptId.isNil: "" else: $scriptId
+  if handler.initialization:
+    let initialized = view.windowsFinishWebViewInitialization()
+    if not initialized.isOk:
+      view.window.app.windowsFail(initialized.failure)
+  else:
+    view.documentStartScriptUpdatePending = false
+    let loaded = view.windowsLoadPendingContent()
+    if not loaded.isOk:
+      view.window.app.windowsFail(loaded.failure)
   S_OK
 
 proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =

@@ -219,6 +219,11 @@ block policyPayloadRoundTrip:
   doAssert decodedRequest.value.kind == downloadPolicy
   doAssert decodedRequest.value.webViewId == 42
   doAssert decodedRequest.value.suggestedName == "file.zip"
+  let permissionRequest = PolicyRequest(kind: permissionPolicy, webViewId: 43,
+    permissionKind: "camera", url: "https://example.com")
+  let decodedPermission = permissionRequest.policyRequestJson.parsePolicyRequest()
+  doAssert decodedPermission.isOk
+  doAssert decodedPermission.value.permissionKind == "camera"
   let closeRequest = PolicyRequest(kind: closePolicy, windowId: 7)
   let decodedClose = closeRequest.policyRequestJson.parsePolicyRequest()
   doAssert decodedClose.isOk

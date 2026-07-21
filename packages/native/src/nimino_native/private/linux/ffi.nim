@@ -38,6 +38,7 @@ type
   GAsyncReadyCallback* = proc(sourceObject: pointer; asyncResult: ptr GAsyncResult;
                               userData: pointer) {.cdecl.}
   GSourceFunc* = proc(data: pointer): cint {.cdecl.}
+  GType* = csize_t
 
   WebKitUserContentInjectedFrames* = cint
   WebKitUserScriptInjectionTime* = cint
@@ -188,6 +189,8 @@ proc webkit_user_content_manager_unregister_script_message_handler*(manager: ptr
 proc webkit_user_content_manager_add_script*(manager: ptr WebKitUserContentManager;
                                              script: ptr WebKitUserScript)
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_content_manager_remove_all_scripts*(manager: ptr WebKitUserContentManager)
+  {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_user_script_new*(source: cstring;
                              injectedFrames: WebKitUserContentInjectedFrames;
                              injectionTime: WebKitUserScriptInjectionTime;
@@ -215,6 +218,22 @@ proc webkit_permission_request_deny*(request: ptr WebKitPermissionRequest)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_permission_request_allow*(request: ptr WebKitPermissionRequest)
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_geolocation_permission_request_get_type*(): GType
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_notification_permission_request_get_type*(): GType
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_clipboard_permission_request_get_type*(): GType
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_media_permission_request_get_type*(): GType
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_media_permission_is_for_audio_device*(request: pointer): cint
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_media_permission_is_for_video_device*(request: pointer): cint
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_user_media_permission_is_for_display_device*(request: pointer): cint
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc g_type_check_instance_is_a*(instance: pointer; gType: GType): cint
+  {.cdecl, importc, dynlib: LibGObject.}
 
 const LibJavaScriptCore = "libjavascriptcoregtk-6.0.so.1"
 

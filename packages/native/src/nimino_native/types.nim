@@ -9,7 +9,11 @@ type
   NativeNewWindowRequestedHandler* = proc(url: string) {.closure.}
   NativeNavigationStartingHandler* = proc(url: string): bool {.closure.}
   NativeNavigationCompletedHandler* = proc(url: string; succeeded: bool) {.closure.}
-  NativePermissionRequestedHandler* = proc(url: string): bool {.closure.}
+  ## `kind` is the OS/WebView permission name (for example `microphone`,
+  ## `camera`, `notifications`, `geolocation`, `clipboard`, or
+  ## `screenCapture`). Unknown OS-specific permissions are reported as
+  ## `unknown` and therefore remain denied by higher layers.
+  NativePermissionRequestedHandler* = proc(kind, url: string): bool {.closure.}
   NativeDownloadStartingHandler* = proc(url: string): bool {.closure.}
   NativeDownloadState* = enum
     nativeDownloadStarted
@@ -126,6 +130,8 @@ type
     pendingHtml: string
     pendingHtmlBaseUrl: string
     documentStartScript: string
+    documentStartScriptId: string
+    documentStartScriptUpdatePending: bool
     platformView: pointer
     platformEnvironment: pointer
     platformController: pointer
@@ -183,6 +189,8 @@ elif defined(windows):
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc windowsClearBrowsingData(view: NativeWebView;
                                 request: NativeBrowsingDataRequest): NativeResult
+  proc windowsReplaceDocumentStartScript(view: NativeWebView;
+                                          script: string): NativeResult
 
 proc completeScriptRequest(view: NativeWebView; request: NativeScriptRequest;
                            evaluation: NativeResultOf[string]) =
@@ -372,10 +380,10 @@ proc dispatchNavigationStarting(view: NativeWebView; url: string): bool =
     ## A callback failure must not accidentally authorize a navigation.
     false
 
-proc dispatchPermissionRequested(view: NativeWebView; url: string): bool =
+proc dispatchPermissionRequested(view: NativeWebView; kind, url: string): bool =
   if view.isNil or view.permissionRequestedHandler.isNil:
     return false
-  try: view.permissionRequestedHandler(url)
+  try: view.permissionRequestedHandler(kind, url)
   except CatchableError: false
 
 proc dispatchDownloadStarting(view: NativeWebView; url: string): bool =
@@ -770,18 +778,23 @@ proc loadHtml*(view: NativeWebView; html: string; baseUrl = ""): NativeResult =
     return success()
 
 proc setDocumentStartScript*(view: NativeWebView; script: string): NativeResult =
-  ## Queue one replacement script for the first document creation.  It is a
-  ## low-level primitive; policy and origin checks belong to nimino-core.
+  ## Replace the script that runs at document creation.  Policy and origin
+  ## checks belong to nimino-core.  A replacement may happen after the view is
+  ## ready; the Windows backend defers the next navigation until WebView2 has
+  ## installed the new script.
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.setDocumentStartScript"))
-  if view.state != pending:
-    return failure(nativeError(invalidState, "webview.setDocumentStartScript",
-      detail = "document-start scripts must be configured before WebView creation"))
-  if script.len == 0:
-    return failure(nativeError(invalidState, "webview.setDocumentStartScript",
-      detail = "script must not be empty"))
+  if view.documentStartScript == script:
+    return success()
   view.documentStartScript = script
-  success()
+  if view.state == pending:
+    return success()
+  when defined(linux) and not defined(niminoWsl):
+    return view.linuxConfigureDocumentStartScript()
+  elif defined(windows):
+    return view.windowsReplaceDocumentStartScript(script)
+  else:
+    failure(nativeError(unsupported, "webview.setDocumentStartScript"))
 
 proc evalJavaScript*(view: NativeWebView; script: string): Future[NativeResultOf[string]] =
   let request = NativeScriptRequest(

@@ -204,12 +204,18 @@ proc encodedId(name: string; value: uint64): string =
   $(%*{name: $value})
 
 proc nativeFailure(operation: string; nativeResult: NativeResult): ProtocolResultOf[HostAction] =
-  failureOf[HostAction](protocolError(invalidMessage,
-    operation & " failed: " & nativeResult.failure.operation))
+  let native = nativeResult.failure
+  failureOf[HostAction](protocolNativeError(invalidMessage,
+    operation & " failed: " & native.operation,
+    $native.kind, native.operation, native.detail,
+    native.platformCode))
 
 proc nativeFailure[T](operation: string; nativeResult: NativeResultOf[T]): ProtocolResultOf[HostAction] =
-  failureOf[HostAction](protocolError(invalidMessage,
-    operation & " failed: " & nativeResult.failure.operation))
+  let native = nativeResult.failure
+  failureOf[HostAction](protocolNativeError(invalidMessage,
+    operation & " failed: " & native.operation,
+    $native.kind, native.operation, native.detail,
+    native.platformCode))
 
 proc allWindowsHaveViews(adapter: HostAdapter): bool =
   for windowId, _ in adapter.windows:
@@ -500,9 +506,10 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   )
   if not navigationConfigured.isOk:
     return nativeFailure("native.webview.onNavigationCompleted", navigationConfigured)
-  let permissionConfigured = created.value.onPermissionRequested(proc(url: string): bool =
+  let permissionConfigured = created.value.onPermissionRequested(proc(kind, url: string): bool =
     let owner = cast[HostAdapter](adapterPointer)
-    let request = PolicyRequest(kind: permissionPolicy, webViewId: webViewId, url: url)
+    let request = PolicyRequest(kind: permissionPolicy, webViewId: webViewId,
+      permissionKind: kind, url: url)
     if owner != nil:
       if not owner.policyDecision.isNil:
         return owner.policyDecision(request)
@@ -537,8 +544,6 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
 
 proc handleWebViewSetDocumentStartScript(adapter: HostAdapter;
                                           payload: JsonNode): ProtocolResultOf[HostAction] =
-  if adapter.uiStartRequested:
-    return errorAction("document-start scripts are closed after the UI loop starts")
   let webViewId = payload.requiredId("webViewId")
   let script = payload.requiredString("script")
   if not webViewId.isOk:
