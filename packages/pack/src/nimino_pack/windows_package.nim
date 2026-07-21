@@ -28,6 +28,9 @@ type
     installRoot: string
     entryPoint: string
     uninstaller: string
+    appUserModelId: string
+    toastActivation: string
+    shortcutPropertiesScript: string
     startMenuShortcut: string
     webViewRuntime: string
     displayIcon: string
@@ -97,6 +100,7 @@ proc readWindowsBundleMetadata(bundleDirectory: string): PackResult[WindowsBundl
   var metadata: WindowsBundleMetadata
   for key in ["id", "displayName", "version", "publisher", "description", "homepage",
               "installScope", "installRoot", "entryPoint", "uninstaller",
+              "appUserModelId", "toastActivation", "shortcutPropertiesScript",
               "startMenuShortcut", "webViewRuntime", "displayIcon"]:
     let parsed = node.jsonString(key)
     if not parsed.isOk:
@@ -112,6 +116,9 @@ proc readWindowsBundleMetadata(bundleDirectory: string): PackResult[WindowsBundl
     of "installRoot": metadata.installRoot = parsed.value
     of "entryPoint": metadata.entryPoint = parsed.value
     of "uninstaller": metadata.uninstaller = parsed.value
+    of "appUserModelId": metadata.appUserModelId = parsed.value
+    of "toastActivation": metadata.toastActivation = parsed.value
+    of "shortcutPropertiesScript": metadata.shortcutPropertiesScript = parsed.value
     of "startMenuShortcut": metadata.startMenuShortcut = parsed.value
     of "webViewRuntime": metadata.webViewRuntime = parsed.value
     of "displayIcon": metadata.displayIcon = parsed.value
@@ -128,6 +135,9 @@ proc readWindowsBundleMetadata(bundleDirectory: string): PackResult[WindowsBundl
       metadata.installRoot != metadata.id.expectedInstallRoot() or
       metadata.entryPoint != "run-nimino.cmd" or
       metadata.uninstaller != "uninstall-windows.ps1" or
+      metadata.appUserModelId != metadata.id or
+      metadata.toastActivation != "inProcess" or
+      metadata.shortcutPropertiesScript != "register-windows-shortcut.ps1" or
       metadata.startMenuShortcut != metadata.id.expectedShortcut() or
       metadata.webViewRuntime != "evergreen":
     return failure[WindowsBundleMetadata](invalidManifest,
@@ -138,9 +148,10 @@ proc readWindowsBundleMetadata(bundleDirectory: string): PackResult[WindowsBundl
     return failure[WindowsBundleMetadata](invalidManifest,
       "Windows package metadata icon is missing or unsafe")
   if not fileExists(bundleDirectory / metadata.entryPoint) or
+      not fileExists(bundleDirectory / metadata.shortcutPropertiesScript) or
       not fileExists(bundleDirectory / "nimino-manifest.json"):
     return failure[WindowsBundleMetadata](ioFailure,
-      "Windows package bundle is missing a launcher or manifest")
+      "Windows package bundle is missing a launcher, shortcut helper, or manifest")
   let host = bundleDirectory.validateWindowsHost()
   if not host.isOk:
     return failure[WindowsBundleMetadata](host.error.kind, host.error.detail)
@@ -194,6 +205,11 @@ proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: st
     "  WriteUninstaller \"$INSTDIR\\uninstall.exe\"\n" &
     "  CreateDirectory \"$SMPROGRAMS\\Nimino\"\n" &
     "  CreateShortcut \"" & shortcut & "\" \"$INSTDIR\\" & metadata.entryPoint & "\"\n" &
+    "  ExecWait '\"powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"$INSTDIR\\" &
+      metadata.shortcutPropertiesScript & "\" -ShortcutPath \"" & shortcut &
+      "\" -AppUserModelId \"" & metadata.appUserModelId.nsisString() & "\"' $0\n" &
+    "  StrCmp $0 \"0\" +2\n" &
+    "  Abort \"Unable to configure Windows AppUserModelId shortcut property\"\n" &
     "  WriteRegStr HKCU \"" & uninstallKey & "\" \"DisplayName\" \"" &
       metadata.displayName.nsisString() & "\"\n" &
     "  WriteRegStr HKCU \"" & uninstallKey & "\" \"DisplayVersion\" \"" &

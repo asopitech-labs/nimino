@@ -17,6 +17,7 @@ MSIにはWiX等のtoolchainに加え、Windows Installer databaseとICEによる
 - `nimino package-windows <bundle> --format nsis --out <directory>`を追加する。出力は`<id>-<version>-setup.exe`と、監査用の同名`.nsi`である。
 - `makensis`はDocker image内のDebian `nsis` packageを使用する。NSIS packageはDocker image構築時にAPTが解決するため、Nim・NSIS・WiXをローカルへ導入しない。
 - NSIS scriptは`RequestExecutionLevel user`と`SetShellVarContext current`を使い、`%LOCALAPPDATA%\\Nimino\\<id>`、HKCUのUninstall key、current userのStart Menu shortcutだけを操作する。管理者権限、全ユーザー導入、code signing、WebView2 Runtime同梱は扱わない。
+- Start Menu shortcutには生成したPropertyStore helperで`System.AppUserModel.ID`を設定する。AUMIDはmanifestの`id`と一致させ、Toast activation契約は実行中プロセス向けの`inProcess`とする。終了済みプロセスを起動するCOM `INotificationActivationCallback` serverは、未実装のまま登録しない。
 - bundle外からのscript注入を避けるため、Windows metadataのschema、per-user layout、launcher、manifest、任意iconのファイル名を検証する。表示文字列はNSISのquoted stringとしてescapeする。
 - `--format msi`は固定された`unsupportedFeature`エラーにする。WiXのversion/license/保守、Docker導入、Windows Installer ICE、Windows実機のinstall/upgrade/uninstall testがそろうまでMSI生成を追加しない。
 

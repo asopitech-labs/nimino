@@ -53,6 +53,7 @@ categories = ["Network", "Utility"]
 | `<id>.desktop` | Linux Desktop Entry。正式な配置先を`/opt/nimino/<id>`として`Exec`・`TryExec`・ローカル`Icon`を示す |
 | `nimino-linux-package.json` | Linuxパッケージ作成器へ渡す、install root・entry point・desktop entryの機械可読な入力 |
 | `nimino-windows-installer.json` | Windows installer作成器へ渡す、per-user root、Start Menu shortcut、ARP登録、WebView2 Evergreen要件の入力 |
+| `register-windows-shortcut.ps1` | Start Menu shortcutへ`System.AppUserModel.ID`を設定するPowerShell/PropertyStore helper |
 | `install-windows.ps1` | `%LOCALAPPDATA%\\Nimino\\<id>`へコピーし、Start Menu shortcutとHKCUの「アプリと機能」情報を登録するtemplate |
 | `uninstall-windows.ps1` | 上記shortcut・HKCU登録・install rootを除去するtemplate |
 
@@ -69,6 +70,8 @@ nimino package-windows dist/discord --format nsis --out dist/packages
 ```
 
 `<id>-<version>-setup.exe`に加え、同じ内容を監査できる`.nsi` scriptを出力します。setupは`%LOCALAPPDATA%\\Nimino\\<id>`、HKCUのUninstall registry entry、current userのStart Menu shortcutを対象にします。管理者権限、全ユーザー導入、WebView2 Runtime同梱、code signing、Windows実機でのinstall/uninstall/upgrade検証は含みません。
+
+Windows通知のAUMIDはmanifestの`id`と同一に固定し、NSISおよび`install-windows.ps1`がStart Menu shortcutの`System.AppUserModel.ID`へ設定します。Toastの現在のactivation契約は`inProcess`です。実行中プロセスの`IToastNotification.Activated`は利用できますが、終了済みプロセスを起動するCOM `INotificationActivationCallback` serverの登録・実装は未対応です。そのため、未登録のCOM activatorを成功扱いせず、完全なバックグラウンドactivationは後続のWindows host/packaging作業とします。
 
 `--format msi`は現在、固定された未対応エラーになります。固定WiX toolchain、Windows Installer/ICE validation、Windows実機testを整備するまでMSIは生成しません。
 
