@@ -3,6 +3,8 @@
 import nimino_native
 
 let app = newNativeApp()
+let identityApp = newNativeApp(NativeAppOptions(appId: "app.nimino.windows-cross"))
+doAssert identityApp.supports(nativeNotification)
 doAssert app.supports(systemTray)
 doAssert app.supports(nativeMenu)
 doAssert app.supports(nativeNotification)

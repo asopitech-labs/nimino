@@ -49,6 +49,8 @@ block systemTrayIsExplicitlyUnsupportedOffWindows:
 
 block nativeDesktopIntegrationCapabilitiesAndStatesAreExplicit:
   let app = newNativeApp()
+  let identityApp = newNativeApp(NativeAppOptions(appId: "app.nimino.foundation"))
+  doAssert not identityApp.isNil
   let items = [NativeMenuItem(id: 1, title: "Quit", enabled: true)]
   when defined(linux) and not defined(niminoWsl):
     doAssert app.supports(nativeMenu)
