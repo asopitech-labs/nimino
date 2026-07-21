@@ -238,6 +238,32 @@ block policyPayloadRoundTrip:
   let malformedResponse = parsePolicyResponse("{\"allow\":\"yes\"}")
   doAssert not malformedResponse.isOk
 
+block customProtocolPolicyRoundTrip:
+  let request = PolicyRequest(kind: customProtocolPolicy, windowId: 11,
+    webViewId: 22, url: "nimino://app/hello.txt", methodName: "GET",
+    path: "/hello.txt")
+  let decodedRequest = request.policyRequestJson.parsePolicyRequest()
+  doAssert decodedRequest.isOk
+  doAssert decodedRequest.value.kind == customProtocolPolicy
+  doAssert decodedRequest.value.windowId == 11
+  doAssert decodedRequest.value.webViewId == 22
+  doAssert decodedRequest.value.methodName == "GET"
+  doAssert decodedRequest.value.path == "/hello.txt"
+  doAssert decodedRequest.value.url == request.url
+
+  let response = PolicyResponse(allow: true, statusCode: 201,
+    mimeType: "text/plain; charset=utf-8", body: "hello from host")
+  let decodedResponse = response.policyResponseJson.parsePolicyResponse()
+  doAssert decodedResponse.isOk
+  doAssert decodedResponse.value.allow
+  doAssert decodedResponse.value.statusCode == 201
+  doAssert decodedResponse.value.mimeType == response.mimeType
+  doAssert decodedResponse.value.body == response.body
+
+  let legacyResponse = parsePolicyResponse("{\"allow\":true}")
+  doAssert legacyResponse.isOk
+  doAssert legacyResponse.value.statusCode == 200
+
 block truncatedStreamIsRejected:
   let stream = newStringStream("\0\0")
   let read = stream.readFrameFrom()
