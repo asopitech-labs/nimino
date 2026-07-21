@@ -12,10 +12,12 @@ var navigationCompleted: bool
 var browsingDataClearInFlight: bool
 var browsingDataClearStep: int
 var browsingDataFinished: bool
+var notificationRequested: bool
 
 proc quitWhenComplete() =
   if idleTicks > 0 and evaluationFinished and messageReceived and
-      navigationStarted and navigationCompleted and browsingDataFinished:
+      navigationStarted and navigationCompleted and browsingDataFinished and
+      notificationRequested:
     doAssert cast[NativeApp](callbackApp).quit().isOk
 
 proc completeEvaluation(completed: Future[NativeResultOf[string]]) {.gcsafe.} =
@@ -51,6 +53,17 @@ proc receiveMessage(message: string) =
 
 proc receiveIdle() =
   inc idleTicks
+  if not notificationRequested:
+    let notification = cast[NativeApp](callbackApp).sendNativeNotification(
+      NativeNotification(
+        id: "linux-native-smoke",
+        title: "Nimino Linux smoke",
+        body: "GTK/GIO notification request"
+      ))
+    ## GIO does not report whether the desktop shell ultimately shows it, but
+    ## this proves the in-process GNotification API request succeeds.
+    doAssert notification.isOk
+    notificationRequested = true
   if navigationCompleted and not browsingDataFinished and not browsingDataClearInFlight:
     beginNextBrowsingDataClear()
   quitWhenComplete()
@@ -65,6 +78,13 @@ proc receiveNavigationStarting(url: string): bool =
 
 let app = newNativeApp()
 callbackApp = cast[pointer](app)
+doAssert app.supports(nativeMenu)
+doAssert app.supports(nativeNotification)
+doAssert app.configureNativeMenu("Nimino", [
+  NativeMenuItem(id: 1, title: "Smoke command", enabled: true)
+], proc(itemId: uint32) =
+  doAssert itemId == 1
+).isOk
 doAssert app.setIdleHandler(receiveIdle).isOk
 let window = app.newWindow("Nimino Linux smoke", 320, 200)
 doAssert window.isOk
@@ -88,4 +108,5 @@ doAssert navigationStarted
 doAssert navigationCompleted
 doAssert browsingDataClearStep == 3
 doAssert browsingDataFinished
+doAssert notificationRequested
 echo "Linux native smoke passed"

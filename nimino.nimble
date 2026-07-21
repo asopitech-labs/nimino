@@ -7,6 +7,7 @@ requires "nim >= 2.2.0"
 
 task test, "Run Nimino unit tests in ARC mode":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-nimcache --out:/tmp/nimino-test-foundation --path:packages/native packages/native/tests/test_foundation.nim"
+  exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-desktop-capabilities-nimcache --out:/tmp/nimino-test-wsl-desktop-capabilities --path:packages/native packages/native/tests/test_wsl_desktop_capabilities.nim"
   exec "nimble testWebView2ProfileFfi"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-nimcache --out:/tmp/nimino-test-core-rpc --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_rpc.nim"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-app-nimcache --out:/tmp/nimino-test-core-app --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_app.nim"
@@ -27,9 +28,10 @@ task test, "Run Nimino unit tests in ARC mode":
 
 task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-linux-smoke-nimcache --out:/tmp/nimino-linux-smoke --path:packages/native packages/native/tests/test_linux_smoke.nim"
+  ## Give GNotification a private session bus; Xvfb alone does not provide one.
   ## Keep a stalled GLib/WebKit callback from indefinitely occupying a CI
   ## worker. The smoke itself reports all required completion assertions.
-  exec "timeout 45s xvfb-run -a /tmp/nimino-linux-smoke"
+  exec "timeout 45s dbus-run-session -- xvfb-run -a /tmp/nimino-linux-smoke"
 
 task testCoreLinuxRpcSmoke, "Run the Linux core RPC smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_smoke.nim"
