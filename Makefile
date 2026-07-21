@@ -133,25 +133,25 @@ wsl-client-smoke: image ## WSL clientからWindows hostを起動しWindow/WebVie
 
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslClientArtifact
-	./.tmp/nimino-wsl-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)"
+	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s ./.tmp/nimino-wsl-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)") || { status=$$?; taskkill.exe /IM nimino-wsl-host.exe /F >/dev/null 2>&1 || true; exit $$status; }
 
 wsl-core-smoke: image ## 通常のcore APIからWSL Windows hostを選択してWindow/WebView/shutdownを実機確認する
 
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslCoreClientArtifact
-	./.tmp/nimino-wsl-core-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)"
+	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s ./.tmp/nimino-wsl-core-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)") || { status=$$?; taskkill.exe /IM nimino-wsl-host.exe /F >/dev/null 2>&1 || true; exit $$status; }
 
 wsl-core-rpc-async-smoke: image ## WSL coreのasync RPC・timeout・Window更新をWindows WebView2実機で確認する
 
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslCoreRpcAsyncClientArtifact
-	./.tmp/nimino-wsl-core-rpc-async-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)"
+	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s ./.tmp/nimino-wsl-core-rpc-async-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)") || { status=$$?; taskkill.exe /IM nimino-wsl-host.exe /F >/dev/null 2>&1 || true; exit $$status; }
 
 wsl-core-rpc-url-smoke: image ## WSL core URLのdocument-start RPCをWindows WebView2実機で確認する
 
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslCoreRpcUrlClientArtifact
-	./.tmp/nimino-wsl-core-rpc-url-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)"
+	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s ./.tmp/nimino-wsl-core-rpc-url-client-smoke "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)") || { status=$$?; taskkill.exe /IM nimino-wsl-host.exe /F >/dev/null 2>&1 || true; exit $$status; }
 
 check: test ## testの別名
 
