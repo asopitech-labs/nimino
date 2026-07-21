@@ -15,3 +15,4 @@ ADRは設計判断と、その判断を覆す条件を記録します。M0では
 11. [ADR-0014: nimino-pack desktop distribution metadata](0014-pack-desktop-metadata.md)
 12. [ADR-0015: nimino-pack Linux archive generation](0015-pack-linux-archive-generation.md)
 13. [ADR-0016: nimino-pack Windows NSIS generation](0016-pack-windows-nsis-generation.md)
+14. [ADR-0017: custom WebView scheme and OS deep-link boundary](0017-custom-protocol-boundary.md)
