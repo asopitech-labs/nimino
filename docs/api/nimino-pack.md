@@ -54,7 +54,19 @@ categories = ["Network", "Utility"]
 
 `<id>.desktop`はreverse-DNS形式のアプリIDをファイル名に使います。`Icon`はbundleに同梱できるローカルアイコンだけを参照します。リモートURLの`--icon`は実行時に取得しないため、desktop entryの`Icon`へ書き込みません。パッケージャーはローカルアイコンを所定のicon directoryに配置する場合、生成metadataと同じアプリIDを使ってdesktop entryを調整する必要があります。
 
-WindowsのMSI/NSIS、署名、Flatpak、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。`install-windows.ps1`もWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
+WindowsのMSI、署名、Flatpak、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。`install-windows.ps1`もWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
+
+### Windows NSIS setup
+
+bundleを生成した後、Docker内でper-user NSIS setupを生成できます。
+
+```bash
+nimino package-windows dist/discord --format nsis --out dist/packages
+```
+
+`<id>-<version>-setup.exe`に加え、同じ内容を監査できる`.nsi` scriptを出力します。setupは`%LOCALAPPDATA%\\Nimino\\<id>`、HKCUのUninstall registry entry、current userのStart Menu shortcutを対象にします。管理者権限、全ユーザー導入、WebView2 Runtime同梱、code signing、Windows実機でのinstall/uninstall/upgrade検証は含みません。
+
+`--format msi`は現在、固定された未対応エラーになります。固定WiX toolchain、Windows Installer/ICE validation、Windows実機testを整備するまでMSIは生成しません。
 
 ### Linux archive
 
@@ -86,7 +98,8 @@ AppImageはchecksum固定済みの公式`appimagetool`で、`AppRun`、移植可
 make pack-test
 make pack-cli-test
 make pack-linux-test
+make pack-windows-test
 make pack-archive-test
 ```
 
-`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMの内容と、AppImageの生成・自己展開・起動器・amd64制約、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。最後の三つはDockerコンテナ内で実行します。
+`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMの内容と、AppImageの生成・自己展開・起動器・amd64制約、`pack-windows-test`はNSIS setup EXEのクロス生成とMSI未対応エラー、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。最後の四つはDockerコンテナ内で実行します。

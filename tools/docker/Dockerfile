@@ -13,6 +13,7 @@ RUN apt-get update \
       curl \
       gcc-mingw-w64-x86-64 \
       git \
+      nsis \
       pkg-config \
       rpm \
       desktop-file-utils \

@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+
+nimino="${1:-/tmp/nimino}"
+root=/tmp/nimino-pack-windows-test
+
+rm -rf "$root"
+mkdir -p "$root/out"
+printf '%s\n' \
+  'name = "Windows Demo"' \
+  'id = "app.nimino.windows-demo"' \
+  'url = "https://example.com"' \
+  "icon = \"$root/icon.ico\"" \
+  '' \
+  '[package]' \
+  'version = "1.2.3"' \
+  'description = "Nimino Windows package test"' \
+  'publisher = "Nimino Tests"' \
+  'homepage = "https://nimino.example/windows-demo"' \
+  > "$root/input.toml"
+printf 'not-a-real-icon\n' > "$root/icon.ico"
+printf 'MZfake-windows-host\n' > "$root/nimino-host.exe"
+
+"$nimino" pack "$root/input.toml" --out "$root/bundle" --host "$root/nimino-host.exe"
+"$nimino" package-windows "$root/bundle" --format nsis --out "$root/out"
+
+setup="$root/out/app.nimino.windows-demo-1.2.3-setup.exe"
+script="$root/out/app.nimino.windows-demo-1.2.3-setup.nsi"
+test -s "$setup"
+test -s "$script"
+test "$(od -An -tx1 -N2 "$setup" | tr -d '[:space:]')" = '4d5a'
+grep -Fx 'RequestExecutionLevel user' "$script"
+grep -Fx 'InstallDir "$LOCALAPPDATA\Nimino\app.nimino.windows-demo"' "$script"
+grep -Fx '  File /r "/tmp/nimino-pack-windows-test/bundle/*"' "$script"
+grep -Fx '  WriteUninstaller "$INSTDIR\uninstall.exe"' "$script"
+grep -Fx '  CreateShortcut "$SMPROGRAMS\Nimino\app.nimino.windows-demo.lnk" "$INSTDIR\run-nimino.cmd"' "$script"
+grep -F '  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\app.nimino.windows-demo" "UninstallString"' "$script"
+
+if "$nimino" package-windows "$root/bundle" --format msi --out "$root/out/msi" 2>"$root/msi.err"; then
+  exit 1
+fi
+grep -Fx 'nimino package-windows: MSI package generation is unavailable: a fixed WiX toolchain and Windows Installer validation are not configured' "$root/msi.err"

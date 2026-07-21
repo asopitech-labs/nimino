@@ -6,6 +6,7 @@ proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino pack <url> --name <name> --id <id> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
+  stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
   quit(2)
 
 proc packageLinuxUsage() =
@@ -40,6 +41,38 @@ proc runPackageLinux() =
   let built = buildLinuxPackage(options)
   if not built.isOk:
     stderr.writeLine("nimino package-linux: " & built.error.detail)
+    quit(1)
+  echo built.value
+  quit(0)
+
+proc packageWindowsUsage() =
+  usage()
+
+proc runPackageWindows() =
+  if paramCount() < 3:
+    packageWindowsUsage()
+  var options = WindowsPackageOptions(bundleDirectory: paramStr(2))
+  var hasFormat = false
+  var index = 3
+  while index <= paramCount():
+    if index == paramCount(): packageWindowsUsage()
+    let flag = paramStr(index)
+    let value = paramStr(index + 1)
+    case flag
+    of "--format":
+      case value.toLowerAscii()
+      of "nsis": options.format = nsisPackage
+      of "msi": options.format = msiPackage
+      else: packageWindowsUsage()
+      hasFormat = true
+    of "--out": options.outputDirectory = value
+    else: packageWindowsUsage()
+    index += 2
+  if not hasFormat or options.outputDirectory.len == 0:
+    packageWindowsUsage()
+  let built = buildWindowsPackage(options)
+  if not built.isOk:
+    stderr.writeLine("nimino package-windows: " & built.error.detail)
     quit(1)
   echo built.value
   quit(0)
@@ -241,6 +274,8 @@ proc copyGenerated(source, destination: string): bool =
 
 if paramCount() >= 1 and paramStr(1) == "package-linux":
   runPackageLinux()
+if paramCount() >= 1 and paramStr(1) == "package-windows":
+  runPackageWindows()
 if paramCount() < 2 or paramStr(1) != "pack":
   usage()
 var loaded: PackResult[PackManifest]
