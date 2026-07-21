@@ -91,6 +91,7 @@ NativeApp (明示 close)
 ## リポジトリ配置
 
 M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registry、WSL client adapterを追加しています。WSL adapterはM1 setup、fake host RPC relay、実WebView2 Runtime上の読込/評価、async response/timeoutを確認済みです。M4ではprofile path、local asset境界、navigation policy、permission/download policy、デスクトップメニュー・トレイ・通知のCore/WSL relay、Windows Common Dialog/GTK FileDialogによるOSファイルダイアログを追加しました。M6ではhostless配布bundleを拒否し、Flatpak builder context生成を追加しました。WebView内部custom protocolはWindows/Linux nativeとWSL relayを実装済みですが、実Windows Runtime往復はGUI実機ハーネスで検証します。正式なMSI/署名・更新、Windows toast activation、macOSは後続対象です。`pack`にはTOMLマニフェスト解析・検証と正規化JSON CLI、NSIS/Debian/RPM/AppImage/Flatpak context生成を追加しています。最終配置は次です。
+M6後続では、PakeのPopular PackagesとGitHub Actions Online Buildingに相当する`nimino-pack`配布導線を追加します。Popular Packagesはchecksum・署名・生成元付きの検証済みartifactカタログ、Online Buildingは固定Docker toolchainを使う`workflow_dispatch`であり、ローカルのNim/Nimble/Dockerを利用者へ要求しません。unsupportedな配布形式や依存閉包を成功扱いしない境界は[ADR 0018](docs/adr/0018-pack-online-build-and-popular-catalog.md)で固定します。
 
 ```text
 packages/

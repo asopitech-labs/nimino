@@ -5,11 +5,18 @@ SERVICE ?= nimino-dev
 WSL_SMOKE_TIMEOUT ?= 120
 WSL_INTERACTIVE_TIMEOUT ?= 300
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-linux-test pack-windows-test pack-bundle-test pack-archive-test linux-smoke linux-custom-protocol-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help setup image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-linux-test pack-windows-test pack-bundle-test pack-archive-test linux-smoke linux-custom-protocol-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
 	@awk 'BEGIN {FS = ":.*##"}; /^[a-zA-Z][a-zA-Z0-9_-]*:.*##/ {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+setup: verify-env ## DockerのNim/GTK/WebKitGTKと利用可能なWindows WebView2 Runtimeを自動準備する
+	@if command -v powershell.exe >/dev/null 2>&1; then \
+		$(MAKE) setup-windows-webview2; \
+	else \
+		echo "Windows interop is unavailable; Docker GTK/WebKitGTK setup is complete"; \
+	fi
 
 image: ## Nim/GTK/WebKitGTK開発イメージをビルドする
 
