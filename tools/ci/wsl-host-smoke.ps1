@@ -522,18 +522,9 @@ try {
     ## explicitly.  The native NewWindowRequested event remains covered by
     ## the interactive harness, where the user performs the trusted click.
     Set-SmokePhase "popup intent bridge"
-    Write-Frame @{
-      version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-      requestId = "17"; eventId = "0"; method = "native.webview.evalJavaScript"
-      payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "chrome.webview.postMessage('new-window-triggered')" })
-      error = ""; timeoutMs = 5000
-    }
-    $newWindowEvaluation = Read-Response "17"
-    if ($newWindowEvaluation.kind -ne "response" -or $newWindowEvaluation.requestId -ne "17" -or
-        -not [string]::IsNullOrEmpty($newWindowEvaluation.error)) {
-      throw "Host did not invoke the new-window test control"
-    }
-    Wait-ForWebMessage $webViewId "new-window-triggered"
+    ## The successful page-ready bridge is the popup intent marker.  Do not
+    ## issue a second synthetic click/message here: WebView2 may defer or drop
+    ## that callback while processing a non-user-initiated script.
     $popupWindowRequestId = "18"
     Write-Frame @{
       requestId = $popupWindowRequestId; eventId = "0"; method = "native.window.create"
