@@ -1,4 +1,16 @@
+param([switch]$Elevated)
+
 $ErrorActionPreference = "SilentlyContinue"
+
+if (-not $Elevated) {
+  $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+  if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Output "Requesting administrator elevation to clean Nimino processes..."
+    $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Elevated"
+    $elevatedProcess = Start-Process powershell.exe -Verb RunAs -ArgumentList $arguments -Wait -PassThru
+    exit $elevatedProcess.ExitCode
+  }
+}
 
 $processes = @()
 $processes += Get-CimInstance Win32_Process -Filter "Name='nimino-wsl-host.exe'"
