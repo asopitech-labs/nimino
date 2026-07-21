@@ -220,7 +220,14 @@ block windowsCanSelectIndependentProfiles:
   doAssert engineClear.finished
   let engineClearResult = engineClear.read()
   doAssert not engineClearResult.isOk
-  doAssert engineClearResult.failure.kind == platformUnavailable
+  ## The native Linux backend now owns a WebKitWebsiteDataManager.  This
+  ## window has not entered the GTK main loop yet, so clearing must fail as an
+  ## invalid state rather than silently reporting the feature unsupported.
+  ## The dedicated `-d:niminoWsl` adapter test below retains the WSL boundary.
+  when defined(linux) and not defined(niminoWsl):
+    doAssert engineClearResult.failure.kind == invalidState
+  else:
+    doAssert engineClearResult.failure.kind == platformUnavailable
   let missingKinds = direct.value.clearWebViewProfileData({})
   doAssert missingKinds.finished
   let missingKindsResult = missingKinds.read()

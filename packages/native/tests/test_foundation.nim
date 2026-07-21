@@ -89,7 +89,7 @@ block javascriptEvaluationRejectsInvalidView:
   doAssert not result.isOk
   doAssert result.failure.kind == invalidState
 
-block liveBrowserDataClearingIsExplicitlyUnavailableOffWindows:
+block liveBrowserDataClearingRequiresAReadyNativeWebView:
   let app = newNativeApp()
   let window = app.newWindow("Browser data", 320, 200)
   doAssert window.isOk
@@ -99,4 +99,7 @@ block liveBrowserDataClearingIsExplicitlyUnavailableOffWindows:
   doAssert cleared.finished
   let result = cleared.read()
   doAssert not result.isOk
-  doAssert result.failure.kind == unsupported
+  when defined(linux) and not defined(niminoWsl):
+    doAssert result.failure.kind == invalidState
+  else:
+    doAssert result.failure.kind == unsupported
