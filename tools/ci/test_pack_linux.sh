@@ -42,25 +42,6 @@ rpm -qp --qf '%{NAME} %{VERSION} %{ARCH}\n' "$root/out/app.nimino.linux-demo-1.2
 rpm -qpl "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm" | grep -Fx '/opt/nimino/app.nimino.linux-demo/run-nimino.sh'
 rpm -qpl "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm" | grep -Fx '/usr/share/applications/app.nimino.linux-demo.desktop'
 
-"$nimino" package-linux "$root/bundle" --format appimage --out "$root/out" --arch amd64
-appimage="$root/out/app.nimino.linux-demo-1.2.3-x86_64.AppImage"
-test -s "$appimage"
-mkdir "$root/extracted"
-(
-  cd "$root/extracted"
-  APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --appimage-extract
-)
-test -x "$root/extracted/squashfs-root/AppRun"
-test -x "$root/extracted/squashfs-root/usr/bin/app.nimino.linux-demo"
-test -f "$root/extracted/squashfs-root/usr/lib/nimino/app.nimino.linux-demo/run-nimino.sh"
-test -x "$root/extracted/squashfs-root/usr/lib/nimino/app.nimino.linux-demo/run-nimino.sh"
-test -x "$root/extracted/squashfs-root/usr/lib/nimino/app.nimino.linux-demo/nimino-host"
-test -f "$root/extracted/squashfs-root/icon.svg"
-grep -Fx 'Exec=app.nimino.linux-demo' "$root/extracted/squashfs-root/app.nimino.linux-demo.desktop"
-grep -Fx 'Icon=icon' "$root/extracted/squashfs-root/app.nimino.linux-demo.desktop"
-! grep -F 'X-Nimino-Manifest=' "$root/extracted/squashfs-root/app.nimino.linux-demo.desktop"
-APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --smoke
-
 flatpak_context="$root/out/app.nimino.linux-demo-1.2.3-flatpak"
 "$nimino" package-linux "$root/bundle" --format flatpak --out "$root/out"
 test -s "$flatpak_context/app.nimino.linux-demo.flatpak.json"

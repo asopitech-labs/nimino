@@ -61,6 +61,10 @@ task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
 task testPackLinux, "Build Debian/RPM archives from nimino-pack Linux metadata":
   exec "bash tools/ci/test_pack_linux.sh /tmp/nimino"
 
+task testPackAppImageGuardrails, "Verify incomplete AppImage closure fails closed":
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-appimage-guardrails-nimcache --out:/tmp/nimino-test-appimage-guardrails --path:packages/pack --path:packages/pack/src packages/pack/tests/test_appimage_guardrails.nim"
+  exec "bash tools/ci/test_pack_appimage_guardrails.sh /tmp/nimino"
+
 task testPackWindows, "Build an NSIS installer from nimino-pack Windows metadata":
   exec "bash tools/ci/test_pack_windows.sh /tmp/nimino"
 
