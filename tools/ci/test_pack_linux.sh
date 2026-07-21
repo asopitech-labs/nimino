@@ -10,6 +10,7 @@ printf '%s\n' \
   'name = "Linux Demo"' \
   'id = "app.nimino.linux-demo"' \
   'url = "https://example.com"' \
+  "icon = \"$root/icon.svg\"" \
   '' \
   '[package]' \
   'version = "1.2.3"' \
@@ -17,6 +18,11 @@ printf '%s\n' \
   'homepage = "https://nimino.example/linux-demo"' \
   'categories = ["Network", "Utility"]' \
   > "$root/input.toml"
+printf '%s\n' \
+  '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' \
+  '<rect width="64" height="64" fill="#1b6ac9"/>' \
+  '</svg>' \
+  > "$root/icon.svg"
 printf '#!/bin/sh\nexit 0\n' > "$root/nimino-host"
 chmod +x "$root/nimino-host"
 
@@ -36,7 +42,24 @@ rpm -qp --qf '%{NAME} %{VERSION} %{ARCH}\n' "$root/out/app.nimino.linux-demo-1.2
 rpm -qpl "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm" | grep -Fx '/opt/nimino/app.nimino.linux-demo/run-nimino.sh'
 rpm -qpl "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm" | grep -Fx '/usr/share/applications/app.nimino.linux-demo.desktop'
 
-if "$nimino" package-linux "$root/bundle" --format appimage --out "$root/out" 2>"$root/appimage.err"; then
+"$nimino" package-linux "$root/bundle" --format appimage --out "$root/out" --arch amd64
+appimage="$root/out/app.nimino.linux-demo-1.2.3-x86_64.AppImage"
+test -s "$appimage"
+mkdir "$root/extracted"
+(
+  cd "$root/extracted"
+  APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --appimage-extract
+)
+test -x "$root/extracted/squashfs-root/AppRun"
+test -x "$root/extracted/squashfs-root/usr/bin/app.nimino.linux-demo"
+test -f "$root/extracted/squashfs-root/usr/lib/nimino/app.nimino.linux-demo/run-nimino.sh"
+test -f "$root/extracted/squashfs-root/icon.svg"
+grep -Fx 'Exec=app.nimino.linux-demo' "$root/extracted/squashfs-root/app.nimino.linux-demo.desktop"
+grep -Fx 'Icon=icon' "$root/extracted/squashfs-root/app.nimino.linux-demo.desktop"
+! grep -F 'X-Nimino-Manifest=' "$root/extracted/squashfs-root/app.nimino.linux-demo.desktop"
+APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --smoke
+
+if "$nimino" package-linux "$root/bundle" --format appimage --out "$root/out" --arch arm64 2>"$root/appimage-arm64.err"; then
   exit 1
 fi
-grep -Fx 'nimino package-linux: AppImage package generation requires appimagetool in the Docker image' "$root/appimage.err"
+grep -Fx 'nimino package-linux: AppImage package generation currently supports amd64 only' "$root/appimage-arm64.err"

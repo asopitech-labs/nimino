@@ -106,10 +106,12 @@ proc readLinuxBundleMetadata(bundleDirectory: string): PackResult[LinuxBundleMet
       metadata.desktopFile != metadata.id & ".desktop" or not safeFileName(metadata.desktopFile):
     return failure[LinuxBundleMetadata](invalidManifest,
       "Linux package metadata does not match the Nimino install layout")
-  if metadata.icon.len > 0 and (not safeFileName(metadata.icon) or
-      not fileExists(bundleDirectory / metadata.icon)):
-    return failure[LinuxBundleMetadata](invalidManifest,
-      "Linux package metadata icon is missing or unsafe")
+  if metadata.icon.len > 0:
+    let iconName = extractFilename(metadata.icon)
+    if not safeFileName(iconName) or metadata.icon != installRoot / iconName or
+        not fileExists(bundleDirectory / iconName):
+      return failure[LinuxBundleMetadata](invalidManifest,
+        "Linux package metadata icon is missing or unsafe")
   if not fileExists(bundleDirectory / metadata.desktopFile) or
       not fileExists(bundleDirectory / "run-nimino.sh") or
       not fileExists(bundleDirectory / "nimino-manifest.json"):
@@ -126,7 +128,11 @@ proc executeTool(command: string; arguments: openArray[string]): PackResult[bool
     commandLine.add(" " & argument.shellQuote())
   let executed = execCmdEx(commandLine)
   if executed.exitCode != 0:
-    return failure[bool](ioFailure, "Linux package tool failed: " & extractFilename(command))
+    var detail = "Linux package tool failed: " & extractFilename(command)
+    let output = executed.output.strip()
+    if output.len > 0:
+      detail.add(": " & output)
+    return failure[bool](ioFailure, detail)
   success(true)
 
 proc ensureDirectory(path: string): PackResult[bool] =
@@ -298,6 +304,90 @@ proc buildRpm(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
   except OSError:
     failure[string](ioFailure, "unable to copy RPM package output")
 
+proc appImageDesktopEntry(bundleDirectory: string; metadata: LinuxBundleMetadata;
+                          iconName: string): PackResult[string] =
+  ## Rewrites Nimino's installed desktop entry for the relocatable AppDir.
+  ## The bundle desktop entry deliberately contains /opt paths for Deb/RPM,
+  ## whereas AppImage executes the named command inside its own mount point.
+  try:
+    var foundIcon = false
+    var content = ""
+    for line in readFile(bundleDirectory / metadata.desktopFile).splitLines():
+      if line.startsWith("Exec="):
+        content.add("Exec=" & metadata.id & "\n")
+      elif line.startsWith("TryExec="):
+        content.add("TryExec=" & metadata.id & "\n")
+      elif line.startsWith("Icon="):
+        content.add("Icon=" & splitFile(iconName).name & "\n")
+        foundIcon = true
+      elif line.startsWith("X-Nimino-Manifest="):
+        discard
+      else:
+        content.add(line & "\n")
+    if not foundIcon:
+      content.add("Icon=" & splitFile(iconName).name & "\n")
+    success(content)
+  except OSError:
+    failure[string](ioFailure, "unable to read Linux desktop metadata")
+
+proc appImageRunScript(id: string): string =
+  "#!/bin/sh\n" &
+    "root=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n" &
+    "exec \"$root/usr/bin/" & id & "\" \"$@\"\n"
+
+proc appImageLauncherScript(id: string): string =
+  "#!/bin/sh\n" &
+    "root=$(CDPATH= cd -- \"$(dirname -- \"$0\")/../..\" && pwd)\n" &
+    "exec \"$root/usr/lib/nimino/" & id & "/run-nimino.sh\" \"$@\"\n"
+
+proc buildAppImage(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
+                   workDirectory, debArchitecture: string): PackResult[string] =
+  let tool = findExe("appimagetool")
+  if tool.len == 0:
+    return failure[string](unsupportedFeature,
+      "AppImage package generation requires appimagetool in the Docker image")
+  if debArchitecture != "amd64":
+    return failure[string](unsupportedFeature,
+      "AppImage package generation currently supports amd64 only")
+  if metadata.icon.len == 0:
+    return failure[string](invalidManifest,
+      "AppImage package generation requires a local icon in the bundle")
+  let iconName = extractFilename(metadata.icon)
+  let appDirectory = workDirectory / (metadata.id & ".AppDir")
+  let applicationDirectory = appDirectory / "usr" / "lib" / "nimino" / metadata.id
+  let desktop = options.bundleDirectory.appImageDesktopEntry(metadata, iconName)
+  if not desktop.isOk:
+    return failure[string](desktop.error.kind, desktop.error.detail)
+  try:
+    createDir(appDirectory)
+    createDir(appDirectory / "usr")
+    createDir(appDirectory / "usr" / "bin")
+    createDir(appDirectory / "usr" / "lib")
+    createDir(appDirectory / "usr" / "lib" / "nimino")
+    copyDir(options.bundleDirectory, applicationDirectory)
+    writeFile(appDirectory / "AppRun", metadata.id.appImageRunScript())
+    writeFile(appDirectory / "usr" / "bin" / metadata.id,
+      metadata.id.appImageLauncherScript())
+    writeFile(appDirectory / metadata.desktopFile, desktop.value)
+    copyFile(options.bundleDirectory / iconName, appDirectory / iconName)
+    setFilePermissions(appDirectory / "AppRun", {fpUserExec, fpUserRead, fpUserWrite,
+      fpGroupExec, fpGroupRead, fpOthersExec, fpOthersRead})
+    setFilePermissions(appDirectory / "usr" / "bin" / metadata.id,
+      {fpUserExec, fpUserRead, fpUserWrite, fpGroupExec, fpGroupRead, fpOthersExec, fpOthersRead})
+  except OSError:
+    return failure[string](ioFailure, "unable to stage AppImage AppDir")
+  let outputPath = options.outputDirectory /
+    (metadata.id & "-" & metadata.version & "-x86_64.AppImage")
+  if fileExists(outputPath):
+    return failure[string](ioFailure, "Linux package output already exists")
+  let built = tool.executeTool([appDirectory, outputPath])
+  if not built.isOk:
+    return failure[string](built.error.kind, built.error.detail)
+  if not fileExists(outputPath) or getFileSize(outputPath) == 0:
+    return failure[string](ioFailure,
+      "AppImage package tool did not produce the expected archive")
+  success(outputPath)
+
 proc buildLinuxPackage*(options: LinuxPackageOptions): PackResult[string] =
   let metadata = options.bundleDirectory.readLinuxBundleMetadata()
   if not metadata.isOk:
@@ -311,13 +401,6 @@ proc buildLinuxPackage*(options: LinuxPackageOptions): PackResult[string] =
   let desktop = options.bundleDirectory.validateDesktopEntry(metadata.value)
   if not desktop.isOk:
     return failure[string](desktop.error.kind, desktop.error.detail)
-  if options.format == appImagePackage:
-    if findExe("appimagetool").len == 0:
-      return failure[string](unsupportedFeature,
-        "AppImage package generation requires appimagetool in the Docker image")
-    return failure[string](unsupportedFeature,
-      "AppImage package generation is not implemented; dependency bundling and signing remain required")
-
   let workDirectory = metadata.value.id.temporaryDirectory()
   try:
     case options.format
@@ -326,7 +409,7 @@ proc buildLinuxPackage*(options: LinuxPackageOptions): PackResult[string] =
     of rpmPackage:
       return options.buildRpm(metadata.value, workDirectory, architecture.value)
     of appImagePackage:
-      discard
+      return options.buildAppImage(metadata.value, workDirectory, architecture.value)
   finally:
     if dirExists(workDirectory):
       try: removeDir(workDirectory)
