@@ -26,6 +26,8 @@ printf 'console.log(1)' > "$root/custom.js"
 
 "$nimino" pack "$root/input.toml" --out "$root/out" --host "$root/host"
 test -s "$root/out/nimino-manifest.json"
+test -s "$root/out/nimino-sbom.cdx.json"
+grep -q 'CycloneDX' "$root/out/nimino-sbom.cdx.json"
 test -x "$root/out/run-nimino.sh"
 test -x "$root/out/host"
 test -s "$root/out/run-nimino.cmd"
