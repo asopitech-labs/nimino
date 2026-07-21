@@ -49,6 +49,20 @@ proc safePackageId(value: string): bool =
 proc safeFileName(value: string): bool =
   safePackageId(value) and value.find('/') < 0 and value.find('\\') < 0
 
+proc validateWindowsHost(bundleDirectory: string): PackResult[bool] =
+  var found = false
+  try:
+    for path in walkDirRec(bundleDirectory):
+      if path.toLowerAscii().endsWith(".exe") and fileExists(path):
+        found = true
+        break
+  except OSError:
+    return failure[bool](ioFailure, "Windows package bundle cannot be scanned")
+  if not found:
+    return failure[bool](ioFailure,
+      "Windows package bundle is missing a host executable")
+  success(true)
+
 proc jsonString(node: JsonNode; key: string): PackResult[string] =
   if node.isNil or node.kind != JObject or not node.hasKey(key) or
       node[key].kind != JString:
@@ -126,6 +140,9 @@ proc readWindowsBundleMetadata(bundleDirectory: string): PackResult[WindowsBundl
       not fileExists(bundleDirectory / "nimino-manifest.json"):
     return failure[WindowsBundleMetadata](ioFailure,
       "Windows package bundle is missing a launcher or manifest")
+  let host = bundleDirectory.validateWindowsHost()
+  if not host.isOk:
+    return failure[WindowsBundleMetadata](host.error.kind, host.error.detail)
   success(metadata)
 
 proc shellQuote(value: string): string =

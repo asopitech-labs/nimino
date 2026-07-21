@@ -52,6 +52,27 @@ proc safePackageId(value: string): bool =
 proc safeFileName(value: string): bool =
   safePackageId(value) and value.find('/') < 0 and value.find('\\') < 0
 
+proc validateLinuxHost(bundleDirectory: string): PackResult[bool] =
+  let launcherPath = bundleDirectory / "run-nimino.sh"
+  let launcher = try: readFile(launcherPath)
+  except OSError:
+    return failure[bool](ioFailure, "Linux package bundle launcher cannot be read")
+  let marker = "exec \"$(dirname \"$0\")/"
+  let start = launcher.find(marker)
+  if start < 0:
+    return failure[bool](invalidManifest,
+      "Linux package launcher does not contain a validated host path")
+  let hostStart = start + marker.len
+  let hostEnd = launcher.find('"', hostStart)
+  if hostEnd <= hostStart:
+    return failure[bool](invalidManifest,
+      "Linux package launcher host path is malformed")
+  let hostName = launcher[hostStart ..< hostEnd]
+  if not safeFileName(hostName) or not fileExists(bundleDirectory / hostName):
+    return failure[bool](ioFailure,
+      "Linux package bundle is missing the host executable referenced by launcher")
+  success(true)
+
 proc jsonString(node: JsonNode; key: string): PackResult[string] =
   if node.isNil or node.kind != JObject or not node.hasKey(key) or
       node[key].kind != JString:
@@ -118,6 +139,9 @@ proc readLinuxBundleMetadata(bundleDirectory: string): PackResult[LinuxBundleMet
       not fileExists(bundleDirectory / "nimino-manifest.json"):
     return failure[LinuxBundleMetadata](ioFailure,
       "Linux package bundle is missing a desktop entry, launcher, or manifest")
+  let host = bundleDirectory.validateLinuxHost()
+  if not host.isOk:
+    return failure[LinuxBundleMetadata](host.error.kind, host.error.detail)
   success(metadata)
 
 proc shellQuote(value: string): string =
