@@ -767,6 +767,10 @@ proc linuxIdleTick(data: pointer): cint {.cdecl.} =
   let app = cast[NativeApp](data)
   if app.isNil or app.state != running:
     return 0
+  if not app.dispatchUiTasks():
+    app.linuxQuit()
+    app.idleTimerSource = 0
+    return 0
   if app.idleHandler != nil:
     try:
       app.idleHandler()
@@ -775,8 +779,13 @@ proc linuxIdleTick(data: pointer): cint {.cdecl.} =
       app.runError = nativeError(osError, "app.idleHandler")
       app.quitRequested = true
       app.linuxQuit()
+      app.idleTimerSource = 0
       return 0
   if app.quitRequested:
+    app.idleTimerSource = 0
+    return 0
+  if app.idleHandler == nil and not app.hasUiTasks():
+    app.idleTimerSource = 0
     return 0
   1
 
@@ -809,7 +818,7 @@ proc linuxRun(app: NativeApp): NativeResult =
     return failure(nativeError(osError, "app.run", detail = "GTK application creation failed"))
 
   app.state = running
-  if app.idleHandler != nil:
+  if app.idleHandler != nil or app.hasUiTasks():
     app.idleTimerSource = g_timeout_add(10, linuxIdleTick, cast[pointer](app))
     if app.idleTimerSource == 0:
       app.state = finished

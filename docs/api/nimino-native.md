@@ -66,7 +66,7 @@ proc supports*(app: NativeApp, capability: Capability): bool
 proc run*(app: NativeApp): NativeResult
 proc quit*(app: NativeApp): NativeResult
 proc close*(app: NativeApp): NativeResult
-proc postToUi*(app: NativeApp, callback: proc() {.gcsafe.}): NativeResult
+proc postToUi*(app: NativeApp, callback: NativeUiHandler): NativeResult
 proc configureSystemTray*(app: NativeApp, items: openArray[NativeMenuItem],
   handler: NativeMenuHandler): NativeResult
 proc configureNativeMenu*(app: NativeApp, title: string,

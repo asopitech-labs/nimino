@@ -158,6 +158,7 @@ const
   WmUser* = 0x0400'u32
   WmApp* = 0x8000'u32
   WmTrayCallback* = WmApp + 1'u32
+  WmUiTask* = WmApp + 2'u32
   NinSelect* = WmUser
   NinKeySelect* = WmUser + 1'u32
   GwlpUserData* = -21'i32

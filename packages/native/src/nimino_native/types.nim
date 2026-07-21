@@ -1,9 +1,10 @@
-import std/asyncfutures
+import std/[asyncfutures, locks]
 
 import ./[capabilities, errors]
 
 type
   NativeIdleHandler* = proc() {.closure.}
+  NativeUiHandler* = proc() {.closure.}
   NativeMessageHandler* = proc(message: string) {.closure.}
   NativeErrorHandler* = proc(error: NativeError) {.closure.}
   ## Return true when the application consumed the request.  Returning false
@@ -93,6 +94,8 @@ type
     idleTimerWindow: pointer
     idleTimerSource: uint32
     idleHandler: NativeIdleHandler
+    uiTaskLock: Lock
+    uiTasks: seq[NativeUiHandler]
     trayMenuItems: seq[NativeMenuItem]
     trayMenuHandler: NativeMenuHandler
     trayConfigured: bool
@@ -397,6 +400,40 @@ proc dispatchDownloadStarting(view: NativeWebView; url: string): bool =
   try: view.downloadStartingHandler(url)
   except CatchableError: false
 
+proc hasUiTasks(app: NativeApp): bool =
+  if app.isNil:
+    return false
+  acquire(app.uiTaskLock)
+  result = app.uiTasks.len > 0
+  release(app.uiTaskLock)
+
+proc removeLastUiTask(app: NativeApp) =
+  if app.isNil:
+    return
+  acquire(app.uiTaskLock)
+  if app.uiTasks.len > 0:
+    app.uiTasks.setLen(app.uiTasks.len - 1)
+  release(app.uiTaskLock)
+
+proc dispatchUiTasks(app: NativeApp): bool =
+  if app.isNil:
+    return false
+  var tasks: seq[NativeUiHandler]
+  acquire(app.uiTaskLock)
+  swap(tasks, app.uiTasks)
+  release(app.uiTaskLock)
+  for task in tasks:
+    if task.isNil:
+      continue
+    try:
+      task()
+    except CatchableError as error:
+      app.hasRunError = true
+      app.runError = nativeError(osError, "app.postToUi", detail = error.msg)
+      app.quitRequested = true
+      return false
+  true
+
 when defined(linux) and not defined(niminoWsl):
   import ./private/linux/ffi
   include "private/linux/backend"
@@ -407,6 +444,7 @@ elif defined(windows):
 proc newNativeApp*(): NativeApp =
   new(result)
   result.state = created
+  initLock(result.uiTaskLock)
   result.capabilities = {webPermissionEvents}
   when defined(windows):
     result.capabilities.incl(nativeMenu)
@@ -960,6 +998,40 @@ proc quit*(app: NativeApp): NativeResult =
 
 proc close*(app: NativeApp): NativeResult =
   app.quit()
+
+proc postToUi*(app: NativeApp; callback: NativeUiHandler): NativeResult =
+  ## Queues a callback for execution on the native UI thread.  The callback
+  ## is never run inline, including when called from that thread.
+  when defined(windows) or (defined(linux) and not defined(niminoWsl)):
+    if app.isNil or app.state == finished:
+      return failure(nativeError(invalidState, "app.postToUi"))
+    if callback.isNil:
+      return failure(nativeError(invalidArgument, "app.postToUi",
+        detail = "callback must not be nil"))
+    acquire(app.uiTaskLock)
+    app.uiTasks.add(callback)
+    release(app.uiTaskLock)
+    when defined(windows):
+      if app.state == running:
+        for window in app.windows:
+          if window.platformWindow != nil:
+            if postMessageW(window.platformWindow, WmUiTask, 0, 0) == 0:
+              app.removeLastUiTask()
+              return failure(windowsError("app.postToUi", getLastError()))
+            return success()
+        app.removeLastUiTask()
+        return failure(nativeError(invalidState, "app.postToUi",
+          detail = "no native window is available"))
+    elif defined(linux) and not defined(niminoWsl):
+      if app.state == running and app.idleTimerSource == 0:
+        app.idleTimerSource = g_timeout_add(1, linuxIdleTick, cast[pointer](app))
+        if app.idleTimerSource == 0:
+          app.removeLastUiTask()
+          return failure(nativeError(osError, "app.postToUi",
+            detail = "GLib timeout source creation failed"))
+    success()
+  else:
+    failure(nativeError(unsupported, "app.postToUi"))
 
 proc setIdleHandler*(app: NativeApp; handler: NativeIdleHandler): NativeResult =
   if app.isNil or app.state != created:

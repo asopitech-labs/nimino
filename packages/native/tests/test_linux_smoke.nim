@@ -16,6 +16,7 @@ var notificationRequested: bool
 var baseDocumentCompleted: bool
 var baseUrlResolved: bool
 var urlRequested: bool
+var uiTaskExecuted: bool
 
 const BaseUrl = "https://example.invalid/assets/"
 const BaseUrlMessage = "Nimino Linux base:https://example.invalid/assets/images/logo.svg"
@@ -25,7 +26,7 @@ proc quitWhenComplete() =
   if idleTicks > 0 and evaluationFinished and messageReceived and
       navigationStarted and navigationCompleted and browsingDataFinished and
       notificationRequested and baseDocumentCompleted and baseUrlResolved and
-      urlRequested:
+      urlRequested and uiTaskExecuted:
     doAssert cast[NativeApp](callbackApp).quit().isOk
 
 proc completeEvaluation(completed: Future[NativeResultOf[string]]) {.gcsafe.} =
@@ -106,6 +107,7 @@ doAssert app.configureNativeMenu("Nimino", [
   doAssert itemId == 1
 ).isOk
 doAssert app.setIdleHandler(receiveIdle).isOk
+doAssert app.postToUi(proc() = uiTaskExecuted = true).isOk
 let window = app.newWindow("Nimino Linux smoke", 320, 200)
 doAssert window.isOk
 doAssert window.value.setSize(640, 480).isOk

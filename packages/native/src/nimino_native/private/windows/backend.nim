@@ -1359,8 +1359,17 @@ proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
         window.app.windowsFail(resized.failure)
       return 0
     of WmTimer:
+      if not window.app.dispatchUiTasks():
+        window.app.windowsRequestQuit()
       if window.app.idleHandler != nil:
         window.app.idleHandler()
+      elif not window.app.hasUiTasks() and window.app.idleTimerWindow != nil:
+        discard killTimer(window.app.idleTimerWindow, 1)
+        window.app.idleTimerWindow = nil
+      return 0
+    of WmUiTask:
+      if not window.app.dispatchUiTasks():
+        window.app.windowsRequestQuit()
       return 0
     of WmTrayCallback:
       let notification = uint32(cast[uint](lParam) and 0xffff'u)
@@ -1655,7 +1664,7 @@ proc windowsRun(app: NativeApp): NativeResult =
   if app.quitRequested:
     app.windowsRequestQuit()
 
-  if not app.quitRequested and app.idleHandler != nil:
+  if not app.quitRequested and (app.idleHandler != nil or app.hasUiTasks()):
     for window in app.windows:
       if window.platformWindow != nil:
         if setTimer(window.platformWindow, 1, 10, nil) == 0:

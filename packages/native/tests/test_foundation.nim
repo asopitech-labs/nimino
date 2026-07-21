@@ -120,6 +120,14 @@ block lifecycleStateQueriesAreExplicit:
   doAssert not view.value.isReady()
   doAssert not view.value.isClosed()
 
+block uiDispatchContractIsExplicit:
+  let app = newNativeApp()
+  doAssert not app.postToUi(nil).isOk
+  when defined(niminoWsl):
+    doAssert not app.postToUi(proc() = discard).isOk
+  else:
+    doAssert app.postToUi(proc() = discard).isOk
+
 block htmlBaseUrlIsValidatedBeforeNativeCreation:
   let app = newNativeApp()
   let window = app.newWindow("HTML base URL", 320, 200)
