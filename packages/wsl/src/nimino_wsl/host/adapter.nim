@@ -60,6 +60,7 @@ type
     nextWebViewId: uint64
     windows: Table[uint64, NativeWindow]
     webViews: Table[uint64, NativeWebView]
+    webViewWindowIds: Table[uint64, uint64]
     windowViewCounts: Table[uint64, int]
     uiStartRequested: bool
     pendingMessages: seq[HostWebMessage]
@@ -88,6 +89,18 @@ proc suggestedDownloadName(url: string): string =
 
 proc newHostAdapter*(): HostAdapter =
   HostAdapter(app: newNativeApp(), nextWindowId: 1, nextWebViewId: 1)
+
+proc forgetWindow(adapter: HostAdapter; windowId: uint64) =
+  var ownedWebViews: seq[uint64]
+  for webViewId, ownerWindowId in adapter.webViewWindowIds.pairs:
+    if ownerWindowId == windowId:
+      ownedWebViews.add(webViewId)
+  for webViewId in ownedWebViews:
+    adapter.webViews.del(webViewId)
+    adapter.webViewWindowIds.del(webViewId)
+    adapter.navigationRules.del(webViewId)
+  adapter.windows.del(windowId)
+  adapter.windowViewCounts.del(windowId)
 
 proc errorAction(detail: string): ProtocolResultOf[HostAction] {.inline.} =
   failureOf[HostAction](protocolError(invalidMessage, detail))
@@ -291,8 +304,6 @@ proc handleWindowClose(adapter: HostAdapter; payload: JsonNode): ProtocolResultO
   let closed = adapter.windows[windowId.value].close()
   if not closed.isOk:
     return nativeFailure("native.window.close", closed)
-  adapter.windows.del(windowId.value)
-  adapter.windowViewCounts.del(windowId.value)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
 proc closeAllWindows*(adapter: HostAdapter): bool =
@@ -300,7 +311,10 @@ proc closeAllWindows*(adapter: HostAdapter): bool =
   ## This mirrors Tauri's managed WebviewWindow lifecycle and also ensures
   ## popup windows receive WM_CLOSE instead of relying on process termination.
   result = true
+  var managedWindows: seq[NativeWindow]
   for window in adapter.windows.values:
+    managedWindows.add(window)
+  for window in managedWindows:
     let closed = window.close()
     if not closed.isOk and closed.failure.kind != invalidState:
       result = false
@@ -517,6 +531,7 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   if not downloadEventsConfigured.isOk:
     return nativeFailure("native.webview.onDownloadEvent", downloadEventsConfigured)
   adapter.webViews[webViewId] = created.value
+  adapter.webViewWindowIds[webViewId] = windowId.value
   inc adapter.windowViewCounts[windowId.value]
   successOf(HostAction(kind: noHostAction, payload: encodedId("webViewId", webViewId)))
 
@@ -597,6 +612,12 @@ proc takeWindowClosed*(adapter: HostAdapter): seq[uint64] =
     return @[]
   result = adapter.pendingWindowClosed
   adapter.pendingWindowClosed.setLen(0)
+  ## Closed callbacks run inside the native object's teardown stack.  Dropping
+  ## the final managed references there can free ARC objects while their
+  ## callback is still executing.  Reap ownership only after control returns
+  ## to the host event flush.
+  for windowId in result:
+    adapter.forgetWindow(windowId)
 
 
 proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;

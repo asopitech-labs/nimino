@@ -604,10 +604,22 @@ try {
     Set-SmokePhase "popup window close event"
     Wait-ForWindowClosed $popupWindowId
     Set-SmokePhase "popup window closed"
+    $closedViewRequestId = "23"
+    Write-Frame @{
+      version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+      requestId = $closedViewRequestId; eventId = "0"; method = "native.webview.evalJavaScript"
+      payload = (ConvertTo-Json -Compress @{ webViewId = $popupViewId; script = "document.title" }); error = ""; timeoutMs = 5000
+    }
+    $closedViewResponse = Read-Response $closedViewRequestId
+    if ([string]::IsNullOrEmpty($closedViewResponse.error) -or
+        -not $closedViewResponse.error.Contains("unknown webViewId")) {
+      throw "Closed popup WebView remained addressable by the host"
+    }
+    Set-SmokePhase "popup resources released"
   }
 
   Set-SmokePhase "shutdown"
-  $shutdownRequestId = if ($VerifyNewWindow) { "23" } else { "14" }
+  $shutdownRequestId = if ($VerifyNewWindow) { "24" } else { "14" }
   Write-Frame @{
     version = 1; kind = "shutdown"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = $shutdownRequestId; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000
