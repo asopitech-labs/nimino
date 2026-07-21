@@ -12,6 +12,13 @@ width = 1280
 height = 900
 resizable = true
 
+[package]
+version = "1.2.3"
+description = "Discord desktop application"
+publisher = "Nimino Labs"
+homepage = "https://nimino.example/discord"
+categories = ["Network", "Utility"]
+
 [navigation]
 allow = ["https://discord.com/**", "https://*.discord.com/**"]
 external = ["https://support.discord.com/**"]
@@ -29,6 +36,23 @@ doAssert parsed.value.icon == "https://discord.com/icon.png"
 doAssert parsed.value.window.width == 1280
 doAssert parsed.value.navigationAllow.len == 2
 doAssert parsed.value.permissionsAllow == @["microphone", "notifications"]
+doAssert parsed.value.package.version == "1.2.3"
+doAssert parsed.value.package.categories == @["Network", "Utility"]
+
+let metadataDefaults = parse("name = \"Defaults\"\nid = \"app.defaults\"\nurl = \"https://example.com\"")
+doAssert metadataDefaults.isOk
+doAssert metadataDefaults.value.package.version == "0.1.0"
+doAssert metadataDefaults.value.package.description == "Defaults"
+doAssert metadataDefaults.value.package.categories == @["Network"]
+
+let prereleaseVersion = parse("name = \"Release\"\nid = \"app.release\"\nurl = \"https://example.com\"\n[package]\nversion = \"2.0.0-rc.1\"")
+doAssert prereleaseVersion.isOk
+let invalidVersion = parse("name = \"Version\"\nid = \"app.version\"\nurl = \"https://example.com\"\n[package]\nversion = \"2.0\"")
+doAssert not invalidVersion.isOk
+let invalidCategory = parse("name = \"Category\"\nid = \"app.category\"\nurl = \"https://example.com\"\n[package]\ncategories = [\"Teleport\"]")
+doAssert not invalidCategory.isOk
+let invalidHomepage = parse("name = \"Homepage\"\nid = \"app.homepage\"\nurl = \"https://example.com\"\n[package]\nhomepage = \"file:///tmp/app\"")
+doAssert not invalidHomepage.isOk
 
 let commaValue = parse("name = \"Comma\"\nid = \"app.comma\"\nurl = \"https://example.com\"\n[navigation]\nallow = [\"https://example.com/a,b\", \"https://example.com/c\"]")
 doAssert commaValue.isOk
