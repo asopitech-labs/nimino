@@ -216,6 +216,7 @@ type
     exitHandler: proc()
     nativeMenuHandler: proc(itemId: uint32)
     trayMenuHandler: proc(itemId: uint32)
+    notificationActivatedHandler: proc(notificationId: string)
     when defined(linux):
       wslClient: WslClient
       pendingWslProfileDataClears: seq[PendingWslProfileDataClear]
@@ -993,6 +994,27 @@ proc sendNotification*(app: App; notification: DesktopNotification): CoreResult 
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else:
       coreFailure(coreError(platformUnavailable, "app.sendNotification"))
+
+proc onNotificationActivated*(app: App;
+                              handler: proc(notificationId: string)): CoreResult =
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.onNotificationActivated"))
+  if handler.isNil:
+    return coreFailure(coreError(invalidArgument, "app.onNotificationActivated",
+      detail = "a notification activation handler is required"))
+  app.notificationActivatedHandler = handler
+  case app.backend
+  of nativeBackend:
+    let registered = native.onNotificationActivated(app.nativeApp,
+      proc(notificationId: string) =
+        if not app.notificationActivatedHandler.isNil:
+          try: app.notificationActivatedHandler(notificationId)
+          except CatchableError: discard)
+    if not registered.isOk:
+      return coreFailure(registered.failure.mapNativeError())
+  of wslBackend:
+    discard
+  coreSuccess()
 
 proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
   if app.isNil or app.state == coreFinished:
@@ -2787,6 +2809,20 @@ when defined(linux):
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "desktop action event is malformed"))
+    of "native.app.notificationActivated":
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("notificationId") or
+            payload["notificationId"].kind != JString or
+            payload["notificationId"].getStr().len == 0:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "notification activation event is malformed"))
+        if not app.notificationActivatedHandler.isNil:
+          try: app.notificationActivatedHandler(payload["notificationId"].getStr())
+          except CatchableError: discard
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "notification activation event is malformed"))
     of "app.error":
       return coreFailureOf[bool](coreError(nativeFailure, "app.run",
         detail = "WSL host reported an application error"))

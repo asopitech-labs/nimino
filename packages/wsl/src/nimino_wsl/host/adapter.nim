@@ -33,6 +33,7 @@ type
   HostDesktopAction* = object
     kind*: string
     itemId*: uint32
+    notificationId*: string
 
   HostNavigationStarting* = object
     webViewId*: uint64
@@ -101,7 +102,16 @@ proc suggestedDownloadName(url: string): string =
   "download"
 
 proc newHostAdapter*(): HostAdapter =
-  HostAdapter(app: newNativeApp(), nextWindowId: 1, nextWebViewId: 1)
+  new(result)
+  result.app = newNativeApp()
+  result.nextWindowId = 1
+  result.nextWebViewId = 1
+  let adapterPointer = cast[pointer](result)
+  discard result.app.onNotificationActivated(proc(notificationId: string) =
+    let owner = cast[HostAdapter](adapterPointer)
+    if owner != nil:
+      owner.pendingDesktopActions.add(HostDesktopAction(
+        kind: "notification", notificationId: notificationId)))
 
 proc forgetWindow(adapter: HostAdapter; windowId: uint64) =
   var ownedWebViews: seq[uint64]

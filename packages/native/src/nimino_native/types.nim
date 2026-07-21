@@ -33,6 +33,11 @@ type
   NativeClosedHandler* = proc() {.closure.}
   NativeResizeHandler* = proc(width, height: int) {.closure.}
   NativeMenuHandler* = proc(itemId: uint32) {.closure.}
+  ## Called when the desktop shell activates the most recently delivered
+  ## notification.  The callback is best-effort: platforms that do not
+  ## expose an activation event leave it unset and report that limitation via
+  ## the normal unsupported result from registration.
+  NativeNotificationActivatedHandler* = proc(notificationId: string) {.closure.}
 
   NativeMenuItem* = object
     ## A command exposed through an operating-system native menu.
@@ -119,6 +124,8 @@ type
     trayWindow: pointer
     notificationVisible: bool
     notificationWindow: pointer
+    notificationId: string
+    notificationActivatedHandler: NativeNotificationActivatedHandler
     nativeMenuItems: seq[NativeMenuItem]
     nativeMenuHandler: NativeMenuHandler
     nativeMenuTitle: string
@@ -388,6 +395,15 @@ when defined(windows):
     except CatchableError:
       discard
 
+  proc dispatchNotificationActivated(app: NativeApp) =
+    if app.isNil or app.notificationActivatedHandler.isNil or
+        app.notificationId.len == 0:
+      return
+    try:
+      app.notificationActivatedHandler(app.notificationId)
+    except CatchableError:
+      discard
+
 when defined(linux) and not defined(niminoWsl):
   proc dispatchNativeMenu(app: NativeApp; itemId: uint32) =
     ## GTK invokes this on its UI thread through a GSimpleAction. User code
@@ -497,6 +513,7 @@ proc newNativeApp*(): NativeApp =
     result.capabilities.incl(multipleWebViews)
     result.capabilities.incl(nativeMenu)
     result.capabilities.incl(systemTray)
+    result.capabilities.incl(nativeNotification)
   elif defined(linux) and not defined(niminoWsl):
     result.capabilities.incl(multipleWebViews)
     result.capabilities.incl(nativeMenu)
@@ -624,6 +641,19 @@ proc sendNativeNotification*(app: NativeApp;
     app.windowsSendNativeNotification(notification)
   else:
     failure(nativeError(unsupported, "app.sendNativeNotification"))
+
+proc onNotificationActivated*(app: NativeApp;
+                              handler: NativeNotificationActivatedHandler): NativeResult =
+  if app.isNil or app.state == finished:
+    return failure(nativeError(invalidState, "app.onNotificationActivated"))
+  if handler.isNil:
+    return failure(nativeError(invalidArgument, "app.onNotificationActivated",
+      detail = "a notification activation handler is required"))
+  when defined(windows):
+    app.notificationActivatedHandler = handler
+    success()
+  else:
+    failure(nativeError(unsupported, "app.onNotificationActivated"))
 
 proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
                 profilePath = ""):

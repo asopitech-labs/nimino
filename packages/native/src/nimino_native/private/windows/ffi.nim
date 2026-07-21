@@ -194,6 +194,7 @@ const
   WmUiTask* = WmApp + 2'u32
   NinSelect* = WmUser
   NinKeySelect* = WmUser + 1'u32
+  NinBalloonUserClick* = WmUser + 5'u32
   GwlpUserData* = -21'i32
 
   NimAdd* = 0x00000000'u32

@@ -333,11 +333,14 @@ proc flushWindowResized(state: HostState) =
 
 proc flushDesktopActions(state: HostState) =
   for action in state.adapter.takeDesktopActions():
-    let payload = $(%*{
-      "kind": action.kind,
-      "itemId": action.itemId
-    })
-    if not state.writeEvent("native.app.desktopAction", payload, ""):
+    let methodName = if action.kind == "notification":
+      "native.app.notificationActivated"
+    else: "native.app.desktopAction"
+    let payload = if action.kind == "notification":
+      $(%*{"notificationId": action.notificationId})
+    else:
+      $(%*{"kind": action.kind, "itemId": action.itemId})
+    if not state.writeEvent(methodName, payload, ""):
       discard state.adapter.app.close()
       return
 

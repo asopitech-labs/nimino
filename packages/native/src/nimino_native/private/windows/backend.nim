@@ -1007,6 +1007,7 @@ proc windowsRemoveNotificationIcon(app: NativeApp) =
   discard shellNotifyIconW(NimDelete, addr data)
   app.notificationVisible = false
   app.notificationWindow = nil
+  app.notificationId = ""
 
 proc windowsSendNativeNotification*(app: NativeApp;
                                     notification: NativeNotification): NativeResult =
@@ -1040,6 +1041,7 @@ proc windowsSendNativeNotification*(app: NativeApp;
   windowsCopyNotificationText(data.infoTitle, notification.title)
   if shellNotifyIconW(NimModify, addr data) == 0:
     return failure(windowsError("app.sendNativeNotification", getLastError()))
+  app.notificationId = notification.id
   success()
 
 proc windowsInstallTray(app: NativeApp; owner: NativeWindow): NativeResult =
@@ -1501,6 +1503,8 @@ proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
       if notification == WmContextMenu or notification == NinSelect or
           notification == NinKeySelect:
         window.app.windowsShowTrayMenu(window)
+      elif notification == NinBalloonUserClick:
+        window.app.dispatchNotificationActivated()
       return 0
     of WmClose:
       if not window.dispatchCloseRequested():
