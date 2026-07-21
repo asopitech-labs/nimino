@@ -17,12 +17,17 @@ type
     request: ProtocolMessage
     future: Future[NativeResultOf[string]]
 
+  PendingBrowsingDataClear = object
+    request: ProtocolMessage
+    future: Future[NativeResult]
+
   HostState = ref object
     adapter: HostAdapter
     input: HostInput
     output: Stream
     sessionId: string
     pendingEvaluations: seq[PendingEvaluation]
+    pendingBrowsingDataClears: seq[PendingBrowsingDataClear]
     nextEventId: uint64
     nextPolicyRequestId: uint64
 
@@ -71,6 +76,9 @@ proc readyCapabilities(state: HostState): string =
   for capability in Capability:
     if state.adapter.app.supports(capability):
       capabilities.add($capability)
+  ## This names protocol support only. A specific WebView2 runtime can still
+  ## reject the browser-engine operation in its structured completion.
+  capabilities.add(WebViewProfileDataClearCapability)
   nativeCapabilitiesPayload(capabilities)
 
 proc stopForProtocolError(state: HostState; message: ProtocolMessage; detail: string) =
@@ -99,6 +107,41 @@ proc flushEvaluations(state: HostState) =
       discard state.adapter.app.close()
       return
     state.pendingEvaluations.delete(index)
+
+proc browsingDataClearPayload(cleared: NativeResult): string =
+  if cleared.isOk:
+    return $(%*{"ok": true})
+  let failure = cleared.failure
+  $(%*{
+    "ok": false,
+    "kind": $failure.kind,
+    "operation": failure.operation,
+    "platformCode": failure.platformCode,
+    "detail": failure.detail
+  })
+
+proc flushBrowsingDataClears(state: HostState) =
+  var index = 0
+  while index < state.pendingBrowsingDataClears.len:
+    let pending = state.pendingBrowsingDataClears[index]
+    if not pending.future.finished:
+      inc index
+      continue
+
+    let payload = if pending.future.failed:
+      $(%*{
+        "ok": false,
+        "kind": "webViewError",
+        "operation": "webview.clearBrowsingData",
+        "platformCode": 0,
+        "detail": "native browser data clear did not complete"
+      })
+    else:
+      pending.future.read().browsingDataClearPayload()
+    if not state.writeMessage(state.responseFor(pending.request, payload)):
+      discard state.adapter.app.close()
+      return
+    state.pendingBrowsingDataClears.delete(index)
 
 proc flushMessages(state: HostState) =
   for message in state.adapter.takeMessages():
@@ -223,6 +266,9 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
       return
     if action.value.kind == deferredResponse:
       state.pendingEvaluations.add(PendingEvaluation(request: message, future: action.value.evaluation))
+    elif action.value.kind == deferredBrowsingDataClear:
+      state.pendingBrowsingDataClears.add(PendingBrowsingDataClear(
+        request: message, future: action.value.browsingDataClear))
     else:
       discard state.writeMessage(state.responseFor(message, payload = action.value.payload))
       if action.value.kind in {shutdownHost, restartHostForProfileReset}:
@@ -243,6 +289,7 @@ proc pollHost(state: HostState) =
   for message in state.input.takePending():
     state.handleRunningMessage(message)
   state.flushEvaluations()
+  state.flushBrowsingDataClears()
   state.flushMessages()
   state.flushErrors()
   state.flushNewWindowRequests()
@@ -331,6 +378,10 @@ proc runHost(): int =
       discard state.writeMessage(state.responseFor(message,
         error = "JavaScript evaluation requires the UI loop"))
       continue
+    if action.value.kind == deferredBrowsingDataClear:
+      discard state.writeMessage(state.responseFor(message,
+        error = "browser data clearing requires the UI loop"))
+      continue
     if not state.writeMessage(state.responseFor(message, payload = action.value.payload)):
       discard state.adapter.app.close()
       return 2
@@ -338,6 +389,8 @@ proc runHost(): int =
     of noHostAction:
       discard
     of deferredResponse:
+      discard
+    of deferredBrowsingDataClear:
       discard
     of shutdownHost, restartHostForProfileReset:
       discard state.adapter.app.close()
@@ -349,6 +402,7 @@ proc runHost(): int =
         return 2
       let finished = state.adapter.app.run()
       state.flushEvaluations()
+      state.flushBrowsingDataClears()
       state.flushMessages()
       state.flushErrors()
       state.flushNewWindowRequests()

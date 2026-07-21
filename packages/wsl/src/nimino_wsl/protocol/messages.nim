@@ -106,9 +106,10 @@ proc failureOf*[T](error: ProtocolError): ProtocolResultOf[T] {.inline.} =
   ProtocolResultOf[T](isOk: false, failure: error)
 
 proc isKnownNativeCapability*(value: string): bool {.inline.} =
-  ## Keep handshake capabilities closed over the native public API.  A newly
-  ## introduced native capability therefore requires an explicit protocol
-  ## update instead of becoming silently available to an older client.
+  ## Keep handshake capabilities closed over the native public API and the
+  ## explicitly-versioned host lifecycle extensions. A newly introduced
+  ## capability therefore requires a protocol update instead of becoming
+  ## silently available to an older client.
   value in NativeCapabilityNames
 
 proc nativeCapabilitiesPayload*(capabilities: openArray[string]): string =

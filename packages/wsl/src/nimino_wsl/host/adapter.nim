@@ -44,6 +44,7 @@ type
     noHostAction
     startUiLoop
     deferredResponse
+    deferredBrowsingDataClear
     shutdownHost
     restartHostForProfileReset
 
@@ -51,6 +52,7 @@ type
     kind*: HostActionKind
     payload*: string
     evaluation*: Future[NativeResultOf[string]]
+    browsingDataClear*: Future[NativeResult]
 
   HostAdapter* = ref object
     app*: NativeApp
@@ -630,6 +632,50 @@ proc handleEvalJavaScript(adapter: HostAdapter; payload: JsonNode): ProtocolResu
     evaluation: adapter.webViews[webViewId.value].evalJavaScript(script.value)
   ))
 
+proc browsingDataKinds(payload: JsonNode): ProtocolResultOf[set[NativeBrowsingDataKind]] =
+  let values = payload.stringArray("kinds")
+  if not values.isOk:
+    return failureOf[set[NativeBrowsingDataKind]](values.failure)
+  if values.value.len == 0:
+    return failureOf[set[NativeBrowsingDataKind]](protocolError(invalidMessage,
+      "kinds must contain at least one value"))
+
+  var kinds: set[NativeBrowsingDataKind]
+  for value in values.value:
+    let kind = case value
+      of "cookies": nativeBrowsingCookies
+      of "localStorage": nativeBrowsingLocalStorage
+      of "cache": nativeBrowsingCache
+      else:
+        return failureOf[set[NativeBrowsingDataKind]](protocolError(invalidMessage,
+          "kinds contains an unsupported browser data kind"))
+    if kind in kinds:
+      return failureOf[set[NativeBrowsingDataKind]](protocolError(invalidMessage,
+        "kinds must not contain duplicates"))
+    kinds.incl(kind)
+  successOf(kinds)
+
+proc handleClearBrowsingData(adapter: HostAdapter;
+                             payload: JsonNode): ProtocolResultOf[HostAction] =
+  let webViewId = payload.requiredId("webViewId")
+  if not webViewId.isOk:
+    return failureOf[HostAction](webViewId.failure)
+  if not adapter.uiStartRequested:
+    return errorAction("browser data clearing requires the UI loop")
+  if not adapter.webViews.hasKey(webViewId.value):
+    return errorAction("unknown webViewId")
+  let kinds = payload.browsingDataKinds()
+  if not kinds.isOk:
+    return failureOf[HostAction](kinds.failure)
+
+  ## Keep every native completion on the host UI loop.  Even a synchronously
+  ## failed/finished Future follows this deferred path, so the client receives
+  ## a single structured completion schema for success and unsupported cases.
+  successOf(HostAction(
+    kind: deferredBrowsingDataClear,
+    browsingDataClear: adapter.webViews[webViewId.value].clearBrowsingData(kinds.value)
+  ))
+
 proc handleCapabilities(adapter: HostAdapter): ProtocolResultOf[HostAction] =
   var capabilities = newJArray()
   for capability in Capability:
@@ -698,5 +744,7 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleLoadContent(payload.value, "html", message.methodName)
   of "native.webview.evalJavaScript":
     adapter.handleEvalJavaScript(payload.value)
+  of "native.webview.clearBrowsingData":
+    adapter.handleClearBrowsingData(payload.value)
   else:
     errorAction("method is not allowed")

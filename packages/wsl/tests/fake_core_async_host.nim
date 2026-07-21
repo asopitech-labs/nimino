@@ -43,7 +43,8 @@ doAssert output.writeMessageTo(ProtocolMessage(
   version: ProtocolVersion,
   kind: ready,
   sessionId: SessionId,
-  payload: nativeCapabilitiesPayload(["webPermissionEvents"])
+  payload: nativeCapabilitiesPayload(["webPermissionEvents",
+    WebViewProfileDataClearCapability])
 )).isOk
 
 var nextEventId = 1'u64
@@ -119,6 +120,19 @@ while true:
         doAssert asyncReplySeen
         doAssert output.writeMessageTo(event("app.closed", "{}", nextEventId)).isOk
         inc nextEventId
+    of "native.webview.clearBrowsingData":
+      let payload = parseJson(message.payload)
+      doAssert payload["webViewId"].getStr() == "1"
+      doAssert payload["kinds"].kind == JArray
+      if payload["kinds"].len == 2:
+        doAssert payload["kinds"][0].getStr() == "cookies"
+        doAssert payload["kinds"][1].getStr() == "cache"
+        doAssert output.writeMessageTo(message.response("{\"ok\":true}")).isOk
+      else:
+        doAssert payload["kinds"].len == 1
+        doAssert payload["kinds"][0].getStr() == "localStorage"
+        doAssert output.writeMessageTo(message.response(
+          "{\"ok\":false,\"kind\":\"unsupported\",\"operation\":\"webview.clearBrowsingData\",\"platformCode\":0,\"detail\":\"Profile2 unavailable\"}")).isOk
     else:
       quit(QuitFailure)
   else:

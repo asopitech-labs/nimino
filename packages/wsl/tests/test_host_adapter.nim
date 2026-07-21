@@ -152,6 +152,22 @@ block htmlLoadStartsTheUiLoop:
   doAssert loaded.isOk
   doAssert loaded.value.kind == startUiLoop
 
+  let invalidKinds = adapter.handleRequest(requestMessage("native.webview.clearBrowsingData",
+    $(%*{"webViewId": webViewId, "kinds": ["cookies", "cookies"]})))
+  doAssert not invalidKinds.isOk
+  doAssert "must not contain duplicates" in invalidKinds.failure.detail
+
+  let cleared = adapter.handleRequest(requestMessage("native.webview.clearBrowsingData",
+    $(%*{"webViewId": webViewId, "kinds": ["cookies", "cache"]})))
+  doAssert cleared.isOk
+  doAssert cleared.value.kind == deferredBrowsingDataClear
+  ## This unit test runs on the Linux backend. The completed Future proves the
+  ## relay preserves the native unsupported result for the host main to encode.
+  doAssert cleared.value.browsingDataClear.finished
+  let clearResult = cleared.value.browsingDataClear.read()
+  doAssert not clearResult.isOk
+  doAssert $clearResult.failure.kind == "unsupported"
+
   let evaluated = adapter.handleRequest(requestMessage("native.webview.evalJavaScript",
     $(%*{"webViewId": webViewId, "script": "document.title"})))
   doAssert evaluated.isOk
