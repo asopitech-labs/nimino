@@ -40,8 +40,19 @@ doAssert output.writeMessageTo(ProtocolMessage(
   payload: payload
 )).isOk
 
-if mode.len > 0:
+if mode.len > 0 and mode != "timeout-request":
   quit(QuitSuccess)
+
+if mode == "timeout-request":
+  let request = input.readMessageFrom()
+  if not request.isOk or request.value.kind != ProtocolMessageKind.request or
+      request.value.sessionId != SessionId or request.value.requestId == 0:
+    quit(QuitFailure)
+  let cancellation = input.readMessageFrom()
+  if not cancellation.isOk or cancellation.value.kind != cancel or
+      cancellation.value.sessionId != SessionId or
+      cancellation.value.requestId != request.value.requestId:
+    quit(QuitFailure)
 
 let shutdown = input.readMessageFrom()
 if not shutdown.isOk or shutdown.value.kind != ProtocolMessageKind.shutdown or

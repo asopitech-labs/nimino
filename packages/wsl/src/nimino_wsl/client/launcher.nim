@@ -1,4 +1,5 @@
-import std/[options, os, osproc, streams, strutils, strtabs, sysrand]
+import std/[monotimes, options, os, osproc, streams, strutils, strtabs, sysrand]
+from std/times import inMilliseconds, initDuration
 
 when defined(posix):
   import std/posix
@@ -250,6 +251,18 @@ proc sendResponse*(client: WslClient; requestId: uint64; payload: string;
   )
   client.process.inputStream.writeMessageTo(response)
 
+proc sendCancel*(client: WslClient; requestId: uint64): ProtocolResult =
+  if client.isNil or client.process.isNil:
+    return failure(protocolError(invalidMessage, "WSL client is closed"))
+  if requestId == 0:
+    return failure(protocolError(invalidMessage, "cancel request ID is required"))
+  client.process.inputStream.writeMessageTo(ProtocolMessage(
+    version: ProtocolVersion,
+    kind: cancel,
+    sessionId: client.sessionId,
+    requestId: requestId
+  ))
+
 proc receiveNextWithin*(client: WslClient; timeoutMs: int):
     ProtocolResultOf[Option[ProtocolMessage]] =
   ## Wait for at most `timeoutMs` for one host frame.  The WSL core loop uses
@@ -290,10 +303,12 @@ proc receiveNextWithin*(client: WslClient; timeoutMs: int):
       return failureOf[Option[ProtocolMessage]](received.failure)
     successOf(some(received.value))
 
-proc receiveResponse*(client: WslClient; requestId: uint64): ProtocolResultOf[ProtocolMessage] =
+proc receiveResponse*(client: WslClient; requestId: uint64;
+                      timeoutMs: uint32 = 5_000): ProtocolResultOf[ProtocolMessage] =
   if client.isNil or client.process.isNil:
     return failureOf[ProtocolMessage](protocolError(invalidMessage, "WSL client is closed"))
 
+  let deadline = getMonoTime() + initDuration(milliseconds = int64(timeoutMs))
   while true:
     var bufferedIndex = 0
     while bufferedIndex < client.responses.len:
@@ -306,10 +321,19 @@ proc receiveResponse*(client: WslClient; requestId: uint64): ProtocolResultOf[Pr
         return failureOf[ProtocolMessage](protocolError(invalidMessage,
           "host rejected request: " & buffered.error))
       return successOf(buffered)
-    let received = client.receiveNext()
+    let remaining = (deadline - getMonoTime()).inMilliseconds
+    if remaining <= 0:
+      discard client.sendCancel(requestId)
+      return failureOf[ProtocolMessage](protocolError(timedOut,
+        "host response timed out"))
+    let received = client.receiveNextWithin(int(min(remaining, int64(high(int)))))
     if not received.isOk:
       return failureOf[ProtocolMessage](received.failure)
-    let hostResponse = received.value
+    if received.value.isNone:
+      discard client.sendCancel(requestId)
+      return failureOf[ProtocolMessage](protocolError(timedOut,
+        "host response timed out"))
+    let hostResponse = received.value.get()
     if hostResponse.kind == event:
       client.events.add(hostResponse)
       continue
@@ -344,7 +368,7 @@ proc call*(client: WslClient; methodName: string; payload: string;
   let sent = client.sendRequest(methodName, payload, timeoutMs)
   if not sent.isOk:
     return failureOf[ProtocolMessage](sent.failure)
-  client.receiveResponse(sent.value)
+  client.receiveResponse(sent.value, timeoutMs)
 
 proc close*(client: WslClient): ProtocolResult =
   if client.isNil or client.process.isNil:
@@ -362,7 +386,7 @@ proc close*(client: WslClient): ProtocolResult =
     client.process = nil
     return written
 
-  let acknowledged = client.receiveResponse(0)
+  let acknowledged = client.receiveResponse(0, 5_000)
   osproc.close(client.process)
   client.process = nil
   if not acknowledged.isOk:

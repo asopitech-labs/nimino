@@ -143,6 +143,24 @@ proc flushBrowsingDataClears(state: HostState) =
       return
     state.pendingBrowsingDataClears.delete(index)
 
+proc cancelPending(state: HostState; requestId: uint64) =
+  ## Native WebView2 operations may already be in flight and cannot always be
+  ## interrupted.  Removing the protocol waiter guarantees that a cancelled
+  ## request never emits a stale response; native completion still releases
+  ## its own callback resources normally.
+  var index = 0
+  while index < state.pendingEvaluations.len:
+    if state.pendingEvaluations[index].request.requestId == requestId:
+      state.pendingEvaluations.delete(index)
+    else:
+      inc index
+  index = 0
+  while index < state.pendingBrowsingDataClears.len:
+    if state.pendingBrowsingDataClears[index].request.requestId == requestId:
+      state.pendingBrowsingDataClears.delete(index)
+    else:
+      inc index
+
 proc flushMessages(state: HostState) =
   for message in state.adapter.takeMessages():
     let payload = $(%*{
@@ -280,6 +298,8 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
     discard state.adapter.app.close()
   of heartbeat:
     discard state.writeMessage(state.responseFor(message, payload = "{}"))
+  of cancel:
+    state.cancelPending(message.requestId)
   else:
     state.stopForProtocolError(message, "message kind is not allowed after handshake")
 
@@ -375,6 +395,10 @@ proc runHost(): int =
       return 0
     if message.kind == heartbeat:
       discard state.writeMessage(state.responseFor(message, payload = "{}"))
+      continue
+    if message.kind == cancel:
+      ## No deferred operation exists before the UI loop starts.  Accept the
+      ## authenticated cancellation as an idempotent no-op.
       continue
     if message.kind != request:
       state.stopForProtocolError(message, "message kind is not allowed after handshake")

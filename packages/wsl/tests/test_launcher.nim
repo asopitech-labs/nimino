@@ -32,3 +32,12 @@ if paramCount() == 1:
       let launched = launchHost(host, [mode])
       doAssert not launched.isOk
       doAssert launched.failure.kind == unsupportedVersion
+
+  block synchronousRequestsTimeOutAndCancelTheHostOperation:
+    let host = paramStr(1)
+    let launched = launchHost(host, ["timeout-request"])
+    doAssert launched.isOk
+    let response = launched.value.call("test.never", "{}", 50)
+    doAssert not response.isOk
+    doAssert response.failure.kind == timedOut
+    doAssert launched.value.close().isOk
