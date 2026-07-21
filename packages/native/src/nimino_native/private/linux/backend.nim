@@ -2,6 +2,66 @@ import std/os
 
 proc linuxTrackDownload(view: NativeWebView; download: pointer; url: string)
 
+proc linuxBrowsingDataTypes(kinds: set[NativeBrowsingDataKind]): uint32 =
+  ## Keep this mapping deliberately narrow: WebKitGTK exposes IndexedDB and
+  ## service-worker registrations as independent WebsiteDataTypes, while
+  ## Nimino's public API names only cookies, localStorage, and cache.
+  for kind in kinds:
+    case kind
+    of nativeBrowsingCookies:
+      result = result or WebKitWebsiteDataCookies
+    of nativeBrowsingLocalStorage:
+      result = result or WebKitWebsiteDataLocalStorage
+    of nativeBrowsingCache:
+      ## Match WebView2's CacheStorage + disk-cache intent with all WebKitGTK
+      ## data types that are explicitly documented as caches.
+      result = result or WebKitWebsiteDataMemoryCache or WebKitWebsiteDataDiskCache or
+        WebKitWebsiteDataOfflineApplicationCache or WebKitWebsiteDataDomCache
+
+proc linuxBrowsingDataClearCompleted(sourceObject: pointer;
+                                     asyncResult: ptr GAsyncResult;
+                                     userData: pointer) {.cdecl.} =
+  let request = cast[NativeBrowsingDataRequest](userData)
+  if request.isNil:
+    return
+  var error: ptr GError
+  let completed = webkit_website_data_manager_clear_finish(
+    cast[ptr WebKitWebsiteDataManager](sourceObject), asyncResult, addr error)
+  let outcome =
+    if completed != 0:
+      success()
+    else:
+      failure(nativeError(webViewError, "webview.clearBrowsingData",
+        detail = "WebKitGTK WebsiteDataManager clear failed"))
+  if error != nil:
+    g_error_free(error)
+  let view = request.view
+  if view != nil:
+    view.completeBrowsingDataRequest(request, outcome)
+  elif request.future != nil and not request.future.finished:
+    request.future.complete(failure(nativeError(invalidState, "webview.clearBrowsingData")))
+  GC_unref(request)
+
+proc linuxClearBrowsingData(view: NativeWebView;
+                            request: NativeBrowsingDataRequest): NativeResult =
+  if view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.clearBrowsingData"))
+  let session = webkit_web_view_get_network_session(
+    cast[ptr WebKitWebView](view.platformView))
+  if session.isNil:
+    return failure(nativeError(webViewError, "webview.clearBrowsingData",
+      detail = "WebKitGTK network session is unavailable"))
+  let manager = webkit_network_session_get_website_data_manager(session)
+  if manager.isNil:
+    return failure(nativeError(webViewError, "webview.clearBrowsingData",
+      detail = "WebKitGTK website data manager is unavailable"))
+  ## `timespan = 0` is the API-defined all-data value; a nonzero timespan does
+  ## not reliably remove cookies according to the WebKitGTK reference.
+  GC_ref(request)
+  webkit_website_data_manager_clear(manager, linuxBrowsingDataTypes(request.kinds),
+    0'i64, nil, linuxBrowsingDataClearCompleted, cast[pointer](request))
+  success()
+
 proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.} =
   let nativeWindow = cast[NativeWindow](userData)
   ## GTK close-request returns TRUE to stop the close emission.
@@ -183,32 +243,44 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
   let view = cast[NativeWebView](userData)
   if view.isNil or view.state in {closing, closed}:
     return 0
-  let navigation = cast[ptr WebKitNavigationPolicyDecision](policyDecision)
-  let action = webkit_navigation_policy_decision_get_navigation_action(navigation)
   let decision = cast[ptr WebKitPolicyDecision](policyDecision)
-  let request = if action.isNil: nil else: webkit_navigation_action_get_request(action)
-  let uri = if request.isNil: nil else: webkit_uri_request_get_uri(request)
-  let copiedUri = if uri.isNil: "" else: $uri
   case decisionType
   of 0: # WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION
+    let navigation = cast[ptr WebKitNavigationPolicyDecision](policyDecision)
+    let action = webkit_navigation_policy_decision_get_navigation_action(navigation)
+    let request = if action.isNil: nil else: webkit_navigation_action_get_request(action)
+    let uri = if request.isNil: nil else: webkit_uri_request_get_uri(request)
+    let copiedUri = if uri.isNil: "" else: $uri
     if view.dispatchNavigationStarting(copiedUri):
       webkit_policy_decision_use(decision)
     else:
       webkit_policy_decision_ignore(decision)
   of 1: # WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION
+    let navigation = cast[ptr WebKitNavigationPolicyDecision](policyDecision)
+    let action = webkit_navigation_policy_decision_get_navigation_action(navigation)
+    let request = if action.isNil: nil else: webkit_navigation_action_get_request(action)
+    let uri = if request.isNil: nil else: webkit_uri_request_get_uri(request)
+    let copiedUri = if uri.isNil: "" else: $uri
     view.dispatchNewWindowRequested(copiedUri)
     webkit_policy_decision_ignore(decision)
   of 2: # WEBKIT_POLICY_DECISION_TYPE_RESPONSE
-    if view.dispatchDownloadStarting(copiedUri):
-      ## A response policy is a download, not a navigable document.  Starting
-      ## it explicitly prevents WebKitGTK from treating the response as a
-      ## failed page navigation.  Destination/progress management remains a
-      ## higher-level Core concern.
-      let download = webkit_web_view_download_uri(cast[ptr WebKitWebView](webView), copiedUri.cstring)
-      view.linuxTrackDownload(download, copiedUri)
-      view.dispatchDownloadEvent(copiedUri, nativeDownloadStarted, 0.0)
-      webkit_policy_decision_ignore(decision)
+    let response = cast[ptr WebKitResponsePolicyDecision](policyDecision)
+    if webkit_response_policy_decision_is_mime_type_supported(response) != 0:
+      ## A normal response must continue to load. Only unsupported MIME types
+      ## are download candidates.
+      webkit_policy_decision_use(decision)
     else:
+      let request = webkit_response_policy_decision_get_request(response)
+      let uri = if request.isNil: nil else: webkit_uri_request_get_uri(request)
+      let copiedUri = if uri.isNil: "" else: $uri
+      if view.dispatchDownloadStarting(copiedUri):
+        ## A response policy is a download, not a navigable document. Starting
+        ## it explicitly prevents WebKitGTK from treating the response as a
+        ## failed page navigation. Destination/progress management remains a
+        ## higher-level Core concern.
+        let download = webkit_web_view_download_uri(cast[ptr WebKitWebView](webView), copiedUri.cstring)
+        view.linuxTrackDownload(download, copiedUri)
+        view.dispatchDownloadEvent(copiedUri, nativeDownloadStarted, 0.0)
       webkit_policy_decision_ignore(decision)
   else:
     return 0
@@ -433,6 +505,8 @@ proc linuxDisposeWindow(window: NativeWindow) =
   window.dispatchClosed()
   for view in window.views:
     view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
+    view.failOutstandingBrowsingDataRequests(nativeError(invalidState,
+      "webview.clearBrowsingData", detail = "the WebView closed before clearing completed"))
     view.linuxDisposeMessageBridge()
     view.linuxDisposeLoadEvents()
     view.linuxClearDownloadSignals()

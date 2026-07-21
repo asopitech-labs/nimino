@@ -14,10 +14,12 @@ type
   GtkWindow* {.incompleteStruct.} = object
   WebKitWebView* {.incompleteStruct.} = object
   WebKitNetworkSession* {.incompleteStruct.} = object
+  WebKitWebsiteDataManager* {.incompleteStruct.} = object
   WebKitUserContentManager* {.incompleteStruct.} = object
   WebKitUserScript* {.incompleteStruct.} = object
   WebKitPolicyDecision* {.incompleteStruct.} = object
   WebKitNavigationPolicyDecision* {.incompleteStruct.} = object
+  WebKitResponsePolicyDecision* {.incompleteStruct.} = object
   WebKitNavigationAction* {.incompleteStruct.} = object
   WebKitURIRequest* {.incompleteStruct.} = object
   WebKitPermissionRequest* {.incompleteStruct.} = object
@@ -37,6 +39,14 @@ type
 const
   WebKitUserContentInjectAllFrames* = 0.cint
   WebKitUserScriptInjectAtDocumentStart* = 0.cint
+  ## WebKitWebsiteDataTypes, verified against WebKitWebsiteData.h from the
+  ## fixed WebKitGTK 6.0 development package used by the Docker image.
+  WebKitWebsiteDataMemoryCache* = 1'u32 shl 0
+  WebKitWebsiteDataDiskCache* = 1'u32 shl 1
+  WebKitWebsiteDataOfflineApplicationCache* = 1'u32 shl 2
+  WebKitWebsiteDataLocalStorage* = 1'u32 shl 4
+  WebKitWebsiteDataCookies* = 1'u32 shl 6
+  WebKitWebsiteDataDomCache* = 1'u32 shl 11
 
 proc gtk_application_new*(applicationId: cstring; flags: cint): ptr GtkApplication
   {.cdecl, importc, dynlib: LibGtk.}
@@ -96,6 +106,9 @@ proc webkit_web_view_get_type*(): culong
 proc webkit_network_session_new*(dataDirectory, cacheDirectory: cstring):
     ptr WebKitNetworkSession
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_network_session_get_website_data_manager*(session: ptr WebKitNetworkSession):
+    ptr WebKitWebsiteDataManager
+  {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_load_uri*(view: ptr WebKitWebView; uri: cstring)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_load_html*(view: ptr WebKitWebView; content: cstring; baseUri: cstring)
@@ -107,6 +120,18 @@ proc webkit_download_get_estimated_progress*(download: pointer): cdouble
 proc webkit_download_get_request*(download: pointer): ptr WebKitURIRequest
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_get_uri*(view: ptr WebKitWebView): cstring
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_web_view_get_network_session*(view: ptr WebKitWebView): ptr WebKitNetworkSession
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_website_data_manager_clear*(manager: ptr WebKitWebsiteDataManager;
+                                        types: uint32; timespan: int64;
+                                        cancellable: pointer;
+                                        callback: GAsyncReadyCallback;
+                                        userData: pointer)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_website_data_manager_clear_finish*(manager: ptr WebKitWebsiteDataManager;
+                                               asyncResult: ptr GAsyncResult;
+                                               error: ptr ptr GError): cint
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_evaluate_javascript*(view: ptr WebKitWebView; script: cstring;
                                            length: int; worldName, sourceUri: cstring;
@@ -138,6 +163,12 @@ proc webkit_user_script_unref*(script: ptr WebKitUserScript)
 proc webkit_navigation_policy_decision_get_navigation_action*(decision: ptr WebKitNavigationPolicyDecision): ptr WebKitNavigationAction
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_navigation_action_get_request*(action: ptr WebKitNavigationAction): ptr WebKitURIRequest
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_response_policy_decision_get_request*(decision: ptr WebKitResponsePolicyDecision):
+    ptr WebKitURIRequest
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_response_policy_decision_is_mime_type_supported*(
+    decision: ptr WebKitResponsePolicyDecision): cint
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_uri_request_get_uri*(request: ptr WebKitURIRequest): cstring
   {.cdecl, importc, dynlib: LibWebKit.}
