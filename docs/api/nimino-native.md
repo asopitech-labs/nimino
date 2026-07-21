@@ -206,3 +206,11 @@ discard app.run()
 ```
 
 `.value`を伴わない便利構文を導入する場合も、失敗を黙殺するAPIにはしません。WindowとWebViewを同一型に統合しないため、将来は同じWindowへ複数のViewを追加できます。
+### WebView custom protocol
+
+`app.registerCustomProtocol("nimino", handler)` registers one WebView-internal
+resource scheme. The handler returns a status code, MIME type, and body and is
+executed synchronously on the native UI thread. This is separate from OS
+deep-link registration. Windows uses WebView2 `WebResourceRequested`; Linux
+uses WebKitGTK's URI-scheme callback. WSL relay is intentionally reported as
+unsupported until its authenticated request/response path is implemented.

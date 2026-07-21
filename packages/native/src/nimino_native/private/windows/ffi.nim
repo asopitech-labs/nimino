@@ -285,6 +285,10 @@ const
     data1: 0xe9710a06'u32, data2: 0x1d1d'u16, data3: 0x49b2'u16,
     data4: [0x82'u8, 0x34'u8, 0x22'u8, 0x6f'u8, 0x35'u8, 0x84'u8, 0x6a'u8, 0xe5'u8]
   )
+  IidWebResourceRequestedEventHandler* = WinGuid(
+    data1: 0xab00b74c'u32, data2: 0x15f1'u16, data3: 0x4646'u16,
+    data4: [0x80'u8, 0xe8'u8, 0xe7'u8, 0x63'u8, 0x41'u8, 0xd2'u8, 0x5d'u8, 0x71'u8]
+  )
 
   ## Vtable indices include the three IUnknown entries.  Keeping them named
   ## makes header verification and the isolated ABI test explicit.
@@ -305,6 +309,8 @@ proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
 proc coUninitialize*() {.stdcall, importc: "CoUninitialize", dynlib: "ole32.dll".}
 proc coTaskMemFree*(memory: pointer)
   {.stdcall, importc: "CoTaskMemFree", dynlib: "ole32.dll".}
+proc shCreateMemStream*(data: ptr uint8; length: uint32): pointer
+  {.stdcall, importc: "SHCreateMemStream", dynlib: "shlwapi.dll".}
 
 proc getModuleHandleW*(moduleName: WideCString): HModule
   {.stdcall, importc: "GetModuleHandleW", dynlib: "kernel32.dll".}
@@ -652,6 +658,56 @@ proc coreRemoveNewWindowRequested*(core: pointer; token: EventRegistrationToken)
     cast[ptr ComInterface](core).vtable[45]
   )
   dispatch(core, token)
+
+proc coreAddWebResourceRequested*(core: pointer; handler: pointer;
+                                  token: ptr EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; handler: pointer;
+                           token: ptr EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[55]
+  )
+  dispatch(core, handler, token)
+
+proc coreRemoveWebResourceRequested*(core: pointer;
+                                     token: EventRegistrationToken): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[56]
+  )
+  dispatch(core, token)
+
+proc coreAddWebResourceRequestedFilter*(core: pointer; uri: WideCString;
+                                        context: uint32): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; uri: WideCString;
+                           context: uint32): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[57]
+  )
+  dispatch(core, uri, context)
+
+proc environmentCreateWebResourceResponse*(environment: pointer; content: pointer;
+                                           statusCode: int32; reason, headers: WideCString;
+                                           response: ptr pointer): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; content: pointer; statusCode: int32;
+                           reason, headers: WideCString; response: ptr pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](environment).vtable[4]
+  )
+  dispatch(environment, content, statusCode, reason, headers, response)
+
+proc webResourceArgsGetRequest*(args: pointer; request: ptr pointer): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; request: ptr pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[3]
+  )
+  dispatch(args, request)
+
+proc webResourceArgsPutResponse*(args: pointer; response: pointer): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; response: pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](args).vtable[5]
+  )
+  dispatch(args, response)
+
+proc webResourceRequestGetUri*(request: pointer; uri: ptr WideCString): HResult {.inline.} =
+  let dispatch = cast[proc(self: pointer; uri: ptr WideCString): HResult {.stdcall.}](
+    cast[ptr ComInterface](request).vtable[3]
+  )
+  dispatch(request, uri)
 
 proc coreGetSource*(core: pointer; source: ptr WideCString): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; source: ptr WideCString): HResult {.stdcall.}](

@@ -8,11 +8,11 @@ Status: Accepted
 
 ## Decision
 
-- 現行`customProtocol` Capabilityは、WebView内部のリソースschemeだけを意味し、未実装のため全ターゲットで`false`または`unsupported`を返す。
+- `customProtocol` Capabilityは、WebView内部のリソースschemeだけを意味する。Windowsは`WebResourceRequested`、LinuxはWebKitGTK URI scheme callbackへ接続済みで、WSLはrelay未実装のため`false`または`unsupported`を返す。
 - OS deep linkは別Capability/API（将来の`openUrl`または`deepLink`）として設計する。`nimino-pack`のmanifest、Windows per-user registry、Linux Desktop Entry、WSL host activation relayを同時に設計・検証する。
 - 任意scheme、任意OS API、未検証の外部URLを暗黙に許可しない。schemeはmanifestで明示し、handlerはWindow/App scopeの許可リストに限定する。
 - Windows実装ではWebView2 SDK headerから`WebResourceRequested`のIID、vtable slot、callback寿命を固定確認し、LinuxではWebKitGTK 6.0 headerからURI scheme requestのGObject寿命を固定確認する。推測したFFI slotでは実装しない。
 
 ## Consequences
 
-`customProtocol`を成功扱いにするには、Windows/Linux/WSLの縦スライス、scheme handlerのbody/status/MIME、navigation policy、閉鎖時callback解放、deep linkとの非混同を含む独立ハーネスが必要になる。これらが揃うまでCapabilityをfalseに維持する。
+Windows/Linux nativeで`customProtocol`を成功扱いにするには、scheme handlerのbody/status/MIME、navigation policy、閉鎖時callback解放、deep linkとの非混同を含む独立ハーネスが必要になる。WSL relayは未実装なのでWSLのCapabilityをfalseに維持する。

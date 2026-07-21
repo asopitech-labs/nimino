@@ -73,6 +73,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
+  WebResourceRequestedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; sender, args: pointer): HResult {.stdcall.}
+
   EnvironmentCompletedHandler = object
     vtable: ptr EnvironmentCompletedVTable
     references: Atomic[int]
@@ -135,6 +141,11 @@ type
     view: pointer
     url: string
 
+  WebResourceRequestedHandler = object
+    vtable: ptr WebResourceRequestedVTable
+    references: Atomic[int]
+    view: pointer
+
 var downloadOperationVTable: DownloadOperationVTable
 
 proc windowsDisposeWindow(window: NativeWindow)
@@ -150,6 +161,7 @@ proc downloadOperationRelease(self: pointer): uint32 {.stdcall.}
 proc downloadOperationQueryInterface(self: pointer; iid: ptr WinGuid;
                                      outInstance: ptr pointer): HResult {.stdcall.}
 proc downloadOperationInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
+proc webResourceRequestedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 
 proc hresultError(operation: string; status: HResult): NativeError {.inline.} =
   nativeError(webViewError, operation, platformCode = status)
@@ -478,6 +490,61 @@ proc downloadOperationInvoke(self: pointer; sender, args: pointer): HResult {.st
         view.dispatchDownloadEvent(handler.url, nativeDownloadFailed, -1.0)
   S_OK
 
+proc webResourceRequestedAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr WebResourceRequestedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc webResourceRequestedRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr WebResourceRequestedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    dealloc(handler)
+  uint32(remaining)
+
+proc webResourceRequestedQueryInterface(self: pointer; iid: ptr WinGuid;
+                                        outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidWebResourceRequestedEventHandler,
+    webResourceRequestedAddRef)
+
+proc webResourceRequestedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
+  let handler = cast[ptr WebResourceRequestedHandler](self)
+  if handler.view.isNil or args.isNil:
+    return S_OK
+  let view = cast[NativeWebView](handler.view)
+  let app = if view.window.isNil: nil else: view.window.app
+  if app.isNil or app.customProtocolScheme.len == 0 or app.customProtocolHandler.isNil:
+    return S_OK
+  var request: pointer
+  if not succeeded(webResourceArgsGetRequest(args, addr request)) or request.isNil:
+    return S_OK
+  var uri: WideCString
+  if not succeeded(webResourceRequestGetUri(request, addr uri)) or uri.isNil:
+    return S_OK
+  let url = $uri
+  coTaskMemFree(cast[pointer](uri))
+  let prefix = app.customProtocolScheme & "://"
+  if not url.toLowerAscii().startsWith(prefix):
+    return S_OK
+  let response = app.dispatchCustomProtocol(NativeCustomProtocolRequest(
+    methodName: "GET", url: url,
+    path: url.substr(prefix.len)))
+  let content = shCreateMemStream(cast[ptr uint8](response.body.cstring),
+    response.body.len.uint32)
+  if content.isNil or view.platformEnvironment.isNil:
+    if content != nil: discard comRelease(content)
+    return S_OK
+  let reason = if response.statusCode >= 200 and response.statusCode < 300: "OK" else: "Error"
+  let headers = newWideCString("Content-Type: " & response.mimeType & "\r\n")
+  var nativeResponse: pointer
+  let created = environmentCreateWebResourceResponse(view.platformEnvironment, content,
+    response.statusCode.int32, newWideCString(reason), headers, addr nativeResponse)
+  discard comRelease(content)
+  if not succeeded(created) or nativeResponse.isNil:
+    return S_OK
+  discard webResourceArgsPutResponse(args, nativeResponse)
+  discard comRelease(nativeResponse)
+  S_OK
+
 proc environmentInvoke(self: pointer; errorCode: HResult;
                        environment: pointer): HResult {.stdcall.}
 proc controllerInvoke(self: pointer; errorCode: HResult;
@@ -576,6 +643,13 @@ downloadOperationVTable = DownloadOperationVTable(
   invoke: downloadOperationInvoke
 )
 
+var webResourceRequestedVTable = WebResourceRequestedVTable(
+  queryInterface: webResourceRequestedQueryInterface,
+  addRef: webResourceRequestedAddRef,
+  release: webResourceRequestedRelease,
+  invoke: webResourceRequestedInvoke
+)
+
 proc newPermissionRequestedHandler(view: NativeWebView): ptr PermissionRequestedHandler =
   result = cast[ptr PermissionRequestedHandler](alloc0(sizeof(PermissionRequestedHandler)))
   result.vtable = addr permissionRequestedVTable
@@ -585,6 +659,12 @@ proc newPermissionRequestedHandler(view: NativeWebView): ptr PermissionRequested
 proc newDownloadStartingHandler(view: NativeWebView): ptr DownloadStartingHandler =
   result = cast[ptr DownloadStartingHandler](alloc0(sizeof(DownloadStartingHandler)))
   result.vtable = addr downloadStartingVTable
+  result.references.store(1, moRelaxed)
+  result.view = cast[pointer](view)
+
+proc newWebResourceRequestedHandler(view: NativeWebView): ptr WebResourceRequestedHandler =
+  result = cast[ptr WebResourceRequestedHandler](alloc0(sizeof(WebResourceRequestedHandler)))
+  result.vtable = addr webResourceRequestedVTable
   result.references.store(1, moRelaxed)
   result.view = cast[pointer](view)
 
@@ -713,6 +793,12 @@ proc windowsDisposeView(view: NativeWebView) =
       discard comRelease(core4)
     view.downloadRegistered = false
     view.downloadHandlerPointer = nil
+  if view.customProtocolRegistered and view.platformView != nil:
+    discard coreRemoveWebResourceRequested(view.platformView,
+      EventRegistrationToken(value: view.customProtocolSignalToken))
+    view.customProtocolRegistered = false
+    view.customProtocolHandlerPointer = nil
+    GC_unref(view)
   if view.downloadOperationPointer != nil:
     let operation = view.downloadOperationPointer
     discard downloadOperationRemoveBytesReceivedChanged(operation,
@@ -1374,6 +1460,31 @@ proc windowsConfigureDownloadStarting(view: NativeWebView): NativeResult =
   view.downloadRegistered = true
   success()
 
+proc windowsConfigureCustomProtocol(view: NativeWebView): NativeResult =
+  if view.platformView.isNil or view.window.isNil or view.window.app.isNil:
+    return failure(nativeError(invalidState, "app.registerCustomProtocol"))
+  let app = view.window.app
+  if app.customProtocolScheme.len == 0 or app.customProtocolHandler.isNil:
+    return success()
+  let handler = newWebResourceRequestedHandler(view)
+  var token: EventRegistrationToken
+  GC_ref(view)
+  let status = coreAddWebResourceRequested(view.platformView, cast[pointer](handler), addr token)
+  discard webResourceRequestedRelease(handler)
+  if not succeeded(status):
+    GC_unref(view)
+    return failure(hresultError("app.registerCustomProtocol", status))
+  let filter = newWideCString(app.customProtocolScheme & "://*")
+  let filterStatus = coreAddWebResourceRequestedFilter(view.platformView, filter, 0)
+  if not succeeded(filterStatus):
+    discard coreRemoveWebResourceRequested(view.platformView, token)
+    GC_unref(view)
+    return failure(hresultError("app.registerCustomProtocol", filterStatus))
+  view.customProtocolHandlerPointer = cast[pointer](handler)
+  view.customProtocolSignalToken = token.value
+  view.customProtocolRegistered = true
+  success()
+
 proc windowsConfigureNewWindowRequested(view: NativeWebView): NativeResult =
   if view.platformView.isNil:
     return failure(nativeError(invalidState, "webview.onNewWindowRequested"))
@@ -1601,6 +1712,10 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
   let downloadEvents = view.windowsConfigureDownloadStarting()
   if not downloadEvents.isOk:
     view.window.app.windowsFail(downloadEvents.failure)
+    return S_OK
+  let customProtocol = view.windowsConfigureCustomProtocol()
+  if not customProtocol.isOk:
+    view.window.app.windowsFail(customProtocol.failure)
     return S_OK
   let newWindowEvents = view.windowsConfigureNewWindowRequested()
   if not newWindowEvents.isOk:

@@ -3,6 +3,52 @@ import std/os
 proc linuxTrackDownload(view: NativeWebView; download: pointer; url: string)
 proc linuxCreateView(view: NativeWebView): NativeResult
 
+proc linuxCustomProtocolRequest(request: ptr WebKitURISchemeRequest;
+                                userData: pointer) {.cdecl.} =
+  let app = cast[NativeApp](userData)
+  if app.isNil or request.isNil or app.customProtocolScheme.len == 0:
+    return
+  let uri = webkit_uri_scheme_request_get_uri(request)
+  let methodName = webkit_uri_scheme_request_get_http_method(request)
+  let path = webkit_uri_scheme_request_get_path(request)
+  let response = app.dispatchCustomProtocol(NativeCustomProtocolRequest(
+    methodName: if methodName.isNil: "GET" else: $methodName,
+    url: if uri.isNil: "" else: $uri,
+    path: if path.isNil: "/" else: $path))
+  let bytes = g_bytes_new(cast[pointer](response.body.cstring), response.body.len.csize_t)
+  if bytes.isNil:
+    return
+  let stream = g_memory_input_stream_new_from_bytes(bytes)
+  g_bytes_unref(bytes)
+  if stream.isNil:
+    return
+  let nativeResponse = webkit_uri_scheme_response_new(stream, response.body.len.int64)
+  if nativeResponse.isNil:
+    g_object_unref(stream)
+    return
+  let reason = if response.statusCode >= 200 and response.statusCode < 300: "OK" else: "Error"
+  webkit_uri_scheme_response_set_status(nativeResponse, response.statusCode.uint32,
+    reason.cstring)
+  webkit_uri_scheme_response_set_content_type(nativeResponse, response.mimeType.cstring)
+  webkit_uri_scheme_request_finish_with_response(request, nativeResponse)
+  g_object_unref(nativeResponse)
+  g_object_unref(stream)
+
+proc linuxRegisterCustomProtocol(app: NativeApp): NativeResult =
+  if app.isNil or app.customProtocolScheme.len == 0 or app.customProtocolHandler.isNil:
+    return failure(nativeError(invalidArgument, "app.registerCustomProtocol"))
+  let context = webkit_web_context_get_default()
+  if context.isNil:
+    return failure(nativeError(unsupported, "app.registerCustomProtocol",
+      detail = "WebKitWebContext is unavailable"))
+  webkit_web_context_register_uri_scheme(context, app.customProtocolScheme.cstring,
+    linuxCustomProtocolRequest, cast[pointer](app), nil)
+  let security = webkit_web_context_get_security_manager(context)
+  if not security.isNil:
+    webkit_security_manager_register_uri_scheme_as_secure(security,
+      app.customProtocolScheme.cstring)
+  success()
+
 proc linuxNativeMenuActionName(itemId: uint32): string {.inline.} =
   "nimino-menu-" & $itemId
 

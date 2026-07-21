@@ -104,6 +104,19 @@ type
     id*: string
     name*: string
 
+  CustomProtocolRequest* = object
+    methodName*: string
+    url*: string
+    path*: string
+
+  CustomProtocolResponse* = object
+    statusCode*: int
+    mimeType*: string
+    body*: string
+
+  CustomProtocolHandler* = proc(
+    request: CustomProtocolRequest): CustomProtocolResponse {.closure.}
+
   DesktopMenuItem* = object
     ## A validated command item for the application menu or system tray.
     id*: uint32
@@ -854,6 +867,26 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
 
 proc newApp*(id = "tech.asopi.nimino"; name = "Nimino"): CoreResultOf[App] =
   newApp(AppOptions(id: id, name: name))
+
+proc registerCustomProtocol*(app: App; scheme: string;
+                             handler: CustomProtocolHandler): CoreResult =
+  ## Register a WebView-internal resource scheme. This does not register an
+  ## operating-system deep link and does not expose arbitrary Nim functions.
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.registerCustomProtocol"))
+  if handler.isNil:
+    return coreFailure(coreError(invalidArgument, "app.registerCustomProtocol",
+      detail = "a protocol handler is required"))
+  if app.backend == wslBackend:
+    return coreFailure(coreError(platformUnavailable, "app.registerCustomProtocol",
+      detail = "WSL protocol relay is not implemented yet"))
+  let registered = native.registerCustomProtocol(app.nativeApp, scheme,
+    proc(request: native.NativeCustomProtocolRequest): native.NativeCustomProtocolResponse =
+      let response = handler(CustomProtocolRequest(methodName: request.methodName,
+        url: request.url, path: request.path))
+      native.NativeCustomProtocolResponse(statusCode: response.statusCode,
+        mimeType: response.mimeType, body: response.body))
+  registered.fromNative()
 
 proc onReady*(app: App; handler: proc()): CoreResult =
   if app.isNil or app.state == coreFinished:

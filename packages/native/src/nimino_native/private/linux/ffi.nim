@@ -22,6 +22,11 @@ type
   WebKitWebView* {.incompleteStruct.} = object
   WebKitSettings* {.incompleteStruct.} = object
   WebKitNetworkSession* {.incompleteStruct.} = object
+  WebKitWebContext* {.incompleteStruct.} = object
+  WebKitURISchemeRequest* {.incompleteStruct.} = object
+  WebKitURISchemeResponse* {.incompleteStruct.} = object
+  GInputStream* {.incompleteStruct.} = object
+  GBytes* {.incompleteStruct.} = object
   WebKitWebsiteDataManager* {.incompleteStruct.} = object
   WebKitUserContentManager* {.incompleteStruct.} = object
   WebKitUserScript* {.incompleteStruct.} = object
@@ -45,6 +50,8 @@ type
   GAsyncReadyCallback* = proc(sourceObject: pointer; asyncResult: ptr GAsyncResult;
                               userData: pointer) {.cdecl.}
   GSourceFunc* = proc(data: pointer): cint {.cdecl.}
+  WebKitURISchemeRequestCallback* = proc(request: ptr WebKitURISchemeRequest;
+                                         userData: pointer) {.cdecl.}
   GType* = csize_t
 
   WebKitUserContentInjectedFrames* = cint
@@ -171,12 +178,54 @@ proc g_object_new*(objectType: culong; firstPropertyName: cstring): pointer {.va
   importc, dynlib: LibGObject.}
 proc g_free*(memory: pointer)
   {.cdecl, importc, dynlib: LibGlib.}
+proc g_bytes_new*(data: pointer; size: csize_t): ptr GBytes
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_bytes_unref*(bytes: ptr GBytes)
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_memory_input_stream_new_from_bytes*(bytes: ptr GBytes): ptr GInputStream
+  {.cdecl, importc, dynlib: LibGio.}
 proc g_filename_to_uri*(filename, hostname: cstring; error: ptr ptr GError): cstring
   {.cdecl, importc, dynlib: LibGlib.}
 proc g_error_free*(error: ptr GError)
   {.cdecl, importc, dynlib: LibGlib.}
 proc g_file_get_path*(file: ptr GFile): cstring
   {.cdecl, importc, dynlib: LibGio.}
+
+proc webkit_web_context_get_default*(): ptr WebKitWebContext
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_web_context_register_uri_scheme*(context: ptr WebKitWebContext;
+                                             scheme: cstring;
+                                             callback: WebKitURISchemeRequestCallback;
+                                             userData: pointer;
+                                             destroyNotify: pointer)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_web_context_get_security_manager*(context: ptr WebKitWebContext): pointer
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_security_manager_register_uri_scheme_as_secure*(manager: pointer;
+                                                            scheme: cstring)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_uri_scheme_request_get_uri*(request: ptr WebKitURISchemeRequest): cstring
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_uri_scheme_request_get_http_method*(request: ptr WebKitURISchemeRequest): cstring
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_uri_scheme_request_get_path*(request: ptr WebKitURISchemeRequest): cstring
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_uri_scheme_request_finish*(request: ptr WebKitURISchemeRequest;
+                                       stream: ptr GInputStream; length: int64;
+                                       contentType: cstring)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_uri_scheme_response_new*(stream: ptr GInputStream;
+                                     length: int64): ptr WebKitURISchemeResponse
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_uri_scheme_response_set_status*(response: ptr WebKitURISchemeResponse;
+                                            statusCode: uint32; reason: cstring)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_uri_scheme_response_set_content_type*(response: ptr WebKitURISchemeResponse;
+                                                  contentType: cstring)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_uri_scheme_request_finish_with_response*(request: ptr WebKitURISchemeRequest;
+                                                     response: ptr WebKitURISchemeResponse)
+  {.cdecl, importc, dynlib: LibWebKit.}
 proc g_list_model_get_n_items*(model: ptr GListModel): uint32
   {.cdecl, importc, dynlib: LibGio.}
 proc g_list_model_get_item*(model: ptr GListModel; position: uint32): pointer

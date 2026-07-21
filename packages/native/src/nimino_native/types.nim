@@ -1,4 +1,4 @@
-import std/[asyncfutures, locks]
+import std/[asyncfutures, locks, strutils]
 
 import ./[capabilities, errors]
 
@@ -43,6 +43,22 @@ type
   ## expose an activation event leave it unset and report that limitation via
   ## the normal unsupported result from registration.
   NativeNotificationActivatedHandler* = proc(notificationId: string) {.closure.}
+
+  NativeCustomProtocolRequest* = object
+    ## A request for an application-owned WebView resource scheme.  The
+    ## handler runs on the native UI thread and must return without blocking.
+    methodName*: string
+    url*: string
+    path*: string
+
+  NativeCustomProtocolResponse* = object
+    ## A complete response returned synchronously to the WebView engine.
+    statusCode*: int
+    mimeType*: string
+    body*: string
+
+  NativeCustomProtocolHandler* = proc(
+    request: NativeCustomProtocolRequest): NativeCustomProtocolResponse {.closure.}
 
   NativeMenuItem* = object
     ## A command exposed through an operating-system native menu.
@@ -132,6 +148,8 @@ type
     notificationWindow: pointer
     notificationId: string
     notificationActivatedHandler: NativeNotificationActivatedHandler
+    customProtocolScheme: string
+    customProtocolHandler: NativeCustomProtocolHandler
     nativeMenuItems: seq[NativeMenuItem]
     nativeMenuHandler: NativeMenuHandler
     nativeMenuTitle: string
@@ -211,6 +229,9 @@ type
     downloadBytesToken: int64
     downloadStateToken: int64
     downloadSignalHandlers: seq[culong]
+    customProtocolSignalToken: int64
+    customProtocolHandlerPointer: pointer
+    customProtocolRegistered: bool
     activeDownload: pointer
     activeDownloadUrl: string
     pendingScripts: seq[NativeScriptRequest]
@@ -228,6 +249,7 @@ when defined(linux) and not defined(niminoWsl):
                               request: NativeBrowsingDataRequest): NativeResult
   proc linuxSendNativeNotification(app: NativeApp;
                                    notification: NativeNotification): NativeResult
+  proc linuxRegisterCustomProtocol(app: NativeApp): NativeResult
   proc linuxOpenFileDialog*(window: NativeWindow;
                             options: NativeFileDialogOptions):
                             Future[NativeResultOf[seq[string]]]
@@ -242,6 +264,7 @@ elif defined(windows):
   proc windowsDisposeView(view: NativeWebView)
   proc windowsSendNativeNotification*(app: NativeApp;
                                       notification: NativeNotification): NativeResult
+  proc windowsConfigureCustomProtocol(view: NativeWebView): NativeResult
   proc windowsOpenFileDialog*(window: NativeWindow;
                               options: NativeFileDialogOptions): NativeResultOf[seq[string]]
 
@@ -469,6 +492,22 @@ proc dispatchDownloadPath(view: NativeWebView; url: string): string =
   try: view.downloadPathHandler(url)
   except CatchableError: ""
 
+proc dispatchCustomProtocol(app: NativeApp; request: NativeCustomProtocolRequest): NativeCustomProtocolResponse =
+  if app.isNil or app.customProtocolHandler.isNil:
+    return NativeCustomProtocolResponse(statusCode: 404, mimeType: "text/plain", body: "Not found")
+  try:
+    let response = app.customProtocolHandler(request)
+    if response.statusCode < 100 or response.statusCode > 599:
+      return NativeCustomProtocolResponse(statusCode: 500, mimeType: "text/plain",
+        body: "Invalid custom protocol response")
+    if response.mimeType.len == 0:
+      return NativeCustomProtocolResponse(statusCode: response.statusCode,
+        mimeType: "application/octet-stream", body: response.body)
+    response
+  except CatchableError:
+    NativeCustomProtocolResponse(statusCode: 500, mimeType: "text/plain",
+      body: "Custom protocol handler failed")
+
 proc hasUiTasks(app: NativeApp): bool =
   if app.isNil:
     return false
@@ -521,10 +560,12 @@ proc newNativeApp*(options: NativeAppOptions): NativeApp =
     result.capabilities.incl(nativeMenu)
     result.capabilities.incl(systemTray)
     result.capabilities.incl(nativeNotification)
+    result.capabilities.incl(customProtocol)
   elif defined(linux) and not defined(niminoWsl):
     result.capabilities.incl(multipleWebViews)
     result.capabilities.incl(nativeMenu)
     result.capabilities.incl(nativeNotification)
+    result.capabilities.incl(customProtocol)
 
 proc newNativeApp*(): NativeApp =
   newNativeApp(NativeAppOptions(appId: "tech.asopi.nimino.native"))
@@ -664,6 +705,54 @@ proc onNotificationActivated*(app: NativeApp;
     success()
   else:
     failure(nativeError(unsupported, "app.onNotificationActivated"))
+
+proc registerCustomProtocol*(app: NativeApp; scheme: string;
+                             handler: NativeCustomProtocolHandler): NativeResult =
+  ## Register one application-owned resource scheme. The scheme is handled
+  ## inside the WebView and is deliberately unrelated to OS deep-link
+  ## registration.
+  if app.isNil or app.state == finished:
+    return failure(nativeError(invalidState, "app.registerCustomProtocol"))
+  let normalized = scheme.toLowerAscii()
+  if normalized.len == 0 or normalized[0] notin {'a'..'z'}:
+    return failure(nativeError(invalidArgument, "app.registerCustomProtocol",
+      detail = "scheme must start with an ASCII letter"))
+  for ch in normalized:
+    if ch notin {'a'..'z', '0'..'9', '+', '.', '-'}:
+      return failure(nativeError(invalidArgument, "app.registerCustomProtocol",
+        detail = "scheme contains an invalid character"))
+  if normalized in ["http", "https", "file", "data", "about", "javascript"]:
+    return failure(nativeError(invalidArgument, "app.registerCustomProtocol",
+      detail = "built-in WebView schemes cannot be replaced"))
+  if handler.isNil:
+    return failure(nativeError(invalidArgument, "app.registerCustomProtocol",
+      detail = "a protocol handler is required"))
+  if app.customProtocolScheme.len > 0:
+    return failure(nativeError(invalidState, "app.registerCustomProtocol",
+      detail = "only one custom protocol may be registered per application"))
+  if app.state == running:
+    return failure(nativeError(invalidState, "app.registerCustomProtocol",
+      detail = "custom protocol must be registered before app.run"))
+  app.customProtocolScheme = normalized
+  app.customProtocolHandler = handler
+  when defined(linux) and not defined(niminoWsl):
+    return app.linuxRegisterCustomProtocol()
+  else:
+    success()
+
+proc unregisterCustomProtocol*(app: NativeApp): NativeResult =
+  if app.isNil or app.state == finished:
+    return failure(nativeError(invalidState, "app.unregisterCustomProtocol"))
+  if app.state == running:
+    return failure(nativeError(invalidState, "app.unregisterCustomProtocol",
+      detail = "custom protocol must be removed before app.run"))
+  ## WebKitGTK keeps the scheme callback for the lifetime of its context; the
+  ## callback itself consults the app-owned handler, so clearing the closure is
+  ## safe only before a new run. Windows removes the per-view event handlers on
+  ## close and likewise has no outstanding callback at this point.
+  app.customProtocolScheme.setLen(0)
+  app.customProtocolHandler = nil
+  success()
 
 proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
                 profilePath = ""):

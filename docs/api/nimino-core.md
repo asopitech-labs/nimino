@@ -1,8 +1,10 @@
 # `nimino-core` 最小公開API案
 
-**状態: M4部分実装。Windows/Linux向けの`App`/`Window` facade、同一Windowの複数`WebView`管理、Window単位の明示許可リストJSON RPC、WebView bootstrap、profile path、local asset root/entry境界、Windows/Linuxのトレイ・メニュー・通知を実装した。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録でき、`typescriptDeclarations`で複合型を含む宣言を生成できます。Linuxでは実WebViewのrequest/response/notification往復、URLの最初期scriptからのRPC、WebKitWebsiteDataManagerによるbrowser data clearを確認済みで、Windowsはx64クロスコンパイル済みです。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、メニュー・トレイ・通知・ファイルダイアログをIPC中継します。Windows WebView2 Runtime上でWSL coreの読込、評価、async response、timeout、URL document-start RPCを確認済みです。permission/download/navigationはnative実装とWSL同期decision relay（timeout時deny）まで完了し、profile設定/Cookieの永続化API、Window単位の参照・削除APIも実装済みです。`onNotificationActivated`はWindows通知領域balloonのクリックをCore/WSLへ中継します（正式なWindows toast activationとは別機能）。custom protocol、正式なMSI/署名・更新、Windows toast activation、macOSは未実装です。**
+**状態: M4部分実装。Windows/Linux向けの`App`/`Window` facade、同一Windowの複数`WebView`管理、Window単位の明示許可リストJSON RPC、WebView bootstrap、profile path、local asset root/entry境界、Windows/Linuxのトレイ・メニュー・通知を実装した。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録でき、`typescriptDeclarations`で複合型を含む宣言を生成できます。Linuxでは実WebViewのrequest/response/notification往復、URLの最初期scriptからのRPC、WebKitWebsiteDataManagerによるbrowser data clearを確認済みで、Windowsはx64クロスコンパイル済みです。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、メニュー・トレイ・通知・ファイルダイアログをIPC中継します。Windows WebView2 Runtime上でWSL coreの読込、評価、async response、timeout、URL document-start RPCを確認済みです。permission/download/navigationはnative実装とWSL同期decision relay（timeout時deny）まで完了し、profile設定/Cookieの永続化API、Window単位の参照・削除APIも実装済みです。`onNotificationActivated`はWindows通知領域balloonのクリックをCore/WSLへ中継します（正式なWindows toast activationとは別機能）。WebView内部custom protocolはWindows/Linux nativeで実装済みですがWSL relayは未実装です。正式なMSI/署名・更新、Windows toast activation、macOSは未実装です。**
 
 `nimino-core`は通常の利用者向けの高水準APIです。`nimino-native`を内包してもFFI型を公開せず、`nimino-pack`へはこの公開面だけを提供します。
+
+`app.registerCustomProtocol("nimino", handler)`はWebView内部リソースschemeを1つ登録します。OS deep-link登録とは別で、handlerはstatus code、MIME type、bodyを同期返却します。Windows/Linux nativeでは実装済み、WSLではauthenticated relay未実装のため`platformUnavailable`です。
 
 ## M3で実装する最小面
 
