@@ -65,13 +65,14 @@ block nativeDesktopIntegrationCapabilitiesAndStatesAreExplicit:
     doAssert beforeRun.failure.kind == invalidState
   elif defined(windows):
     doAssert app.supports(nativeMenu)
-    doAssert not app.supports(nativeNotification)
+    doAssert app.supports(nativeNotification)
     doAssert app.configureNativeMenu("Nimino", items,
       proc(itemId: uint32) = discard).isOk
+    doAssert app.onNotificationActivated(proc(notificationId: string) = discard).isOk
     let notification = app.sendNativeNotification(NativeNotification(
-      id: "foundation", title: "Nimino", body: "unsupported"))
+      id: "foundation", title: "Nimino", body: "not running"))
     doAssert not notification.isOk
-    doAssert notification.failure.kind == unsupported
+    doAssert notification.failure.kind == invalidState
   else:
     doAssert not app.supports(nativeMenu)
     doAssert not app.supports(nativeNotification)

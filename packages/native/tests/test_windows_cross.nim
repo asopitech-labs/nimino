@@ -5,7 +5,8 @@ import nimino_native
 let app = newNativeApp()
 doAssert app.supports(systemTray)
 doAssert app.supports(nativeMenu)
-doAssert not app.supports(nativeNotification)
+doAssert app.supports(nativeNotification)
+doAssert app.onNotificationActivated(proc(notificationId: string) = discard).isOk
 doAssert app.configureSystemTray([
   NativeMenuItem(id: 1, title: "Show Nimino", enabled: true),
   NativeMenuItem(id: 2, title: "Quit Nimino", enabled: true)
@@ -16,9 +17,9 @@ doAssert nativeMenuApp.configureNativeMenu("Nimino", [
   NativeMenuItem(id: 2, title: "Quit Nimino", enabled: true)
 ], proc(itemId: uint32) = discard).isOk
 let notification = app.sendNativeNotification(NativeNotification(
-  id: "windows-cross", title: "Nimino", body: "unsupported"))
+  id: "windows-cross", title: "Nimino", body: "not running"))
 doAssert not notification.isOk
-doAssert notification.failure.kind == unsupported
+doAssert notification.failure.kind == invalidState
 let window = app.newWindow(title = "Nimino Windows M1", width = 800, height = 600)
 doAssert window.isOk
 
