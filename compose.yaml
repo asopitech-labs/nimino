@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: tools/docker/Dockerfile
       args:
-        NIM_IMAGE: nimlang/nim:latest
+        NIM_IMAGE: nimlang/nim:latest@sha256:62428daa4a39baeb6f5e429a9c2ca3cee27a80ef880fe6e1bf3e29cc2296ac1b
     image: nimino-dev:local
     working_dir: /workspace
     volumes:

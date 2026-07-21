@@ -1,4 +1,6 @@
-ARG NIM_IMAGE=nimlang/nim:latest
+# Keep the compiler/toolchain reproducible. Updating Nim is an intentional
+# dependency change that must update this digest.
+ARG NIM_IMAGE=nimlang/nim:latest@sha256:62428daa4a39baeb6f5e429a9c2ca3cee27a80ef880fe6e1bf3e29cc2296ac1b
 FROM ${NIM_IMAGE}
 
 ARG WEBVIEW2_SDK_VERSION=1.0.3967.48

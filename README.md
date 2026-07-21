@@ -72,7 +72,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
   "$(wslpath -w "$PWD/tools/ci/setup-windows-webview2.ps1")"
 ```
 
-このWindows側セットアップはWSL開発環境の事前条件です。具体的には、(1) WSL 2、(2) Windows Interop、(3) WebView2 Evergreen Runtime、(4) WindowsユーザーのGUIログオンを満たしてから、WindowsにユーザーとしてログオンしたGUIセッションで`make wsl-host-popup-smoke`を実行します。WSLgの`DISPLAY`はLinux GUI用であり、Windows WebView2のRuntime/Win32 Windowの代替ではありません。
+通常は`make setup`だけを実行してください。Docker内のNim/GTK/WebKitGTKと、WSL Interop経由でWindows WebView2 Evergreen Runtimeを順に準備し、必要なWebView2導入時だけUAC昇格を要求します。利用者がGTK/WebKitGTKやWebView2を個別に導入することは前提にしません。具体的な実行条件は、(1) WSL 2、(2) Windows Interop、(3) WindowsユーザーのGUIログオンです。これらを満たしたGUIセッションで`make wsl-host-popup-smoke`を実行します。WSLgの`DISPLAY`はLinux GUI用であり、Windows WebView2のRuntime/Win32 Windowの代替ではありません。
 
 権限の扱いは次のとおりです。`make setup`はDocker内のNim/GTK/WebKitGTK検証と、Windows WebView2/Edge UpdateのためのUAC昇格を自動実行します。`make setup-windows-webview2`だけを直接呼ぶ場合もUAC昇格を自動要求します。`wsl-host-*` smoke、WSL client/core smoke、NSISのper-user生成、生成されたPowerShell install templateは管理者権限を要求しません。別ユーザーのhostを停止する`taskkill`は失敗しても無視します。
 
@@ -85,7 +85,7 @@ make setup
 make wsl-host-cross
 ```
 
-最後の`wsl-host-cross`で`.tmp/nimino-wsl-host.exe`と同じ場所に`WebView2Loader.dll`が配置されます。`make setup`が準備するWindows側Evergreen RuntimeとDocker内GTK/WebKitGTKに加え、WSL 2のディストリビューション、Docker daemon/Compose、Windows側への`wslpath`アクセスを、WSL smokeの実行時に自動検証します。`WSLg`のWayland/X11環境変数やLinux GPUドライバーは、Windows WebView2 hostの必須条件ではありません。
+最後の`wsl-host-cross`で`.tmp/nimino-wsl-host.exe`と同じ場所に`WebView2Loader.dll`が配置されます。`make setup`が準備するWindows側Evergreen RuntimeとDocker内GTK/WebKitGTKに加え、WSL 2のディストリビューション、Docker daemon/Compose、Windows側への`wslpath`アクセスを、WSL smokeの実行時に自動検証します。`WSLg`のWayland/X11環境変数やLinux GPUドライバーは、Windows WebView2 hostの必須条件ではありません。PowerShellの直接実行例はInterop復旧や診断が必要な場合の手動フォールバックであり、通常の事前条件ではありません。
 
 Linuxの実ネイティブスモークは`make linux-smoke`で実行します。これはDockerのnamespace制限を回避するため、そのテストコンテナだけでWebKit sandboxを無効にし、GIO notification request用にprivate D-Bus sessionを起動します。アプリの本番実行設定にはこの環境変数やテスト用sessionを含めません。
 
