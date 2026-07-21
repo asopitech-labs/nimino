@@ -21,7 +21,9 @@ task test, "Run Nimino unit tests in ARC mode":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-fake-launcher-host-nimcache --out:/tmp/nimino-wsl-fake-launcher-host --path:packages/wsl packages/wsl/tests/fake_launcher_host.nim"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-launcher-nimcache --out:/tmp/nimino-test-launcher --path:packages/wsl --path:packages/native packages/wsl/tests/test_launcher.nim"
   exec "/tmp/nimino-test-launcher /tmp/nimino-wsl-fake-launcher-host"
-  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-test-host-adapter --path:packages/wsl --path:packages/native packages/wsl/tests/test_host_adapter.nim"
+  ## Host adapter tests model the Windows host contract; compile without the
+  ## Linux WebKit backend so unsupported runtime behavior is deterministic.
+  exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-test-host-adapter --path:packages/wsl --path:packages/native packages/wsl/tests/test_host_adapter.nim"
 
 task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-linux-smoke-nimcache --out:/tmp/nimino-linux-smoke --path:packages/native packages/native/tests/test_linux_smoke.nim"
