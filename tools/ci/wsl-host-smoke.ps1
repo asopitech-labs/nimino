@@ -10,6 +10,10 @@ param(
 $script:protocolVersion = 2
 $script:deniedNavigationUrl = "https://example.com/private/token"
 $script:pendingFrames = New-Object System.Collections.Queue
+function Set-SmokePhase([string]$phase) {
+  $script:smokePhase = $phase
+  Write-Host ("Nimino smoke phase: " + $phase) -ForegroundColor DarkCyan
+}
 
 function Assert-WebView2Runtime {
   $roots = @(
@@ -41,7 +45,7 @@ $startInfo.EnvironmentVariables["NIMINO_WSL_HOST_TOKEN"] = $token
 
 $process = New-Object System.Diagnostics.Process
 $process.StartInfo = $startInfo
-$script:smokePhase = "process startup"
+Set-SmokePhase "process startup"
 $loaderPath = Join-Path (Split-Path -Parent $HostExecutable) "WebView2Loader.dll"
 if (-not (Test-Path -LiteralPath $loaderPath -PathType Leaf)) {
   throw "WebView2Loader.dll must be staged beside nimino-wsl-host.exe"
@@ -266,7 +270,7 @@ function Wait-ForNewWindowRequest([string]$webViewId) {
 }
 
 try {
-  $script:smokePhase = "handshake"
+  Set-SmokePhase "handshake"
   Write-Frame @{
     version = 1; kind = "hello"; sessionId = ""; authenticationToken = $token
     requestId = "1"; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000
@@ -283,7 +287,7 @@ try {
   }
 
   if ($AbnormalClientEof) {
-    $script:smokePhase = "abnormal client EOF"
+    Set-SmokePhase "abnormal client EOF"
     $process.StandardInput.Close()
     if (-not $process.WaitForExit(5000)) {
       throw "Host did not exit after the client stdin was closed"
@@ -295,7 +299,7 @@ try {
     return
   }
 
-  $script:smokePhase = "window creation"
+  Set-SmokePhase "window creation"
   $windowRequest = @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "2"; eventId = "0"; method = "native.window.create"
@@ -309,7 +313,7 @@ try {
   }
   $windowId = ($windowResponse.payload | ConvertFrom-Json).windowId
 
-  $script:smokePhase = "webview creation"
+  Set-SmokePhase "webview creation"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "3"; eventId = "0"; method = "native.webview.create"
@@ -323,7 +327,7 @@ try {
   }
   $webViewId = ($webViewResponse.payload | ConvertFrom-Json).webViewId
 
-  $script:smokePhase = "document-start script registration"
+  Set-SmokePhase "document-start script registration"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "4"; eventId = "0"; method = "native.webview.setDocumentStartScript"
@@ -336,7 +340,7 @@ try {
     throw "Host did not register the document-start script"
   }
 
-  $script:smokePhase = "navigation rule registration"
+  Set-SmokePhase "navigation rule registration"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "5"; eventId = "0"; method = "native.webview.setNavigationRules"
@@ -349,7 +353,7 @@ try {
     throw "Host did not register navigation rules"
   }
 
-  $script:smokePhase = "HTML loading"
+  Set-SmokePhase "HTML loading"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "6"; eventId = "0"; method = "native.webview.loadHtml"
@@ -361,10 +365,10 @@ try {
       -not [string]::IsNullOrEmpty($loadResponse.error)) {
     throw "Host did not start WebView HTML loading"
   }
-  $script:smokePhase = "navigation completion"
+  Set-SmokePhase "navigation completion"
   Wait-ForNavigationCompleted $webViewId
 
-  $script:smokePhase = "JavaScript evaluation"
+  Set-SmokePhase "JavaScript evaluation"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "7"; eventId = "0"; method = "native.webview.evalJavaScript"
@@ -381,7 +385,7 @@ try {
     throw "WebView JavaScript result did not match the loaded document title"
   }
 
-  $script:smokePhase = "native window title"
+  Set-SmokePhase "native window title"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "8"; eventId = "0"; method = "native.window.setTitle"
@@ -394,7 +398,7 @@ try {
     throw "Host did not update the native window title"
   }
 
-  $script:smokePhase = "native window resize"
+  Set-SmokePhase "native window resize"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "9"; eventId = "0"; method = "native.window.setSize"
@@ -407,7 +411,7 @@ try {
     throw "Host did not resize the native window"
   }
 
-  $script:smokePhase = "resized viewport evaluation"
+  Set-SmokePhase "resized viewport evaluation"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "10"; eventId = "0"; method = "native.webview.evalJavaScript"
@@ -424,7 +428,7 @@ try {
     throw "WebView viewport was not available after native window resize"
   }
 
-  $script:smokePhase = "URL loading"
+  Set-SmokePhase "URL loading"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "11"; eventId = "0"; method = "native.webview.loadUrl"
@@ -436,10 +440,10 @@ try {
       -not [string]::IsNullOrEmpty($urlResponse.error)) {
     throw "Host did not start WebView URL loading"
   }
-  $script:smokePhase = "URL navigation completion"
+  Set-SmokePhase "URL navigation completion"
   Wait-ForNavigationCompleted $webViewId
 
-  $script:smokePhase = "WebView message"
+  Set-SmokePhase "WebView message"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "12"; eventId = "0"; method = "native.webview.evalJavaScript"
@@ -453,7 +457,7 @@ try {
   }
   Wait-ForWebMessage $webViewId "nimino-native-message"
 
-  $script:smokePhase = "cancelled navigation"
+  Set-SmokePhase "cancelled navigation"
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "13"; eventId = "0"; method = "native.webview.loadUrl"
@@ -469,7 +473,7 @@ try {
 
   if ($VerifyNewWindow) {
     $newWindowTitle = "Nimino WebView2 New Window Smoke"
-    $script:smokePhase = "new-window test title"
+    Set-SmokePhase "new-window test title"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = "14"; eventId = "0"; method = "native.window.setTitle"
@@ -484,7 +488,7 @@ try {
 
     $popupUrl = "data:text/html," + [System.Uri]::EscapeDataString("<!doctype html><p>Nimino popup target</p>")
     $newWindowHtml = '<!doctype html><meta charset="utf-8"><button id="open" style="position:fixed;inset:0;border:0;background:#19324d;color:white;font-size:32px" onclick="chrome.webview.postMessage(''new-window-triggered''); window.open(''' + $popupUrl + ''', ''_blank'');">Open a new window</button>'
-    $script:smokePhase = "new-window page loading"
+    Set-SmokePhase "new-window page loading"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = "15"; eventId = "0"; method = "native.webview.loadHtml"
@@ -496,9 +500,9 @@ try {
         -not [string]::IsNullOrEmpty($newWindowLoadResponse.error)) {
       throw "Host did not load the new-window test page"
     }
-    $script:smokePhase = "new-window page navigation"
+    Set-SmokePhase "new-window page navigation"
     Wait-ForNavigationCompleted $webViewId
-    $script:smokePhase = "new-window page message bridge"
+    Set-SmokePhase "new-window page message bridge"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = "16"; eventId = "0"; method = "native.webview.evalJavaScript"
@@ -511,7 +515,7 @@ try {
       throw "Host did not execute the new-window page bridge preflight"
     }
     Wait-ForWebMessage $webViewId "new-window-page-ready"
-    $script:smokePhase = "WebView new-window request"
+    Set-SmokePhase "WebView new-window request"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = "17"; eventId = "0"; method = "native.webview.evalJavaScript"
@@ -559,7 +563,7 @@ try {
     Wait-ForWebMessage $popupViewId "popup-message-received"
   }
 
-  $script:smokePhase = "shutdown"
+  Set-SmokePhase "shutdown"
   $shutdownRequestId = if ($VerifyNewWindow) { "22" } else { "14" }
   Write-Frame @{
     version = 1; kind = "shutdown"; sessionId = $ready.sessionId; authenticationToken = ""
