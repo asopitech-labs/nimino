@@ -1234,7 +1234,7 @@ proc windowsFocusWindow(window: NativeWindow): NativeResult =
     return failure(windowsError("window.focus", getLastError()))
   success()
 
-proc windowsCreateWindow(window: NativeWindow): NativeResult =
+proc windowsCreateWindowShell(window: NativeWindow): NativeResult =
   let className = newWideCString(window.app.windowClassName)
   let title = newWideCString(window.title)
   let hwnd = createWindowExW(
@@ -1255,6 +1255,19 @@ proc windowsCreateWindow(window: NativeWindow): NativeResult =
   let started = window.views[0].windowsStartWebView()
   if not started.isOk:
     discard destroyWindow(hwnd)
+    return started
+  success()
+
+proc windowsCreateWindow(window: NativeWindow): NativeResult =
+  let created = window.windowsCreateWindowShell()
+  if not created.isOk:
+    return created
+  if window.views.len == 0:
+    return failure(nativeError(invalidState, "window.create", detail = "WebView is required"))
+  let started = window.views[0].windowsStartWebView()
+  if not started.isOk:
+    discard destroyWindow(window.platformWindow)
+    window.platformWindow = nil
     return started
   success()
 
