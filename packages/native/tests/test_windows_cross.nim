@@ -30,5 +30,9 @@ doAssert view.value.onNewWindowRequested(proc(url: string) = discard).isOk
 doAssert view.value.onNavigationStarting(proc(url: string): bool = true).isOk
 doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
 doAssert view.value.setDocumentStartScript("globalThis.niminoDocumentStart = true;").isOk
+let basedHtml = view.value.loadHtml("<main>Nimino Windows M1</main>",
+  baseUrl = "https://example.test/assets/")
+doAssert not basedHtml.isOk
+doAssert basedHtml.failure.kind == unsupported
 doAssert view.value.loadHtml("<main>Nimino Windows M1</main>").isOk
 discard view.value.evalJavaScript("document.title")
