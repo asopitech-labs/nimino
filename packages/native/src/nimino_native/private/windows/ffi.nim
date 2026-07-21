@@ -198,12 +198,15 @@ const
 
   NimAdd* = 0x00000000'u32
   NimDelete* = 0x00000002'u32
+  NimModify* = 0x00000001'u32
   NimSetFocus* = 0x00000003'u32
   NimSetVersion* = 0x00000004'u32
   NotifyIconVersion4* = 4'u32
   NifMessage* = 0x00000001'u32
   NifIcon* = 0x00000002'u32
   NifTip* = 0x00000004'u32
+  NifInfo* = 0x00000010'u32
+  NiifInfo* = 0x00000001'u32
   MfString* = 0x00000000'u32
   MfGrayed* = 0x00000001'u32
   TpmRightButton* = 0x0002'u32

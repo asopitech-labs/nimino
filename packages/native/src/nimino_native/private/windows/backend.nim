@@ -138,6 +138,7 @@ type
 var downloadOperationVTable: DownloadOperationVTable
 
 proc windowsDisposeWindow(window: NativeWindow)
+proc windowsRemoveNotificationIcon(app: NativeApp)
 proc windowsCloseWindow(window: NativeWindow): NativeResult
 proc windowsFail(app: NativeApp; error: NativeError)
 proc windowsRemoveTray(app: NativeApp)
@@ -744,6 +745,8 @@ proc windowsDisposeWindow(window: NativeWindow) =
   if window.app.trayWindow == window.platformWindow:
     ## Shell_NotifyIcon requires the owner HWND while deleting the icon.
     window.app.windowsRemoveTray()
+  if window.app.notificationWindow == window.platformWindow:
+    window.app.windowsRemoveNotificationIcon()
   if window.app.idleTimerWindow == window.platformWindow:
     window.app.windowsStopIdleTimer()
   for view in window.views:
@@ -983,6 +986,61 @@ proc windowsRemoveTray(app: NativeApp) =
     discard shellNotifyIconW(NimDelete, addr notification)
   app.trayVisible = false
   app.trayWindow = nil
+
+proc windowsCopyNotificationText(destination: var openArray[uint16]; value: string) =
+  let wide = newWideCString(value)
+  for index in 0 ..< destination.len - 1:
+    let character = uint16(ord(wide[index]))
+    destination[index] = character
+    if character == 0'u16:
+      return
+  destination[destination.len - 1] = 0'u16
+
+proc windowsRemoveNotificationIcon(app: NativeApp) =
+  if app.isNil or not app.notificationVisible:
+    return
+  var data = NotifyIconDataW(
+    cbSize: uint32(sizeof(NotifyIconDataW)),
+    window: app.notificationWindow,
+    identifier: 2
+  )
+  discard shellNotifyIconW(NimDelete, addr data)
+  app.notificationVisible = false
+  app.notificationWindow = nil
+
+proc windowsSendNativeNotification*(app: NativeApp;
+                                    notification: NativeNotification): NativeResult =
+  if app.isNil or app.windows.len == 0 or app.windows[0].platformWindow.isNil:
+    return failure(nativeError(invalidState, "app.sendNativeNotification",
+      detail = "a native owner window is required"))
+  let owner = app.windows[0].platformWindow
+  if not app.notificationVisible:
+    let icon = loadIconW(nil, makeIntResourceW(IdiApplication))
+    if icon.isNil:
+      return failure(windowsError("app.sendNativeNotification", getLastError()))
+    var added = NotifyIconDataW(
+      cbSize: uint32(sizeof(NotifyIconDataW)),
+      window: owner,
+      identifier: 2,
+      flags: NifIcon,
+      icon: icon
+    )
+    if shellNotifyIconW(NimAdd, addr added) == 0:
+      return failure(windowsError("app.sendNativeNotification", getLastError()))
+    app.notificationVisible = true
+    app.notificationWindow = owner
+  var data = NotifyIconDataW(
+    cbSize: uint32(sizeof(NotifyIconDataW)),
+    window: owner,
+    identifier: 2,
+    flags: NifInfo,
+    infoFlags: NiifInfo
+  )
+  windowsCopyNotificationText(data.info, notification.body)
+  windowsCopyNotificationText(data.infoTitle, notification.title)
+  if shellNotifyIconW(NimModify, addr data) == 0:
+    return failure(windowsError("app.sendNativeNotification", getLastError()))
+  success()
 
 proc windowsInstallTray(app: NativeApp; owner: NativeWindow): NativeResult =
   if app.isNil or owner.isNil or owner.platformWindow.isNil:

@@ -117,6 +117,8 @@ type
     trayConfigured: bool
     trayVisible: bool
     trayWindow: pointer
+    notificationVisible: bool
+    notificationWindow: pointer
     nativeMenuItems: seq[NativeMenuItem]
     nativeMenuHandler: NativeMenuHandler
     nativeMenuTitle: string
@@ -225,6 +227,8 @@ elif defined(windows):
   proc windowsReplaceDocumentStartScript(view: NativeWebView;
                                           script: string): NativeResult
   proc windowsDisposeView(view: NativeWebView)
+  proc windowsSendNativeNotification*(app: NativeApp;
+                                      notification: NativeNotification): NativeResult
   proc windowsOpenFileDialog*(window: NativeWindow;
                               options: NativeFileDialogOptions): NativeResultOf[seq[string]]
 
@@ -616,6 +620,8 @@ proc sendNativeNotification*(app: NativeApp;
       detail = "the native application must be running"))
   when defined(linux) and not defined(niminoWsl):
     app.linuxSendNativeNotification(notification)
+  elif defined(windows):
+    app.windowsSendNativeNotification(notification)
   else:
     failure(nativeError(unsupported, "app.sendNativeNotification"))
 
