@@ -26,6 +26,17 @@ proc event(methodName, payload: string; eventId: uint64): ProtocolMessage =
     payload: payload
   )
 
+proc policyRequest(requestId: uint64; payload: string): ProtocolMessage =
+  ProtocolMessage(
+    version: ProtocolVersion,
+    kind: ProtocolMessageKind.request,
+    sessionId: SessionId,
+    requestId: requestId,
+    methodName: "native.webview.policyRequested",
+    payload: payload,
+    timeoutMs: 5_000
+  )
+
 let token = getEnv("NIMINO_WSL_HOST_TOKEN")
 if not token.isValidAuthenticationToken:
   quit(QuitFailure)
@@ -50,6 +61,9 @@ doAssert output.writeMessageTo(ProtocolMessage(
 )).isOk
 
 var nextEventId = 1'u64
+var customProtocolRegistered = false
+var customProtocolResponseReceived = false
+const CustomProtocolRequestId = 900'u64
 while true:
   let incoming = input.readMessageFrom()
   if not incoming.isOk:
@@ -69,6 +83,11 @@ while true:
     of "native.webview.create":
       doAssert output.writeMessageTo(incomingMessage.response("{\"webViewId\":\"1\"}")).isOk
     of "native.webview.setDevToolsEnabled":
+      doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
+    of "app.registerCustomProtocol":
+      let payload = parseJson(incomingMessage.payload)
+      doAssert payload["scheme"].getStr() == "nimino"
+      customProtocolRegistered = true
       doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
     of "native.window.setTitle":
       if structuredError:
@@ -90,18 +109,31 @@ while true:
       let payload = $(%*{"webViewId": "1", "url": "https://example.test/", "succeeded": true})
       doAssert output.writeMessageTo(event("native.webview.navigationCompleted", payload, nextEventId)).isOk
       inc nextEventId
-      let wire = $(%*{
-        "nimino": "rpc",
-        "kind": "request",
-        "id": "one",
-        "method": "system.version",
-        "params": newJNull(),
-        "timeoutMs": 1_000
-      })
-      let messagePayload = $(%*{"webViewId": "1", "message": wire})
-      doAssert output.writeMessageTo(event("native.webview.message", messagePayload,
-        nextEventId)).isOk
-      inc nextEventId
+      if customProtocolRegistered:
+        let customRequest = $(%*{
+          "kind": "customProtocol",
+          "windowId": "0",
+          "webViewId": "0",
+          "permissionKind": "",
+          "url": "nimino://app/hello.txt",
+          "method": "GET",
+          "path": "/hello.txt"
+        })
+        doAssert output.writeMessageTo(policyRequest(CustomProtocolRequestId,
+          customRequest)).isOk
+      else:
+        let wire = $(%*{
+          "nimino": "rpc",
+          "kind": "request",
+          "id": "one",
+          "method": "system.version",
+          "params": newJNull(),
+          "timeoutMs": 1_000
+        })
+        let messagePayload = $(%*{"webViewId": "1", "message": wire})
+        doAssert output.writeMessageTo(event("native.webview.message", messagePayload,
+          nextEventId)).isOk
+        inc nextEventId
     of "native.webview.evalJavaScript":
       doAssert output.writeMessageTo(incomingMessage.response("{\"result\":\"null\"}")).isOk
       let script = parseJson(incomingMessage.payload)["script"].getStr()
@@ -118,17 +150,40 @@ while true:
         doAssert output.writeMessageTo(event("native.webview.message", payload, nextEventId)).isOk
         inc nextEventId
       else:
-        doAssert output.writeMessageTo(event("app.closed", "{}", nextEventId)).isOk
-        break
+        if not customProtocolRegistered or customProtocolResponseReceived:
+          doAssert output.writeMessageTo(event("app.closed", "{}", nextEventId)).isOk
+          break
     of "app.shutdown":
       doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
       break
     else:
       quit(QuitFailure)
   of response:
-    ## The Core RPC handler has answered the synthetic request.  End the
-    ## harness run deterministically instead of waiting for a real WebView.
-    doAssert output.writeMessageTo(event("app.closed", "{}", nextEventId)).isOk
-    break
+    if incomingMessage.requestId == CustomProtocolRequestId:
+      doAssert incomingMessage.error.len == 0
+      let customResponse = incomingMessage.payload.parsePolicyResponse()
+      doAssert customResponse.isOk
+      doAssert customResponse.value.allow
+      doAssert customResponse.value.statusCode == 201
+      doAssert customResponse.value.mimeType == "text/plain; charset=utf-8"
+      doAssert customResponse.value.body == "hello from WSL core"
+      customProtocolResponseReceived = true
+      let wire = $(%*{
+        "nimino": "rpc",
+        "kind": "request",
+        "id": "one",
+        "method": "system.version",
+        "params": newJNull(),
+        "timeoutMs": 1_000
+      })
+      let messagePayload = $(%*{"webViewId": "1", "message": wire})
+      doAssert output.writeMessageTo(event("native.webview.message", messagePayload,
+        nextEventId)).isOk
+      inc nextEventId
+    else:
+      ## The Core RPC handler has answered the synthetic request.  End the
+      ## harness run deterministically instead of waiting for a real WebView.
+      doAssert output.writeMessageTo(event("app.closed", "{}", nextEventId)).isOk
+      break
   else:
     quit(QuitFailure)

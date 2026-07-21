@@ -12,6 +12,16 @@ var invoked = false
 let created = newApp(id = "tech.asopi.wsl-core-test", name = "WSL core test")
 doAssert created.isOk
 let app = created.value
+var customProtocolInvoked = false
+let customProtocol = app.registerCustomProtocol("nimino", proc(
+    request: CustomProtocolRequest): CustomProtocolResponse =
+  customProtocolInvoked = true
+  doAssert request.methodName == "GET"
+  doAssert request.url == "nimino://app/hello.txt"
+  doAssert request.path == "/hello.txt"
+  CustomProtocolResponse(statusCode: 201,
+    mimeType: "text/plain; charset=utf-8", body: "hello from WSL core"))
+doAssert customProtocol.isOk
 let window = app.newWindow(title = "WSL core test", width = 320, height = 200)
 doAssert window.isOk
 let structuredFailure = window.value.setTitle("structured error")
@@ -34,3 +44,4 @@ doAssert window.value.rpc.registerSync("system.version", proc(params: JsonNode):
 doAssert window.value.loadHtml("<main>WSL core protocol test</main>").isOk
 doAssert app.run().isOk
 doAssert invoked
+doAssert customProtocolInvoked
