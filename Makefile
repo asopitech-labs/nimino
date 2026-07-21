@@ -5,7 +5,7 @@ SERVICE ?= nimino-dev
 WSL_SMOKE_TIMEOUT ?= 120
 WSL_INTERACTIVE_TIMEOUT ?= 300
 
-.PHONY: help setup image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-linux-test pack-windows-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help setup image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-linux-test pack-windows-test pack-online-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -92,6 +92,10 @@ pack-cli-test: image ## nimino pack CLIのmanifest検証を実行する
 pack-linux-test: image ## nimino-packのDebian/RPM/AppImage生成と内容を検証する
 
 	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble buildPackCli && nimble testPackLinux'
+
+pack-online-test: image ## URLからbundleとDebian artifactを生成するオンラインpack smoke
+
+	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble testPackOnline'
 
 pack-windows-test: image ## nimino-packのNSIS Windows setup生成とMSI未対応エラーを検証する
 
