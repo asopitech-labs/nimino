@@ -158,5 +158,6 @@ check: test ## testの別名
 
 clean: ## Compose資源とプロジェクト内の一時クロスビルド成果物を削除する
 
+	taskkill.exe /IM nimino-wsl-host.exe /F >/dev/null 2>&1 || true
 	$(COMPOSE) down --remove-orphans
 	$(COMPOSE) run --rm --no-deps --entrypoint sh $(SERVICE) -c 'rm -rf /workspace/.tmp'
