@@ -22,6 +22,15 @@ type
     height*: int
     resizable*: bool
 
+  PackPackageMetadata* = object
+    ## Distribution-facing fields. They remain separate from the URL and
+    ## window policy so installers can consume the same validated identity.
+    version*: string
+    description*: string
+    publisher*: string
+    homepage*: string
+    categories*: seq[string]
+
   PackManifest* = object
     name*: string
     id*: string
@@ -29,6 +38,7 @@ type
     icon*: string
     profile*: string
     window*: PackWindowOptions
+    package*: PackPackageMetadata
     navigationAllow*: seq[string]
     navigationExternal*: seq[string]
     permissionsAllow*: seq[string]
@@ -124,20 +134,77 @@ proc validPathComponent(value: string): bool =
       return false
   true
 
+proc validMetadataText(value: string): bool =
+  for character in value:
+    if ord(character) < 0x20 or ord(character) == 0x7f:
+      return false
+  true
+
+proc validPackageVersion(value: string): bool =
+  ## Keep the accepted release form aligned with SemVer's three numeric core
+  ## components while allowing a conventional prerelease/build suffix.
+  if value.len == 0 or not validMetadataText(value):
+    return false
+  var suffixAt = value.len
+  for index, character in value:
+    if character in {'-', '+'}:
+      suffixAt = index
+      break
+  let core = value[0 ..< suffixAt]
+  let components = core.split('.')
+  if components.len != 3:
+    return false
+  for component in components:
+    if component.len == 0:
+      return false
+    for character in component:
+      if character notin {'0'..'9'}:
+        return false
+  if suffixAt < value.len:
+    if suffixAt + 1 >= value.len:
+      return false
+    for character in value[suffixAt + 1 .. ^1]:
+      if character notin {'a'..'z', 'A'..'Z', '0'..'9', '.', '-'}:
+        return false
+  true
+
+proc validHomepage(value: string): bool =
+  if value.len == 0:
+    return true
+  try:
+    let parsed = parseUri(value)
+    parsed.scheme.toLowerAscii() in ["http", "https"] and
+      parsed.hostname.len > 0 and validMetadataText(value)
+  except CatchableError:
+    false
+
+const DesktopCategories = [
+  "AudioVideo", "Audio", "Video", "Development", "Education", "Game",
+  "Graphics", "Network", "Office", "Science", "Settings", "System",
+  "Utility"
+]
+
 proc validate*(manifest: PackManifest): PackResult[PackManifest] =
+  var normalized = manifest
+  if normalized.package.version.len == 0:
+    normalized.package.version = "0.1.0"
+  if normalized.package.description.len == 0:
+    normalized.package.description = normalized.name
+  if normalized.package.categories.len == 0:
+    normalized.package.categories = @["Network"]
   var invalidName = false
-  for character in manifest.name:
+  for character in normalized.name:
     if ord(character) < 32:
       invalidName = true
-  if manifest.name.len == 0 or manifest.id.len == 0 or
-      manifest.name.strip().len == 0 or invalidName:
+  if normalized.name.len == 0 or normalized.id.len == 0 or
+      normalized.name.strip().len == 0 or invalidName:
     return failure[PackManifest](invalidManifest, "name and id are required")
-  for component in [manifest.id, manifest.profile]:
+  for component in [normalized.id, normalized.profile]:
     if not validPathComponent(component):
       return failure[PackManifest](invalidManifest, "id and profile must be safe path components")
-  if manifest.url.len == 0 or not validateUrl(manifest.url):
+  if normalized.url.len == 0 or not validateUrl(normalized.url):
     return failure[PackManifest](invalidManifest, "url must use http, https, file, or data")
-  for pattern in manifest.navigationAllow & manifest.navigationExternal:
+  for pattern in normalized.navigationAllow & normalized.navigationExternal:
     if pattern.len == 0 or pattern.find("://") <= 0:
       return failure[PackManifest](invalidManifest,
         "navigation URL patterns must include a scheme")
@@ -145,19 +212,34 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
       if ord(character) < 0x20 or character in {'\r', '\n'}:
         return failure[PackManifest](invalidManifest,
           "navigation URL patterns contain control characters")
-  for permission in manifest.permissionsAllow:
+  for permission in normalized.permissionsAllow:
     if permission notin ["microphone", "camera", "notifications", "geolocation",
                          "clipboard", "screenCapture"]:
       return failure[PackManifest](invalidManifest,
         "unknown permission: " & permission)
-  if manifest.window.width <= 0 or manifest.window.height <= 0:
+  if normalized.window.width <= 0 or normalized.window.height <= 0:
     return failure[PackManifest](invalidManifest, "window dimensions must be positive")
-  success(manifest)
+  if not validPackageVersion(normalized.package.version):
+    return failure[PackManifest](invalidManifest,
+      "package.version must use a semantic version such as 1.2.3")
+  if not validMetadataText(normalized.package.description) or
+      not validMetadataText(normalized.package.publisher):
+    return failure[PackManifest](invalidManifest,
+      "package description and publisher must not contain control characters")
+  if not validHomepage(normalized.package.homepage):
+    return failure[PackManifest](invalidManifest,
+      "package.homepage must be an http or https URL")
+  for category in normalized.package.categories:
+    if category notin DesktopCategories:
+      return failure[PackManifest](invalidManifest,
+        "unknown desktop category: " & category)
+  success(normalized)
 
 proc parse*(text: string): PackResult[PackManifest] =
   var manifest = PackManifest(
     profile: "default",
-    window: PackWindowOptions(width: 1200, height: 800, resizable: true))
+    window: PackWindowOptions(width: 1200, height: 800, resizable: true),
+    package: PackPackageMetadata(version: "0.1.0", categories: @["Network"]))
   var section = ""
   for rawLine in text.splitLines():
     var line = rawLine.strip()
@@ -210,6 +292,17 @@ proc parse*(text: string): PackResult[PackManifest] =
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
         manifest.window.resizable = parsed.value
       else: return failure[PackManifest](invalidManifest, "unknown window key: " & key)
+    of "package":
+      case key
+      of "version": manifest.package.version = unquote(value)
+      of "description": manifest.package.description = unquote(value)
+      of "publisher": manifest.package.publisher = unquote(value)
+      of "homepage": manifest.package.homepage = unquote(value)
+      of "categories":
+        let parsed = parseStringArray(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.package.categories = parsed.value
+      else: return failure[PackManifest](invalidManifest, "unknown package key: " & key)
     of "navigation", "permissions", "injection":
       let parsed = parseStringArray(value)
       if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
