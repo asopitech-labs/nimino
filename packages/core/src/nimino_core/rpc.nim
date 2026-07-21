@@ -31,15 +31,24 @@ type
       error*: RpcError
 
   RpcHandler* = proc(params: JsonNode): Future[RpcResult] {.closure.}
+  RpcCancellationToken* = ref object
+    ## Cooperative cancellation state for explicitly cancellable handlers.
+    ## Nim futures have no universal pre-emption primitive, so handlers must
+    ## check this token at safe await/IO boundaries.
+    cancelled*: bool
+  RpcCancellableHandler* = proc(params: JsonNode;
+                                 token: RpcCancellationToken): Future[RpcResult] {.closure.}
   RpcSyncHandler* = proc(params: JsonNode): RpcResult {.closure.}
   RpcReplySink* = proc(message: string) {.closure.}
 
   PendingRequest = object
     future: Future[RpcResult]
     deadlineMs: int64
+    token: RpcCancellationToken
 
   RpcRegistry* = ref object
     handlers: Table[string, RpcHandler]
+    cancellableHandlers: Table[string, RpcCancellableHandler]
     notificationHandlers: Table[string, proc(params: JsonNode) {.closure.}]
     typeScriptSchemas: Table[string, tuple[paramsType, resultType: string]]
     pending: Table[string, PendingRequest]
@@ -151,6 +160,7 @@ proc setReplySink*(registry: RpcRegistry; sink: RpcReplySink) =
 
 proc isMethodRegistered*(registry: RpcRegistry; methodName: string): bool =
   registry != nil and (registry.handlers.hasKey(methodName) or
+    registry.cancellableHandlers.hasKey(methodName) or
     registry.notificationHandlers.hasKey(methodName))
 
 proc validMethodName(methodName: string): bool {.inline.} =
@@ -167,6 +177,9 @@ proc registeredMethods*(registry: RpcRegistry): seq[string] =
     return @[]
   for methodName in registry.handlers.keys:
     result.add(methodName)
+  for methodName in registry.cancellableHandlers.keys:
+    if methodName notin result:
+      result.add(methodName)
   for methodName in registry.notificationHandlers.keys:
     if methodName notin result:
       result.add(methodName)
@@ -184,6 +197,9 @@ proc registeredRequestMethods(registry: RpcRegistry): seq[string] =
     return @[]
   for methodName in registry.handlers.keys:
     result.add(methodName)
+  for methodName in registry.cancellableHandlers.keys:
+    if methodName notin result:
+      result.add(methodName)
   result.sort()
 
 proc typescriptDeclarations*(registry: RpcRegistry): string =
@@ -227,11 +243,24 @@ proc registerTypeScriptSchema*(registry: RpcRegistry; methodName, paramsType,
 
 proc register*(registry: RpcRegistry; methodName: string; handler: RpcHandler): bool =
   if registry.isNil or registry.closed or not validMethodName(methodName) or handler.isNil or
-      registry.notificationHandlers.hasKey(methodName):
+      registry.notificationHandlers.hasKey(methodName) or
+      registry.cancellableHandlers.hasKey(methodName):
     return false
   if registry.handlers.hasKey(methodName):
     return false
   registry.handlers[methodName] = handler
+  true
+
+proc registerCancellable*(registry: RpcRegistry; methodName: string;
+                          handler: RpcCancellableHandler): bool =
+  ## Register an explicitly cancellable request handler.  Cancellation is
+  ## cooperative; the handler should inspect `token.cancelled` after awaits.
+  if registry.isNil or registry.closed or not validMethodName(methodName) or handler.isNil or
+      registry.notificationHandlers.hasKey(methodName) or
+      registry.handlers.hasKey(methodName) or
+      registry.cancellableHandlers.hasKey(methodName):
+    return false
+  registry.cancellableHandlers[methodName] = handler
   true
 
 proc registerNotification*(registry: RpcRegistry; methodName: string;
@@ -276,6 +305,9 @@ proc unregister*(registry: RpcRegistry; methodName: string): bool =
     return false
   if registry.handlers.hasKey(methodName):
     registry.handlers.del(methodName)
+    registry.typeScriptSchemas.del(methodName)
+  elif registry.cancellableHandlers.hasKey(methodName):
+    registry.cancellableHandlers.del(methodName)
     registry.typeScriptSchemas.del(methodName)
   elif registry.notificationHandlers.hasKey(methodName):
     registry.notificationHandlers.del(methodName)
@@ -465,6 +497,8 @@ proc tick*(registry: RpcRegistry; nowMs = nowMilliseconds()) =
       registry.completeRequest(id, future)
   for id in expired:
     if registry.pending.hasKey(id):
+      if registry.pending[id].token != nil:
+        registry.pending[id].token.cancelled = true
       registry.pending.del(id)
       registry.emitError(id, rpcError(requestTimedOut, "RPC request timed out"))
 
@@ -475,10 +509,15 @@ proc invokeNotification(registry: RpcRegistry; methodName: string; params: JsonN
     try: registry.notificationHandlers[methodName](params)
     except CatchableError: discard
     return
-  if not registry.handlers.hasKey(methodName):
+  if not registry.handlers.hasKey(methodName) and
+      not registry.cancellableHandlers.hasKey(methodName):
     return
   try:
-    let future = registry.handlers[methodName](params)
+    let future = if registry.cancellableHandlers.hasKey(methodName):
+        registry.cancellableHandlers[methodName](params,
+          RpcCancellationToken(cancelled: false))
+      else:
+        registry.handlers[methodName](params)
     if future.isNil:
       return
     ## Notifications intentionally have no response channel.  An async handler
@@ -496,7 +535,8 @@ proc handleRequest(registry: RpcRegistry; node: JsonNode; nowMs: int64) =
     registry.emitError(id, rpcError(invalidRequest, "method must be a string"))
     return
   let methodName = node["method"].getStr()
-  if not registry.handlers.hasKey(methodName):
+  if not registry.handlers.hasKey(methodName) and
+      not registry.cancellableHandlers.hasKey(methodName):
     registry.emitError(id, rpcError(methodNotAllowed, "RPC method is not allowed"))
     return
   if registry.pending.hasKey(id):
@@ -508,13 +548,20 @@ proc handleRequest(registry: RpcRegistry; node: JsonNode; nowMs: int64) =
     return
   let params = if node.hasKey("params"): node["params"] else: newJNull()
   try:
-    let future = registry.handlers[methodName](params)
+    let token = if registry.cancellableHandlers.hasKey(methodName):
+        RpcCancellationToken(cancelled: false)
+      else: nil
+    let future = if token != nil:
+        registry.cancellableHandlers[methodName](params, token)
+      else:
+        registry.handlers[methodName](params)
     if future.isNil:
       registry.emitError(id, rpcError(handlerFailed, "RPC handler did not return a Future"))
       return
     registry.pending[id] = PendingRequest(
       future: future,
-      deadlineMs: nowMs + timeout.value.getInt()
+      deadlineMs: nowMs + timeout.value.getInt(),
+      token: token
     )
     registry.tick(nowMs)
   except CatchableError:
@@ -524,6 +571,8 @@ proc handleCancel(registry: RpcRegistry; node: JsonNode) =
   let id = node.requestId()
   if not id.validRequestId() or not registry.pending.hasKey(id):
     return
+  if registry.pending[id].token != nil:
+    registry.pending[id].token.cancelled = true
   registry.pending.del(id)
   registry.emitError(id, rpcError(requestCancelled, "RPC request was cancelled"))
 
@@ -562,6 +611,10 @@ proc close*(registry: RpcRegistry) =
       "RPC request was cancelled because the window closed"))
   registry.closed = true
   registry.handlers.clear()
+  for requestId, pending in registry.pending:
+    if pending.token != nil:
+      pending.token.cancelled = true
+  registry.cancellableHandlers.clear()
   registry.notificationHandlers.clear()
   registry.pending.clear()
   registry.sink = nil

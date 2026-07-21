@@ -91,6 +91,26 @@ block timeoutAndCancelSuppressLateReplies:
   pending.complete(rpcSuccess(%"late again"))
   doAssert messages.len == 2
 
+block cancellableHandlerReceivesToken:
+  var messages: seq[string]
+  var pending: Future[RpcResult]
+  var token: RpcCancellationToken
+  let registry = newRpcRegistry(proc(message: string) = messages.add(message))
+  doAssert registry.registerCancellable("cooperative", proc(params: JsonNode;
+      cancellation: RpcCancellationToken): Future[RpcResult] =
+    token = cancellation
+    pending = newFuture[RpcResult]("nimino.rpc.test.cooperative")
+    pending)
+  doAssert registry.handleMessage(request("cooperative-one", "cooperative"), 1_000)
+  doAssert not token.cancelled
+  doAssert registry.handleMessage($(%*{
+    "nimino": "rpc", "kind": "cancel", "id": "cooperative-one"
+  }), 1_001)
+  doAssert token.cancelled
+  doAssert messages.response()["error"]["code"].getStr() == "cancelled"
+  pending.complete(rpcSuccess(%"ignored"))
+  doAssert messages.len == 1
+
 block closeCancelsPendingRequests:
   var messages: seq[string]
   var pending: Future[RpcResult]
