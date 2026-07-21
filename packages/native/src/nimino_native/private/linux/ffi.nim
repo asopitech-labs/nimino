@@ -12,6 +12,12 @@ type
   GApplication* {.incompleteStruct.} = object
   GtkApplication* {.incompleteStruct.} = object
   GtkWindow* {.incompleteStruct.} = object
+  GtkApplicationWindow* {.incompleteStruct.} = object
+  GMenu* {.incompleteStruct.} = object
+  GMenuModel* {.incompleteStruct.} = object
+  GSimpleAction* {.incompleteStruct.} = object
+  GAction* {.incompleteStruct.} = object
+  GNotification* {.incompleteStruct.} = object
   WebKitWebView* {.incompleteStruct.} = object
   WebKitNetworkSession* {.incompleteStruct.} = object
   WebKitWebsiteDataManager* {.incompleteStruct.} = object
@@ -72,10 +78,39 @@ proc gtk_widget_hide*(widget: pointer)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_destroy*(window: ptr GtkWindow)
   {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_application_set_menubar*(application: ptr GtkApplication;
+                                  menubar: ptr GMenuModel)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_application_window_set_show_menubar*(window: ptr GtkApplicationWindow;
+                                              showMenubar: cint)
+  {.cdecl, importc, dynlib: LibGtk.}
 
 proc g_application_run*(application: ptr GApplication; argc: cint; argv: ptr cstring): cint
   {.cdecl, importc, dynlib: LibGio.}
 proc g_application_quit*(application: ptr GApplication)
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_application_send_notification*(application: ptr GApplication; id: cstring;
+                                      notification: ptr GNotification)
+  {.cdecl, importc, dynlib: LibGio.}
+
+proc g_menu_new*(): ptr GMenu
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_menu_append*(menu: ptr GMenu; label, detailedAction: cstring)
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_menu_append_submenu*(menu: ptr GMenu; label: cstring;
+                            submenu: ptr GMenuModel)
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_simple_action_new*(name: cstring; parameterType: pointer): ptr GSimpleAction
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_simple_action_set_enabled*(action: ptr GSimpleAction; enabled: cint)
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_action_map_add_action*(actionMap: pointer; action: ptr GAction)
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_action_map_remove_action*(actionMap: pointer; actionName: cstring)
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_notification_new*(title: cstring): ptr GNotification
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_notification_set_body*(notification: ptr GNotification; body: cstring)
   {.cdecl, importc, dynlib: LibGio.}
 
 proc g_object_ref_sink*(instance: pointer): pointer

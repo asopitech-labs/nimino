@@ -2,6 +2,107 @@ import std/os
 
 proc linuxTrackDownload(view: NativeWebView; download: pointer; url: string)
 
+proc linuxNativeMenuActionName(itemId: uint32): string {.inline.} =
+  "nimino-menu-" & $itemId
+
+proc linuxNativeMenuActionDestroyed(data, closure: pointer) {.cdecl.} =
+  let action = cast[NativeMenuAction](data)
+  if action != nil:
+    GC_unref(action)
+
+proc linuxNativeMenuActionActivated(action, parameter, userData: pointer) {.cdecl.} =
+  let menuAction = cast[NativeMenuAction](userData)
+  if menuAction != nil:
+    menuAction.app.dispatchNativeMenu(menuAction.itemId)
+
+proc linuxRemoveNativeMenuActions(app: NativeApp; actionNames: openArray[string]) =
+  if app.isNil or app.platformApp.isNil:
+    return
+  for actionName in actionNames:
+    g_action_map_remove_action(app.platformApp, actionName.cstring)
+
+proc linuxInstallNativeMenu(app: NativeApp): NativeResult =
+  ## GtkApplication owns the installed menubar and actions. Temporary GMenu
+  ## and GSimpleAction references are released after the ownership transfer.
+  if app.isNil or not app.nativeMenuConfigured or app.platformApp.isNil:
+    return success()
+  let menubar = g_menu_new()
+  let submenu = g_menu_new()
+  if menubar.isNil or submenu.isNil:
+    if submenu != nil:
+      g_object_unref(submenu)
+    if menubar != nil:
+      g_object_unref(menubar)
+    return failure(nativeError(osError, "app.configureNativeMenu",
+      detail = "GTK menu allocation failed"))
+
+  var addedActions: seq[string]
+  for item in app.nativeMenuItems:
+    let actionName = linuxNativeMenuActionName(item.id)
+    let action = g_simple_action_new(actionName.cstring, nil)
+    if action.isNil:
+      app.linuxRemoveNativeMenuActions(addedActions)
+      g_object_unref(submenu)
+      g_object_unref(menubar)
+      return failure(nativeError(osError, "app.configureNativeMenu",
+        detail = "GTK action allocation failed"))
+    let actionData = NativeMenuAction(app: app, itemId: item.id)
+    GC_ref(actionData)
+    let signal = g_signal_connect_data(action, "activate",
+      cast[pointer](linuxNativeMenuActionActivated), cast[pointer](actionData),
+      linuxNativeMenuActionDestroyed, 0)
+    if signal == 0:
+      GC_unref(actionData)
+      g_object_unref(action)
+      app.linuxRemoveNativeMenuActions(addedActions)
+      g_object_unref(submenu)
+      g_object_unref(menubar)
+      return failure(nativeError(osError, "app.configureNativeMenu",
+        detail = "GTK action signal registration failed"))
+    g_simple_action_set_enabled(action, if item.enabled: 1 else: 0)
+    g_action_map_add_action(app.platformApp, cast[ptr GAction](action))
+    g_menu_append(submenu, item.title.cstring, ("app." & actionName).cstring)
+    addedActions.add(actionName)
+    g_object_unref(action)
+
+  g_menu_append_submenu(menubar, app.nativeMenuTitle.cstring,
+    cast[ptr GMenuModel](submenu))
+  gtk_application_set_menubar(cast[ptr GtkApplication](app.platformApp),
+    cast[ptr GMenuModel](menubar))
+  ## The application holds a reference to the menubar. `menubar` holds the
+  ## submenu reference, so both construction references can now be dropped.
+  g_object_unref(submenu)
+  g_object_unref(menubar)
+  app.nativeMenuInstalled = true
+  success()
+
+proc linuxUninstallNativeMenu(app: NativeApp) =
+  if app.isNil or app.platformApp.isNil or not app.nativeMenuInstalled:
+    return
+  gtk_application_set_menubar(cast[ptr GtkApplication](app.platformApp), nil)
+  var actionNames: seq[string]
+  for item in app.nativeMenuItems:
+    actionNames.add(linuxNativeMenuActionName(item.id))
+  app.linuxRemoveNativeMenuActions(actionNames)
+  app.nativeMenuInstalled = false
+
+proc linuxSendNativeNotification(app: NativeApp;
+                                 notification: NativeNotification): NativeResult =
+  if app.isNil or app.platformApp.isNil:
+    return failure(nativeError(invalidState, "app.sendNativeNotification"))
+  let nativeNotification = g_notification_new(notification.title.cstring)
+  if nativeNotification.isNil:
+    return failure(nativeError(osError, "app.sendNativeNotification",
+      detail = "GNotification allocation failed"))
+  if notification.body.len > 0:
+    g_notification_set_body(nativeNotification, notification.body.cstring)
+  ## GIO has no delivery status: a successful call only means the shell was
+  ## asked to present it. The caller's notification ID enables replacement.
+  g_application_send_notification(cast[ptr GApplication](app.platformApp),
+    notification.id.cstring, nativeNotification)
+  g_object_unref(nativeNotification)
+  success()
+
 proc linuxBrowsingDataTypes(kinds: set[NativeBrowsingDataKind]): uint32 =
   ## Keep this mapping deliberately narrow: WebKitGTK exposes IndexedDB and
   ## service-worker registrations as independent WebsiteDataTypes, while
@@ -534,6 +635,12 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let title = window.title
   gtk_window_set_title(gtkWindow, cstring(title))
   gtk_window_set_default_size(gtkWindow, cint(window.width), cint(window.height))
+  if window.app.nativeMenuInstalled:
+    ## GtkApplicationWindow only displays the model in-window when the shell
+    ## does not export it. This makes the configured menu visible in ordinary
+    ## GTK desktop sessions as well as in the Xvfb smoke environment.
+    gtk_application_window_set_show_menubar(
+      cast[ptr GtkApplicationWindow](gtkWindow), 1)
 
   if window.views.len == 0:
     return failure(nativeError(invalidState, "window.create", detail = "WebView is required"))
@@ -623,6 +730,17 @@ proc linuxActivate(application: pointer; data: pointer) {.cdecl.} =
   if app.quitRequested:
     app.linuxQuit()
 
+proc linuxStartup(application: pointer; data: pointer) {.cdecl.} =
+  let app = cast[NativeApp](data)
+  if app.isNil or app.state != running:
+    return
+  let installed = app.linuxInstallNativeMenu()
+  if not installed.isOk:
+    app.hasRunError = true
+    app.runError = installed.failure
+    app.quitRequested = true
+    g_application_quit(cast[ptr GApplication](application))
+
 proc linuxRun(app: NativeApp): NativeResult =
   if app.platformApp.isNil:
     app.platformApp = cast[pointer](gtk_application_new("tech.asopi.nimino.native", 0))
@@ -636,6 +754,24 @@ proc linuxRun(app: NativeApp): NativeResult =
       app.state = finished
       return failure(nativeError(osError, "app.setIdleHandler",
         detail = "GLib timeout source creation failed"))
+  if app.nativeMenuConfigured:
+    app.startupHandler = g_signal_connect_data(
+      app.platformApp,
+      "startup",
+      cast[pointer](linuxStartup),
+      cast[pointer](app),
+      nil,
+      0
+    )
+    if app.startupHandler == 0:
+      if app.idleTimerSource != 0:
+        discard g_source_remove(app.idleTimerSource)
+        app.idleTimerSource = 0
+      g_object_unref(app.platformApp)
+      app.platformApp = nil
+      app.state = finished
+      return failure(nativeError(osError, "app.configureNativeMenu",
+        detail = "GTK startup signal registration failed"))
   app.activateHandler = g_signal_connect_data(
     app.platformApp,
     "activate",
@@ -649,6 +785,9 @@ proc linuxRun(app: NativeApp): NativeResult =
   if app.activateHandler != 0:
     g_signal_handler_disconnect(app.platformApp, app.activateHandler)
     app.activateHandler = 0
+  if app.startupHandler != 0:
+    g_signal_handler_disconnect(app.platformApp, app.startupHandler)
+    app.startupHandler = 0
 
   for window in app.windows:
     window.linuxDisposeWindow()
@@ -657,8 +796,12 @@ proc linuxRun(app: NativeApp): NativeResult =
     discard g_source_remove(app.idleTimerSource)
     app.idleTimerSource = 0
 
+  app.linuxUninstallNativeMenu()
   g_object_unref(app.platformApp)
   app.platformApp = nil
+  app.nativeMenuItems.setLen(0)
+  app.nativeMenuHandler = nil
+  app.nativeMenuTitle.setLen(0)
   app.state = finished
 
   if app.hasRunError:
