@@ -559,6 +559,23 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   inc adapter.windowViewCounts[windowId.value]
   successOf(HostAction(kind: noHostAction, payload: encodedId("webViewId", webViewId)))
 
+proc handleWebViewClose(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
+  let webViewId = payload.requiredId("webViewId")
+  if not webViewId.isOk:
+    return failureOf[HostAction](webViewId.failure)
+  if not adapter.webViews.hasKey(webViewId.value):
+    return errorAction("unknown webViewId")
+  let windowId = adapter.webViewWindowIds[webViewId.value]
+  let closed = adapter.webViews[webViewId.value].close()
+  if not closed.isOk:
+    return nativeFailure("native.webview.close", closed)
+  adapter.webViews.del(webViewId.value)
+  adapter.webViewWindowIds.del(webViewId.value)
+  adapter.navigationRules.del(webViewId.value)
+  if adapter.windowViewCounts.hasKey(windowId):
+    dec adapter.windowViewCounts[windowId]
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleWebViewSetDocumentStartScript(adapter: HostAdapter;
                                           payload: JsonNode): ProtocolResultOf[HostAction] =
   let webViewId = payload.requiredId("webViewId")
@@ -808,6 +825,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowFocus(payload.value)
   of "native.webview.create":
     adapter.handleWebViewCreate(payload.value)
+  of "native.webview.close":
+    adapter.handleWebViewClose(payload.value)
   of "native.webview.setDocumentStartScript":
     adapter.handleWebViewSetDocumentStartScript(payload.value)
   of "native.webview.setDevToolsEnabled":

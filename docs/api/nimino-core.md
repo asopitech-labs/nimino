@@ -167,6 +167,11 @@ WSLでは認証済みIPCでWindows hostへ中継します。close後の操作と
 `window.onResize`はWindowのクライアント領域サイズ（ピクセル）をUIスレッド上で通知します。
 WSLではWindows hostのネイティブresize callbackを認証済みIPC eventとして中継します。
 
+複数WebView対応バックエンドでは`window.newWebView()`で同じWindowに追加Viewを生成できます。
+追加Viewは`WebView.loadUrl`/`loadHtml`/`evalJavaScript`/`onMessage`を持ち、
+`WebView.close()`で個別に破棄できます。主ViewはWindowが所有するため個別closeできません。
+RPCはWindow単位のままなので、主View以外からのメッセージは登録したView callbackへ渡されます。
+
 `window.reload()`は最後に成功したURLを再読込します。URL未読込、close後、または
 不正状態では`invalidState`を返します。
 

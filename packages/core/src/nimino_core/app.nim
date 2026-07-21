@@ -202,6 +202,7 @@ type
     app: App
     nativeWindow: native.NativeWindow
     nativeView: native.NativeWebView
+    webViews: seq[WebView]
     windowId: uint64
     webViewId: uint64
     profilePath*: string
@@ -230,6 +231,13 @@ type
     closed: bool
     inlineRemoteAssets: bool
 
+  WebView* = ref object
+    window: Window
+    nativeView: native.NativeWebView
+    webViewId: uint64
+    messageHandler: proc(message: string)
+    closed: bool
+
 proc mapNativeError(error: native.NativeError): CoreError =
   let kind = case error.kind
     of native.unsupported: platformUnavailable
@@ -240,6 +248,13 @@ proc mapNativeError(error: native.NativeError): CoreError =
     of native.webViewError: webViewError
   
   coreError(kind, error.operation, error.platformCode, error.detail)
+
+proc findWebView(window: Window; webViewId: uint64): WebView =
+  if window.isNil:
+    return nil
+  for view in window.webViews:
+    if not view.isNil and not view.closed and view.webViewId == webViewId:
+      return view
 
 proc fromNative(nativeResult: native.NativeResult): CoreResult =
   if nativeResult.isOk:
@@ -582,6 +597,9 @@ proc configureDevTools(window: Window; enabled: bool): CoreResult =
 proc configureWindow(window: Window): CoreResult =
   let messageConfigured = native.onMessage(window.nativeView, proc(message: string) =
     if window != nil and not window.closed:
+      if window.webViews.len > 0 and not window.webViews[0].messageHandler.isNil:
+        try: window.webViews[0].messageHandler(message)
+        except CatchableError: discard
       discard window.rpc.handleMessage(message)
   )
   if not messageConfigured.isOk:
@@ -824,6 +842,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                           injectionEnabled: options.injectionEnabled or
                             options.injectionCss.len > 0 or options.injectionJavaScript.len > 0,
                           devToolsEnabled: not options.disableDevTools)
+      window.webViews = @[WebView(window: window, webViewId: webViewId.value)]
       let devTools = window.configureDevTools(not options.disableDevTools)
       if not devTools.isOk:
         return coreFailureOf[Window](devTools.failure)
@@ -850,6 +869,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                       injectionEnabled: options.injectionEnabled or
                         options.injectionCss.len > 0 or options.injectionJavaScript.len > 0,
                       devToolsEnabled: not options.disableDevTools)
+  window.webViews = @[WebView(window: window, nativeView: nativeView.value)]
   let devTools = window.configureDevTools(not options.disableDevTools)
   if not devTools.isOk:
     return coreFailureOf[Window](devTools.failure)
@@ -865,6 +885,149 @@ proc newWindow*(app: App; title = ""; width = 1200; height = 800;
                 profile = "default"): CoreResultOf[Window] =
   app.newWindow(CoreWindowOptions(title: title, width: width, height: height,
     profile: profile))
+
+proc newWebView*(window: Window): CoreResultOf[WebView] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[WebView](coreError(invalidState, "webview.create"))
+  let supported = window.app.supports(multipleWebViews)
+  if not supported.isOk:
+    return coreFailureOf[WebView](supported.failure)
+  if not supported.value:
+    return coreFailureOf[WebView](coreError(platformUnavailable, "webview.create",
+      detail = "multiple WebViews are not supported by this backend"))
+  when defined(linux):
+    if window.app.backend == wslBackend:
+      let remote = window.app.wslCall("native.webview.create", $(%*{
+        "windowId": $window.windowId
+      }))
+      if not remote.isOk:
+        return coreFailureOf[WebView](remote.failure)
+      let webViewId = remote.value.responseId("webViewId")
+      if not webViewId.isOk:
+        return coreFailureOf[WebView](webViewId.failure)
+      let view = WebView(window: window, webViewId: webViewId.value)
+      window.webViews.add(view)
+      return coreSuccessOf(view)
+  let created = native.newWebView(window.nativeWindow)
+  if not created.isOk:
+    return coreFailureOf[WebView](created.failure.mapNativeError())
+  let view = WebView(window: window, nativeView: created.value)
+  let configured = created.value.onMessage(proc(message: string) =
+    if view != nil and not view.closed and not view.messageHandler.isNil:
+      try: view.messageHandler(message)
+      except CatchableError: discard)
+  if not configured.isOk:
+    discard native.close(created.value)
+    return coreFailureOf[WebView](configured.failure.mapNativeError())
+  window.webViews.add(view)
+  coreSuccessOf(view)
+
+proc onMessage*(view: WebView; handler: proc(message: string)): CoreResult =
+  if view.isNil or view.closed or view.window.isNil or view.window.closed:
+    return coreFailure(coreError(invalidState, "webview.onMessage"))
+  view.messageHandler = handler
+  coreSuccess()
+
+proc loadUrl*(view: WebView; url: string): CoreResult =
+  if view.isNil or view.closed or view.window.isNil or view.window.closed:
+    return coreFailure(coreError(invalidState, "webview.loadUrl"))
+  if not view.window.applyNavigationDecision(NavigationRequest(url: url)):
+    return coreFailure(coreError(permissionDenied, "webview.loadUrl",
+      detail = "URL was rejected by navigation policy"))
+  when defined(linux):
+    if view.window.app.backend == wslBackend:
+      let loaded = view.window.app.wslCall("native.webview.loadUrl", $(%*{
+        "webViewId": $view.webViewId, "url": url
+      }))
+      if not loaded.isOk:
+        return coreFailure(loaded.failure)
+      view.window.lastUrl = url
+      return coreSuccess()
+  let loaded = native.loadUrl(view.nativeView, url).fromNative()
+  if loaded.isOk:
+    view.window.lastUrl = url
+  loaded
+
+proc loadHtml*(view: WebView; html: string): CoreResult =
+  if view.isNil or view.closed or view.window.isNil or view.window.closed:
+    return coreFailure(coreError(invalidState, "webview.loadHtml"))
+  when defined(linux):
+    if view.window.app.backend == wslBackend:
+      let loaded = view.window.app.wslCall("native.webview.loadHtml", $(%*{
+        "webViewId": $view.webViewId, "html": html
+      }))
+      if not loaded.isOk:
+        return coreFailure(loaded.failure)
+      return coreSuccess()
+  native.loadHtml(view.nativeView, html).fromNative()
+
+proc evalJavaScript*(view: WebView; script: string): Future[CoreResultOf[string]] =
+  if view.isNil or view.closed or view.window.isNil or view.window.closed:
+    let future = newFuture[CoreResultOf[string]]("core.webview.evalJavaScript")
+    future.complete(coreFailureOf[string](coreError(invalidState, "webview.evalJavaScript")))
+    return future
+  when defined(linux):
+    if view.window.app.backend == wslBackend:
+      let reply = view.window.app.wslCall("native.webview.evalJavaScript", $(%*{
+        "webViewId": $view.webViewId, "script": script
+      }))
+      let future = newFuture[CoreResultOf[string]]("core.webview.evalJavaScript")
+      if not reply.isOk:
+        future.complete(coreFailureOf[string](reply.failure))
+      else:
+        try:
+          let payload = parseJson(reply.value.payload)
+          if payload.kind != JObject or not payload.hasKey("result") or
+              payload["result"].kind != JString:
+            future.complete(coreFailureOf[string](coreError(nativeFailure,
+              "webview.evalJavaScript", detail = "host response is malformed")))
+          else:
+            future.complete(coreSuccessOf(payload["result"].getStr()))
+        except CatchableError:
+          future.complete(coreFailureOf[string](coreError(nativeFailure,
+            "webview.evalJavaScript", detail = "host response is malformed")))
+      return future
+  let nativeFuture = native.evalJavaScript(view.nativeView, script)
+  let future = newFuture[CoreResultOf[string]]("core.webview.evalJavaScript")
+  nativeFuture.addCallback(proc(completed: Future[native.NativeResultOf[string]]) {.gcsafe.} =
+    if completed.failed:
+      future.complete(coreFailureOf[string](coreError(nativeFailure,
+        "webview.evalJavaScript", detail = "native JavaScript evaluation failed")))
+    else:
+      let value = completed.read()
+      if value.isOk:
+        future.complete(coreSuccessOf(value.value))
+      else:
+        future.complete(coreFailureOf[string](value.failure.mapNativeError())))
+  future
+
+proc close*(view: WebView): CoreResult =
+  if view.isNil or view.closed or view.window.isNil or view.window.closed:
+    return coreFailure(coreError(invalidState, "webview.close"))
+  if view.window.webViews.len > 0 and view == view.window.webViews[0]:
+    return coreFailure(coreError(invalidState, "webview.close",
+      detail = "the primary WebView is owned by its Window"))
+  when defined(linux):
+    if view.window.app.backend == wslBackend:
+      let closed = view.window.app.wslCall("native.webview.close", $(%*{
+        "webViewId": $view.webViewId
+      }))
+      if not closed.isOk:
+        return coreFailure(closed.failure)
+    else:
+      let closed = native.close(view.nativeView).fromNative()
+      if not closed.isOk:
+        return closed
+  else:
+    let closed = native.close(view.nativeView).fromNative()
+    if not closed.isOk:
+      return closed
+  view.closed = true
+  for index in countdown(view.window.webViews.high, 0):
+    if view.window.webViews[index] == view:
+      view.window.webViews.delete(index)
+      break
+  coreSuccess()
 
 proc windows*(app: App): seq[Window] =
   if app.isNil or app.state == coreFinished:
@@ -2165,7 +2328,7 @@ when defined(linux):
                       try: window.closeRequestedHandler()
                       except CatchableError: false
           break
-        if not window.closed and window.webViewId == policy.value.webViewId:
+        if not window.closed and not window.findWebView(policy.value.webViewId).isNil:
           if policy.value.kind == permissionPolicy:
             var permissionKnown = true
             var permissionKind = microphone
@@ -2261,9 +2424,16 @@ when defined(linux):
             detail = "WebView message event is malformed"))
         let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
         for window in app.windows:
-          if not window.closed and window.webViewId == webViewId:
-            discard window.rpc.handleMessage(payload["message"].getStr())
-            break
+          if not window.closed:
+            let view = window.findWebView(webViewId)
+            if not view.isNil:
+              let message = payload["message"].getStr()
+              if not view.messageHandler.isNil:
+                try: view.messageHandler(message)
+                except CatchableError: discard
+              if view == window.webViews[0]:
+                discard window.rpc.handleMessage(message)
+              break
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "WebView message event is malformed"))
@@ -2276,7 +2446,8 @@ when defined(linux):
             detail = "navigation completed event is malformed"))
         let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
         for window in app.windows:
-          if not window.closed and window.webViewId == webViewId and
+          let view = window.findWebView(webViewId)
+          if not window.closed and not view.isNil and
               not window.navigationCompletedHandler.isNil:
             let succeeded = payload["succeeded"].getBool()
             if succeeded:
@@ -2297,7 +2468,8 @@ when defined(linux):
             detail = "download event is malformed"))
         let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
         for window in app.windows:
-          if not window.closed and window.webViewId == webViewId and
+          let view = window.findWebView(webViewId)
+          if not window.closed and not view.isNil and
               not window.downloadEventHandler.isNil:
             let state = if payload.hasKey("state"):
               case payload["state"].getStr()
@@ -2331,7 +2503,8 @@ when defined(linux):
             detail = "new-window event is malformed"))
         let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
         for window in app.windows:
-          if not window.closed and window.webViewId == webViewId and
+          let view = window.findWebView(webViewId)
+          if not window.closed and not view.isNil and
               not window.newWindowHandler.isNil:
             try: discard window.newWindowHandler(NewWindowRequest(
               url: payload["url"].getStr()))
@@ -2352,7 +2525,8 @@ when defined(linux):
             detail = "WebView error event is malformed"))
         let webViewId = uint64(parseUInt(payload["webViewId"].getStr()))
         for window in app.windows:
-          if not window.closed and window.webViewId == webViewId and
+          let view = window.findWebView(webViewId)
+          if not window.closed and not view.isNil and
               not window.errorHandler.isNil:
             try: window.errorHandler(WindowError(operation: payload["operation"].getStr(),
               detail: payload["detail"].getStr()))
@@ -2459,6 +2633,11 @@ proc dispose(app: App) =
     window.closed = true
     if window.rpc != nil:
       window.rpc.close()
+    for view in window.webViews:
+      if not view.isNil:
+        view.closed = true
+        view.window = nil
+    window.webViews.setLen(0)
     window.nativeView = nil
     window.nativeWindow = nil
     window.app = nil
