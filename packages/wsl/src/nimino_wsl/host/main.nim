@@ -285,7 +285,14 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
 
 proc pollHost(state: HostState) =
   let polled = state.input.poll()
-  if not polled.isOk or state.input.closed:
+  if not polled.isOk:
+    ## Protocol diagnostics never include frame contents, session IDs, or
+    ## authentication material.  Keeping the category visible avoids turning
+    ## a malformed client frame into an unexplained UI shutdown.
+    stderr.writeLine("nimino-wsl-host: input rejected: " & polled.failure.detail)
+    discard state.adapter.app.close()
+    return
+  if state.input.closed:
     discard state.adapter.app.close()
     return
   for message in state.input.takePending():

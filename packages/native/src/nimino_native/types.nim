@@ -585,8 +585,7 @@ proc close*(window: NativeWindow): NativeResult =
     linuxDisposeWindow(window)
     return success()
   elif defined(windows):
-    windowsDisposeWindow(window)
-    return success()
+    return windowsCloseWindow(window)
   else:
     failure(nativeError(unsupported, "window.close"))
 

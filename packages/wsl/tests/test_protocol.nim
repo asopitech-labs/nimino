@@ -1,4 +1,4 @@
-import std/[streams, strutils]
+import std/[json, streams, strutils]
 
 import nimino_wsl
 
@@ -127,6 +127,27 @@ block malformedAndOversizedFramesAreRejected:
   let tooLarge = encodeFrame(newString(MaxFrameBytes + 1))
   doAssert not tooLarge.isOk
   doAssert tooLarge.failure.kind == frameTooLarge
+
+block incompleteRequestEnvelopesAreRejected:
+  let validRequest = ProtocolMessage(
+    version: ProtocolVersion,
+    kind: request,
+    sessionId: "session",
+    authenticationToken: "",
+    requestId: 18,
+    eventId: 0,
+    methodName: "native.window.create",
+    payload: "{}",
+    error: "",
+    timeoutMs: 5_000
+  ).toJson.parseJson
+
+  for missingKey in ["kind", "sessionId", "authenticationToken"]:
+    var incomplete = validRequest.copy()
+    incomplete.delete(missingKey)
+    let decoded = ($incomplete).fromJson()
+    doAssert not decoded.isOk
+    doAssert decoded.failure.kind == invalidMessage
 
 block summariesNeverExposeTokens:
   var message = helloMessage()

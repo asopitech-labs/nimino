@@ -137,6 +137,7 @@ type
 var downloadOperationVTable: DownloadOperationVTable
 
 proc windowsDisposeWindow(window: NativeWindow)
+proc windowsCloseWindow(window: NativeWindow): NativeResult
 proc windowsFail(app: NativeApp; error: NativeError)
 proc windowsRemoveTray(app: NativeApp)
 proc windowsResize(window: NativeWindow): NativeResult
@@ -709,6 +710,17 @@ proc windowsDisposeWindow(window: NativeWindow) =
   window.state = closed
   if window.app.state == running and window.app.windowsAllClosed():
     postQuitMessage(0)
+
+proc windowsCloseWindow(window: NativeWindow): NativeResult =
+  if window.platformWindow.isNil:
+    window.windowsDisposeWindow()
+    return success()
+  ## DestroyWindow synchronously delivers WM_DESTROY on the owning UI thread;
+  ## windowsWindowProc then performs the single authoritative resource teardown
+  ## and emits the closed callback.  Disposing first would orphan the HWND.
+  if destroyWindow(window.platformWindow) == 0:
+    return failure(windowsError("window.close", getLastError()))
+  success()
 
 proc windowsRequestQuit(app: NativeApp) =
   for window in app.windows:

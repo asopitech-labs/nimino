@@ -56,6 +56,14 @@ if (-not $process.Start()) {
 
 function Write-Frame([hashtable]$message) {
   $message.version = $script:protocolVersion
+  if (-not [string]::IsNullOrEmpty([string]$message.method) -and
+      [string]$message.kind -ne "request") {
+    throw "Protocol request frame is missing kind=request"
+  }
+  if ([string]$message.kind -eq "request" -and
+      [string]::IsNullOrEmpty([string]$message.sessionId)) {
+    throw "Protocol request frame is missing the authenticated session ID"
+  }
   $json = [System.Text.Encoding]::UTF8.GetBytes(($message | ConvertTo-Json -Compress))
   $length = [System.BitConverter]::GetBytes([uint32]$json.Length)
   if ([System.BitConverter]::IsLittleEndian) {
@@ -218,6 +226,20 @@ function Wait-ForWebMessage([string]$webViewId, [string]$expectedMessage) {
     }
   }
   throw "WebView did not emit the expected message"
+}
+
+function Wait-ForWindowClosed([string]$windowId) {
+  for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    $message = Read-Frame
+    if ($message.kind -ne "event" -or $message.method -ne "native.window.closed") {
+      continue
+    }
+    $payload = $message.payload | ConvertFrom-Json
+    if ($payload.windowId -eq $windowId) {
+      return
+    }
+  }
+  throw "Host did not emit the expected window-closed event"
 }
 
 function Wait-ForNavigationCancelled([string]$webViewId, [string]$expectedUrl) {
@@ -528,6 +550,7 @@ try {
     ## that callback while processing a non-user-initiated script.
     $popupWindowRequestId = "18"
     Write-Frame @{
+      version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $popupWindowRequestId; eventId = "0"; method = "native.window.create"
       payload = (ConvertTo-Json -Compress @{ title = "Nimino Popup Smoke"; width = 400; height = 300; appId = "app.nimino.popup-smoke"; profile = "popup" })
       error = ""; timeoutMs = 5000
@@ -540,6 +563,7 @@ try {
     Set-SmokePhase "popup WebView creation"
     $popupViewRequestId = "19"
     Write-Frame @{
+      version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $popupViewRequestId; eventId = "0"; method = "native.webview.create"
       payload = (ConvertTo-Json -Compress @{ windowId = $popupWindowId }); error = ""; timeoutMs = 5000
     }
@@ -550,28 +574,45 @@ try {
     $popupHtml = '<!doctype html><meta charset="utf-8"><p>Nimino popup</p>'
     $popupLoadRequestId = "20"
     Write-Frame @{
+      version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $popupLoadRequestId; eventId = "0"; method = "native.webview.loadHtml"
       payload = (ConvertTo-Json -Compress @{ webViewId = $popupViewId; html = $popupHtml }); error = ""; timeoutMs = 5000
     }
     $popupLoadResponse = Read-Response $popupLoadRequestId
     if (-not [string]::IsNullOrEmpty($popupLoadResponse.error)) { throw "Host could not load the explicit popup document" }
+    Set-SmokePhase "popup navigation completion"
+    Wait-ForNavigationCompleted $popupViewId
+    Set-SmokePhase "popup message bridge"
     $popupMessageRequestId = "21"
     Write-Frame @{
+      version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $popupMessageRequestId; eventId = "0"; method = "native.webview.evalJavaScript"
       payload = (ConvertTo-Json -Compress @{ webViewId = $popupViewId; script = "chrome.webview.postMessage('popup-message-received')" }); error = ""; timeoutMs = 5000
     }
     $popupMessageResponse = Read-Response $popupMessageRequestId
     if (-not [string]::IsNullOrEmpty($popupMessageResponse.error)) { throw "Host could not send the explicit popup message" }
     Wait-ForWebMessage $popupViewId "popup-message-received"
+    Set-SmokePhase "popup message received"
+    $popupCloseRequestId = "22"
+    Write-Frame @{
+      version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+      requestId = $popupCloseRequestId; eventId = "0"; method = "native.window.close"
+      payload = (ConvertTo-Json -Compress @{ windowId = $popupWindowId }); error = ""; timeoutMs = 5000
+    }
+    $popupCloseResponse = Read-Response $popupCloseRequestId
+    if (-not [string]::IsNullOrEmpty($popupCloseResponse.error)) { throw "Host could not close the explicit popup window" }
+    Set-SmokePhase "popup window close event"
+    Wait-ForWindowClosed $popupWindowId
+    Set-SmokePhase "popup window closed"
   }
 
   Set-SmokePhase "shutdown"
-  $shutdownRequestId = if ($VerifyNewWindow) { "22" } else { "14" }
+  $shutdownRequestId = if ($VerifyNewWindow) { "23" } else { "14" }
   Write-Frame @{
     version = 1; kind = "shutdown"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = $shutdownRequestId; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000
   }
-  $response = Read-Frame
+  $response = Read-Response $shutdownRequestId
   if ($response.kind -ne "response" -or $response.requestId -ne $shutdownRequestId -or
       $response.sessionId -ne $ready.sessionId -or -not [string]::IsNullOrEmpty($response.error)) {
     throw "Host did not acknowledge shutdown"
