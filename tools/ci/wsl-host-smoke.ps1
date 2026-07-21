@@ -521,6 +521,7 @@ try {
     ## path asserts the bridge signal and then creates the managed popup
     ## explicitly.  The native NewWindowRequested event remains covered by
     ## the interactive harness, where the user performs the trusted click.
+    Set-SmokePhase "popup window creation"
     Set-SmokePhase "popup intent bridge"
     ## The successful page-ready bridge is the popup intent marker.  Do not
     ## issue a second synthetic click/message here: WebView2 may defer or drop
@@ -534,6 +535,8 @@ try {
     $popupWindowResponse = Read-Response $popupWindowRequestId
     if (-not [string]::IsNullOrEmpty($popupWindowResponse.error)) { throw "Host could not create an explicit popup window" }
     $popupWindowId = ($popupWindowResponse.payload | ConvertFrom-Json).windowId
+    Set-SmokePhase "popup window created"
+    Set-SmokePhase "popup WebView creation"
     $popupViewRequestId = "19"
     Write-Frame @{
       requestId = $popupViewRequestId; eventId = "0"; method = "native.webview.create"
@@ -542,6 +545,7 @@ try {
     $popupViewResponse = Read-Response $popupViewRequestId
     if (-not [string]::IsNullOrEmpty($popupViewResponse.error)) { throw "Host could not create the explicit popup WebView" }
     $popupViewId = ($popupViewResponse.payload | ConvertFrom-Json).webViewId
+    Set-SmokePhase "popup HTML loading"
     $popupHtml = '<!doctype html><meta charset="utf-8"><p>Nimino popup</p>'
     $popupLoadRequestId = "20"
     Write-Frame @{
