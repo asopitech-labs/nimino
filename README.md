@@ -74,6 +74,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
 
 権限の扱いは次のとおりです。`make setup-windows-webview2`だけはWebView2/Edge UpdateのためUAC昇格を自動要求します。`wsl-host-*` smoke、WSL client/core smoke、NSISのper-user生成、生成されたPowerShell install templateは管理者権限を要求しません。別ユーザーのhostを停止する`taskkill`は失敗しても無視します。
 
+実行前チェックは次のとおりです。Windowsデスクトップへログオン済みであることは、GUI smokeを実行するための通常条件であり、追加の別セッションは不要です。
+
+```bash
+test -n "$WSL_INTEROP" && command -v powershell.exe && command -v cmd.exe
+docker compose version
+make verify-env
+make wsl-host-cross
+```
+
+最後の`wsl-host-cross`で`.tmp/nimino-wsl-host.exe`と同じ場所に`WebView2Loader.dll`が配置されます。`make setup-windows-webview2`で導入したWindows側Evergreen Runtime、WSL 2のディストリビューション、Docker daemon/Compose、Windows側への`wslpath`アクセスが、WSL smokeの実行事前条件です。`WSLg`のWayland/X11環境変数やLinux GPUドライバーは、Windows WebView2 hostの必須条件ではありません。
+
 Linuxの実ネイティブスモークは`make linux-smoke`で実行します。これはDockerのnamespace制限を回避するため、そのテストコンテナだけでWebKit sandboxを無効にし、GIO notification request用にprivate D-Bus sessionを起動します。アプリの本番実行設定にはこの環境変数やテスト用sessionを含めません。
 
 Dockerデーモンが利用できない環境では、コンテナ内ビルド・テストは実行できません。`make wsl-host-smoke`はWSL、Windows Interop、PowerShell、およびWindowsのWebView2 Evergreen Runtimeを必要とします。LoaderはDocker image内で固定SDKから取り出すため、ローカルのNim開発ツールやSDK導入は不要です。
