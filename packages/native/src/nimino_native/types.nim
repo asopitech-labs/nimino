@@ -124,6 +124,7 @@ type
     pendingContentKind: NativeContentKind
     pendingUrl: string
     pendingHtml: string
+    pendingHtmlBaseUrl: string
     documentStartScript: string
     platformView: pointer
     platformEnvironment: pointer
@@ -716,6 +717,7 @@ proc loadUrl*(view: NativeWebView; url: string): NativeResult =
     return failure(error)
   view.pendingUrl = url
   view.pendingHtml.setLen(0)
+  view.pendingHtmlBaseUrl.setLen(0)
   view.pendingContentKind = urlContent
   when defined(linux) and not defined(niminoWsl):
     linuxLoadPendingContent(view)
@@ -725,10 +727,39 @@ proc loadUrl*(view: NativeWebView; url: string): NativeResult =
   else:
     return success()
 
-proc loadHtml*(view: NativeWebView; html: string): NativeResult =
+proc validHtmlBaseUrl(baseUrl: string): bool =
+  ## WebKitGTK accepts a URI here. Keep policy out of native, but reject text
+  ## that would be truncated or interpreted differently at the C boundary.
+  for c in baseUrl:
+    if c in {' ', '\t', '\r', '\n'} or ord(c) < 0x20 or ord(c) == 0x7f:
+      return false
+  true
+
+proc loadHtml*(view: NativeWebView; html: string; baseUrl = ""): NativeResult =
+  ## A non-empty base URL is available only on the WebKitGTK backend. WebView2
+  ## NavigateToString has no base-URI parameter and always creates about:blank.
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.loadHtml"))
+  if not validHtmlBaseUrl(baseUrl):
+    let error = nativeError(invalidArgument, "webview.loadHtml",
+      detail = "base URL must not contain whitespace/control characters")
+    view.dispatchError(error)
+    return failure(error)
+  if baseUrl.len > 0:
+    when defined(linux) and not defined(niminoWsl):
+      discard
+    elif defined(windows):
+      let error = nativeError(unsupported, "webview.loadHtml",
+        detail = "WebView2 NavigateToString cannot set a base URL")
+      view.dispatchError(error)
+      return failure(error)
+    else:
+      let error = nativeError(unsupported, "webview.loadHtml",
+        detail = "HTML base URLs are unavailable through the WSL adapter")
+      view.dispatchError(error)
+      return failure(error)
   view.pendingHtml = html
+  view.pendingHtmlBaseUrl = baseUrl
   view.pendingUrl.setLen(0)
   view.pendingContentKind = htmlContent
   when defined(linux) and not defined(niminoWsl):
