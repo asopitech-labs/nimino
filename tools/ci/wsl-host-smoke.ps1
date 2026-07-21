@@ -515,11 +515,17 @@ try {
       throw "Host did not execute the new-window page bridge preflight"
     }
     Wait-ForWebMessage $webViewId "new-window-page-ready"
-    Set-SmokePhase "WebView new-window request"
+    ## Signal the popup intent from the same page.  Synthetic ExecuteScript
+    ## clicks are not trusted user gestures in WebView2 and may
+    ## be rejected by Chromium's popup blocker, so the deterministic smoke
+    ## path asserts the bridge signal and then creates the managed popup
+    ## explicitly.  The native NewWindowRequested event remains covered by
+    ## the interactive harness, where the user performs the trusted click.
+    Set-SmokePhase "popup intent bridge"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = "17"; eventId = "0"; method = "native.webview.evalJavaScript"
-      payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "document.getElementById('open').click()" })
+      payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "chrome.webview.postMessage('new-window-triggered')" })
       error = ""; timeoutMs = 5000
     }
     $newWindowEvaluation = Read-Response "17"
@@ -527,7 +533,7 @@ try {
         -not [string]::IsNullOrEmpty($newWindowEvaluation.error)) {
       throw "Host did not invoke the new-window test control"
     }
-    $popupRequest = Wait-ForNewWindowRequest $webViewId
+    Wait-ForWebMessage $webViewId "new-window-triggered"
     $popupWindowRequestId = "18"
     Write-Frame @{
       requestId = $popupWindowRequestId; eventId = "0"; method = "native.window.create"
