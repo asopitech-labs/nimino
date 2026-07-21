@@ -1,6 +1,7 @@
 import std/os
 
 proc linuxTrackDownload(view: NativeWebView; download: pointer; url: string)
+proc linuxCreateView(view: NativeWebView): NativeResult
 
 proc linuxNativeMenuActionName(itemId: uint32): string {.inline.} =
   "nimino-menu-" & $itemId
@@ -696,7 +697,58 @@ proc linuxDisposeWindow(window: NativeWindow) =
     gtk_window_destroy(cast[ptr GtkWindow](window.platformWindow))
     g_object_unref(window.platformWindow)
     window.platformWindow = nil
+  if window.platformContainer != nil:
+    g_object_unref(window.platformContainer)
+    window.platformContainer = nil
   window.state = closed
+
+proc linuxCreateView(view: NativeWebView): NativeResult =
+  if view.isNil or view.window.isNil or view.window.platformContainer.isNil:
+    return failure(nativeError(invalidState, "webview.create"))
+  var webView: ptr WebKitWebView
+  var session: ptr WebKitNetworkSession
+  if view.window.profilePath.len > 0:
+    let dataDir = view.window.profilePath / "webkit-data"
+    let cacheDir = view.window.profilePath / "cache"
+    try:
+      createDir(dataDir)
+      createDir(cacheDir)
+    except OSError:
+      return failure(nativeError(osError, "webview.profile",
+        detail = "unable to create WebKit profile directories"))
+    session = webkit_network_session_new(cstring(dataDir), cstring(cacheDir))
+    if session.isNil:
+      return failure(nativeError(webViewError, "webview.profile",
+        detail = "WebKitNetworkSession creation failed"))
+    webView = cast[ptr WebKitWebView](g_object_new(webkit_web_view_get_type(),
+      "network-session", cast[pointer](session), nil))
+    g_object_unref(cast[pointer](session))
+  else:
+    webView = webkit_web_view_new()
+  if webView.isNil:
+    return failure(nativeError(webViewError, "webview.create",
+      detail = "WebKitWebView creation failed"))
+
+  view.platformView = g_object_ref_sink(cast[pointer](webView))
+  view.state = ready
+  let devTools = view.linuxSetDevToolsEnabled(view.devToolsEnabled)
+  if not devTools.isOk: return devTools
+  let messaging = view.linuxConfigureMessageBridge()
+  if not messaging.isOk: return messaging
+  let documentStartScript = view.linuxConfigureDocumentStartScript()
+  if not documentStartScript.isOk: return documentStartScript
+  let navigationEvents = view.linuxConfigureLoadEvents()
+  if not navigationEvents.isOk: return navigationEvents
+  let navigationStarting = view.linuxConfigureNavigationStarting()
+  if not navigationStarting.isOk: return navigationStarting
+  let permissionEvents = view.linuxConfigurePermissionRequests()
+  if not permissionEvents.isOk: return permissionEvents
+  let newWindowEvents = view.linuxConfigureNewWindowRequested()
+  if not newWindowEvents.isOk: return newWindowEvents
+  gtk_box_append(view.window.platformContainer, cast[pointer](webView))
+  view.linuxLoadPendingContent()
+  view.dispatchPendingScripts()
+  success()
 
 proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let gtkWindow = gtk_application_window_new(cast[ptr GtkApplication](window.app.platformApp))
@@ -725,6 +777,13 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
     ## GTK desktop sessions as well as in the Xvfb smoke environment.
     gtk_application_window_set_show_menubar(
       cast[ptr GtkApplicationWindow](gtkWindow), 1)
+
+  let container = gtk_box_new(1, 0)
+  if container.isNil:
+    return failure(nativeError(osError, "window.create",
+      detail = "GTK container creation failed"))
+  window.platformContainer = g_object_ref_sink(container)
+  gtk_window_set_child(gtkWindow, window.platformContainer)
 
   if window.views.len == 0:
     return failure(nativeError(invalidState, "window.create", detail = "WebView is required"))
@@ -776,9 +835,14 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let newWindowEvents = view.linuxConfigureNewWindowRequested()
   if not newWindowEvents.isOk:
     return newWindowEvents
-  gtk_window_set_child(gtkWindow, cast[pointer](webView))
+  gtk_box_append(window.platformContainer, cast[pointer](webView))
   view.linuxLoadPendingContent()
   view.dispatchPendingScripts()
+  if window.views.len > 1:
+    for index in 1 ..< window.views.len:
+      let created = window.views[index].linuxCreateView()
+      if not created.isOk:
+        return created
   window.state = ready
   gtk_window_present(gtkWindow)
   success()

@@ -31,7 +31,10 @@ block capabilitiesAreExplicit:
   doAssert not available.supports(systemTray)
   let app = newNativeApp()
   doAssert app.supports(webPermissionEvents)
-  doAssert not app.supports(multipleWebViews)
+  when defined(windows) or (defined(linux) and not defined(niminoWsl)):
+    doAssert app.supports(multipleWebViews)
+  else:
+    doAssert not app.supports(multipleWebViews)
 
 block systemTrayIsExplicitlyUnsupportedOffWindows:
   let app = newNativeApp()
@@ -107,7 +110,11 @@ block windowAndViewRemainSeparate:
   doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
   doAssert window.value.onCloseRequested(proc(): bool = true).isOk
   doAssert window.value.onClosed(proc() = discard).isOk
-  doAssert not window.value.newWebView().isOk
+  when defined(windows) or (defined(linux) and not defined(niminoWsl)):
+    let secondView = window.value.newWebView()
+    doAssert secondView.isOk
+  else:
+    doAssert not window.value.newWebView().isOk
 
 block lifecycleStateQueriesAreExplicit:
   let app = newNativeApp()

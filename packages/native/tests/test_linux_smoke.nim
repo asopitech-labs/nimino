@@ -124,6 +124,8 @@ doAssert window.value.onResize(proc(width, height: int) =
 ).isOk
 let view = window.value.newWebView()
 doAssert view.isOk
+let secondaryView = window.value.newWebView()
+doAssert secondaryView.isOk
 callbackView = cast[pointer](view.value)
 doAssert view.value.onMessage(receiveMessage).isOk
 doAssert view.value.onNavigationStarting(receiveNavigationStarting).isOk

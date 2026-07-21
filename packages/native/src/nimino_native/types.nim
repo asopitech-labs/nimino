@@ -122,6 +122,7 @@ type
     height: int
     profilePath*: string
     platformWindow: pointer
+    platformContainer: pointer
     views: seq[NativeWebView]
     closeRequestedHandler: NativeCloseRequestedHandler
     closeSignalHandler: culong
@@ -460,9 +461,11 @@ proc newNativeApp*(): NativeApp =
   initLock(result.uiTaskLock)
   result.capabilities = {webPermissionEvents}
   when defined(windows):
+    result.capabilities.incl(multipleWebViews)
     result.capabilities.incl(nativeMenu)
     result.capabilities.incl(systemTray)
   elif defined(linux) and not defined(niminoWsl):
+    result.capabilities.incl(multipleWebViews)
     result.capabilities.incl(nativeMenu)
     result.capabilities.incl(nativeNotification)
 
@@ -609,19 +612,16 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
 proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView] =
   if window.isNil or window.state in {closing, closed}:
     return failureOf[NativeWebView](nativeError(invalidState, "webview.create"))
-  if window.views.len > 0:
-    return failureOf[NativeWebView](nativeError(unsupported, "webview.create", detail = "M1 supports one view per window"))
-
   let view = NativeWebView(window: window, state: pending, devToolsEnabled: true)
   window.views.add(view)
   if window.app.state == running:
     when defined(linux) and not defined(niminoWsl):
-      let created = window.linuxCreateWindow()
+      let created = view.linuxCreateView()
       if not created.isOk:
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
     elif defined(windows):
-      let created = window.windowsCreateWindow()
+      let created = view.windowsStartWebView()
       if not created.isOk:
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)

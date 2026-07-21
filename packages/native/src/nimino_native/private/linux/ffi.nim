@@ -68,6 +68,10 @@ proc gtk_window_set_resizable*(window: ptr GtkWindow; resizable: cint)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_set_child*(window: ptr GtkWindow; child: pointer)
   {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_box_new*(orientation: cint; spacing: cint): pointer
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_box_append*(box: pointer; child: pointer)
+  {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_present*(window: ptr GtkWindow)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_minimize*(window: ptr GtkWindow)

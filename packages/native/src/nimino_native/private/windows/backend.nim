@@ -838,15 +838,14 @@ proc windowsConfigureUserDataFolder(app: NativeApp): NativeResult =
 proc windowsResize(window: NativeWindow): NativeResult =
   if window.isNil or window.platformWindow.isNil:
     return failure(nativeError(invalidState, "window.resize"))
-  if window.views.len == 0 or window.views[0].platformController.isNil:
-    return success()
-
   var bounds: WinRect
   if getClientRect(window.platformWindow, addr bounds) == 0:
     return failure(windowsError("window.resize", getLastError()))
-  let status = controllerSetBounds(window.views[0].platformController, bounds)
-  if not succeeded(status):
-    return failure(hresultError("webview.resize", status))
+  for view in window.views:
+    if view.platformController != nil:
+      let status = controllerSetBounds(view.platformController, bounds)
+      if not succeeded(status):
+        return failure(hresultError("webview.resize", status))
   success()
 
 proc windowsSetTitle(window: NativeWindow): NativeResult =
@@ -1337,10 +1336,11 @@ proc windowsCreateWindow(window: NativeWindow): NativeResult =
   if window.views.len == 0:
     return failure(nativeError(invalidState, "window.create", detail = "WebView is required"))
 
-  let started = window.views[0].windowsStartWebView()
-  if not started.isOk:
-    discard destroyWindow(hwnd)
-    return started
+  for view in window.views:
+    let started = view.windowsStartWebView()
+    if not started.isOk:
+      discard destroyWindow(hwnd)
+      return started
   success()
 
 proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
