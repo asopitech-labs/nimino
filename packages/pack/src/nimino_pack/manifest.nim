@@ -4,6 +4,7 @@ type
   PackErrorKind* = enum
     invalidManifest
     unsupportedFeature
+    integrityFailure
     ioFailure
 
   PackError* = object

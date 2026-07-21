@@ -3,5 +3,6 @@ import ./src/nimino_pack/manifest
 import ./src/nimino_pack/linux_package
 import ./src/nimino_pack/windows_package
 import ./src/nimino_pack/flatpak
+import ./src/nimino_pack/catalog
 
-export manifest, linux_package, windows_package, flatpak
+export manifest, linux_package, windows_package, flatpak, catalog
