@@ -1016,7 +1016,7 @@ proc linuxStartup(application: pointer; data: pointer) {.cdecl.} =
 
 proc linuxRun(app: NativeApp): NativeResult =
   if app.platformApp.isNil:
-    app.platformApp = cast[pointer](gtk_application_new("tech.asopi.nimino.native", 0))
+    app.platformApp = cast[pointer](gtk_application_new(app.appId.cstring, 0))
   if app.platformApp.isNil:
     return failure(nativeError(osError, "app.run", detail = "GTK application creation failed"))
 

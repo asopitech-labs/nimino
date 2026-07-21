@@ -3,6 +3,11 @@ import std/[asyncfutures, locks]
 import ./[capabilities, errors]
 
 type
+  NativeAppOptions* = object
+    ## Stable application identity used by native platform registration.  The
+    ## value is kept private to the backend and is never exposed to WebView.
+    appId*: string
+
   NativeIdleHandler* = proc() {.closure.}
   NativeUiHandler* = proc() {.closure.}
   NativeMessageHandler* = proc(message: string) {.closure.}
@@ -104,6 +109,7 @@ type
 
   NativeApp* = ref object
     state: NativeAppState
+    appId: string
     capabilities: CapabilitySet
     platformApp: pointer
     platformLoader: pointer
@@ -504,9 +510,10 @@ elif defined(windows):
   import ./private/windows/ffi
   include "private/windows/backend"
 
-proc newNativeApp*(): NativeApp =
+proc newNativeApp*(options: NativeAppOptions): NativeApp =
   new(result)
   result.state = created
+  result.appId = if options.appId.len > 0: options.appId else: "tech.asopi.nimino.native"
   initLock(result.uiTaskLock)
   result.capabilities = {webPermissionEvents}
   when defined(windows):
@@ -518,6 +525,9 @@ proc newNativeApp*(): NativeApp =
     result.capabilities.incl(multipleWebViews)
     result.capabilities.incl(nativeMenu)
     result.capabilities.incl(nativeNotification)
+
+proc newNativeApp*(): NativeApp =
+  newNativeApp(NativeAppOptions(appId: "tech.asopi.nimino.native"))
 
 proc supports*(app: NativeApp; capability: Capability): bool {.inline.} =
   app.capabilities.supports(capability)

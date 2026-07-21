@@ -841,7 +841,7 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
         detail = "WSL requires the nimino-wsl adapter"))
 
   let app = App(state: coreCreated, backend: nativeBackend, id: options.id, name: options.name,
-                nativeApp: native.newNativeApp())
+                nativeApp: native.newNativeApp(native.NativeAppOptions(appId: options.id)))
   let idleConfigured = native.setIdleHandler(app.nativeApp, proc() =
     if app != nil and app.state == coreRunning:
       for window in app.windows:
