@@ -70,7 +70,13 @@ nimino package-linux dist/discord --format rpm --out dist/packages \
 
 `deb`は`/opt/nimino/<id>`と`/usr/share/applications/<id>.desktop`を含む`.deb`を、`rpm`は同じlayoutの`.rpm`を作ります。`--arch`は`amd64`または`arm64`で、bundle内host binaryと一致させる必要があります。Debianには`--maintainer`、RPMには`--license`が必須です。RPMは現時点で`major.minor.patch` release versionだけを受け付けます。
 
-AppImageは`--format appimage`として検出されますが、Docker imageに`appimagetool`を同梱していないため、固定エラーで停止します。AppImageのAppDir、GTK/WebKitGTKのdependency closure、FUSE/runtime互換性、署名を検証していない状態で、ポータブルなAppImageを生成したとは扱いません。
+```bash
+nimino package-linux dist/discord --format appimage --out dist/packages --arch amd64
+```
+
+AppImageはchecksum固定済みの公式`appimagetool`で、`AppRun`、移植可能なdesktop entry、対応icon、`usr/bin`起動器、bundle本体を含むType 2 AppImageを生成します。ローカルiconを同梱したbundleが必須で、現時点のDocker imageはx86_64 toolを使うため`--arch amd64`だけを受け付けます。生成時はDocker内でFUSEを使わずtoolを自己展開して実行しますが、配布先でのAppImage runtime/FUSE互換性は別途確認が必要です。
+
+この段階ではNimino host、GTK、WebKitGTKなどの動的依存ライブラリのdependency closure、署名、update information、SBOM、各ディストリビューション実機での起動確認は実装していません。したがって「単一ファイルを配布できる」ことは保証しますが、「追加のsystem libraryなしで任意のLinux上で起動できる」ことは保証しません。
 
 ## 固定された検証手順
 
@@ -83,4 +89,4 @@ make pack-linux-test
 make pack-archive-test
 ```
 
-`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMの内容とAppImage tool不在時の固定エラー、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。最後の三つはDockerコンテナ内で実行します。
+`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMの内容と、AppImageの生成・自己展開・起動器・amd64制約、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。最後の三つはDockerコンテナ内で実行します。

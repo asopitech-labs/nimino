@@ -152,6 +152,17 @@ proc temporaryDirectory(id: string): string =
     inc suffix
     result = getTempDir() / (prefix & "-" & $suffix)
 
+proc preserveBundlePermissions(sourceDirectory, destinationDirectory: string): PackResult[bool] =
+  ## copyDir copies content but not the executable mode needed by the generated
+  ## launcher and host binary. Preserve the source bundle's regular-file modes.
+  try:
+    for sourcePath in walkDirRec(sourceDirectory):
+      let relative = relativePath(sourcePath, sourceDirectory)
+      setFilePermissions(destinationDirectory / relative, getFilePermissions(sourcePath))
+    success(true)
+  except OSError:
+    failure[bool](ioFailure, "unable to preserve Linux package file permissions")
+
 proc stageBundle(bundleDirectory, packageRoot: string;
                  metadata: LinuxBundleMetadata): PackResult[bool] =
   let optDirectory = packageRoot / "opt"
@@ -164,6 +175,9 @@ proc stageBundle(bundleDirectory, packageRoot: string;
     createDir(optDirectory)
     createDir(niminoDirectory)
     copyDir(bundleDirectory, applicationDirectory)
+    let permissions = bundleDirectory.preserveBundlePermissions(applicationDirectory)
+    if not permissions.isOk:
+      return permissions
     createDir(packageRoot / "usr")
     createDir(shareDirectory)
     createDir(desktopDirectory)
@@ -365,6 +379,9 @@ proc buildAppImage(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
     createDir(appDirectory / "usr" / "lib")
     createDir(appDirectory / "usr" / "lib" / "nimino")
     copyDir(options.bundleDirectory, applicationDirectory)
+    let permissions = options.bundleDirectory.preserveBundlePermissions(applicationDirectory)
+    if not permissions.isOk:
+      return failure[string](permissions.error.kind, permissions.error.detail)
     writeFile(appDirectory / "AppRun", metadata.id.appImageRunScript())
     writeFile(appDirectory / "usr" / "bin" / metadata.id,
       metadata.id.appImageLauncherScript())
