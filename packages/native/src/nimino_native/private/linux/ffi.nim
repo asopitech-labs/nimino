@@ -72,6 +72,8 @@ proc gtk_box_new*(orientation: cint; spacing: cint): pointer
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_box_append*(box: pointer; child: pointer)
   {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_box_remove*(box: pointer; child: pointer)
+  {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_present*(window: ptr GtkWindow)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_minimize*(window: ptr GtkWindow)

@@ -668,6 +668,24 @@ proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): Nat
   )
   success()
 
+proc linuxDisposeView(view: NativeWebView) =
+  if view.isNil or view.state == closed:
+    return
+  view.state = closing
+  view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
+  view.failOutstandingBrowsingDataRequests(nativeError(invalidState,
+    "webview.clearBrowsingData", detail = "the WebView closed before clearing completed"))
+  view.linuxDisposeMessageBridge()
+  view.linuxDisposeLoadEvents()
+  view.linuxClearDownloadSignals()
+  view.releaseCallbackReferences()
+  if view.window.platformContainer != nil and view.platformView != nil:
+    gtk_box_remove(view.window.platformContainer, view.platformView)
+  if view.platformView != nil:
+    g_object_unref(view.platformView)
+    view.platformView = nil
+  view.state = closed
+
 proc linuxDisposeWindow(window: NativeWindow) =
   if window.state == closed:
     return
@@ -675,17 +693,7 @@ proc linuxDisposeWindow(window: NativeWindow) =
   window.state = closing
   window.dispatchClosed()
   for view in window.views:
-    view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
-    view.failOutstandingBrowsingDataRequests(nativeError(invalidState,
-      "webview.clearBrowsingData", detail = "the WebView closed before clearing completed"))
-    view.linuxDisposeMessageBridge()
-    view.linuxDisposeLoadEvents()
-    view.linuxClearDownloadSignals()
-    view.releaseCallbackReferences()
-    if view.platformView != nil:
-      g_object_unref(view.platformView)
-      view.platformView = nil
-    view.state = closed
+    view.linuxDisposeView()
 
   if window.platformWindow != nil:
     if window.closeSignalHandler != 0:

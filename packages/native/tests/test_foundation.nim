@@ -113,6 +113,8 @@ block windowAndViewRemainSeparate:
   when defined(windows) or (defined(linux) and not defined(niminoWsl)):
     let secondView = window.value.newWebView()
     doAssert secondView.isOk
+    doAssert secondView.value.close().isOk
+    doAssert secondView.value.isClosed()
   else:
     doAssert not window.value.newWebView().isOk
 

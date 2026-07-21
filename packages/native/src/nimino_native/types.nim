@@ -191,6 +191,7 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxSizeNotify(window, pspec, userData: pointer) {.cdecl.}
   proc linuxCreateWindow(window: NativeWindow): NativeResult
   proc linuxSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
+  proc linuxDisposeView(view: NativeWebView)
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc linuxClearBrowsingData(view: NativeWebView;
                               request: NativeBrowsingDataRequest): NativeResult
@@ -204,6 +205,7 @@ elif defined(windows):
   proc windowsSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
   proc windowsReplaceDocumentStartScript(view: NativeWebView;
                                           script: string): NativeResult
+  proc windowsDisposeView(view: NativeWebView)
 
 proc completeScriptRequest(view: NativeWebView; request: NativeScriptRequest;
                            evaluation: NativeResultOf[string]) =
@@ -626,6 +628,23 @@ proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView] =
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
   successOf(view)
+
+proc close*(view: NativeWebView): NativeResult =
+  if view.isNil or view.window.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.close"))
+  when (defined(linux) and not defined(niminoWsl)) or defined(windows):
+    let window = view.window
+    when defined(linux) and not defined(niminoWsl):
+      view.linuxDisposeView()
+    elif defined(windows):
+      view.windowsDisposeView()
+    for index in countdown(window.views.high, 0):
+      if cast[pointer](window.views[index]) == cast[pointer](view):
+        window.views.delete(index)
+        break
+    success()
+  else:
+    return failure(nativeError(unsupported, "webview.close"))
 
 proc setTitle*(window: NativeWindow; title: string): NativeResult =
   if window.isNil or window.state in {closing, closed}:

@@ -87,6 +87,7 @@ proc onResize*(window: NativeWindow, callback: NativeResizeHandler): NativeResul
 proc onCloseRequest*(window: NativeWindow, callback: proc(): bool {.gcsafe.})
 
 proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView]
+proc close*(view: NativeWebView): NativeResult
 proc loadUrl*(view: NativeWebView, url: string): NativeResult
 proc loadHtml*(view: NativeWebView, html: string, baseUrl = ""): NativeResult
 proc setDocumentStartScript*(view: NativeWebView, script: string): NativeResult
@@ -101,7 +102,7 @@ proc onNewWindowRequested*(view: NativeWebView,
 proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.})
 ```
 
-`newWebView`が`pending`の間でも、直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windows/Linux nativeでは一つのWindowに複数WebViewを作成できます。WebViewはWindow内に順番に配置されます。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。WebView単体のcloseは、個別配置と寿命通知を追加するまで公開せず、`window.close()`を使用します。
+`newWebView`が`pending`の間でも、直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windows/Linux nativeでは一つのWindowに複数WebViewを作成できます。WebViewはWindow内に順番に配置されます。`close(view)`はそのWebViewだけをNative資源解放し、Windowは維持します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。
 
 `loadHtml`の`baseUrl`はネイティブLinuxだけで利用できます。非空値は
 [`webkit_web_view_load_html`](https://webkitgtk.org/reference/webkit2gtk/2.39.1/method.WebView.load_html.html)
