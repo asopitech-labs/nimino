@@ -541,7 +541,7 @@ try {
     $popupViewResponse = Read-Response $popupViewRequestId
     if (-not [string]::IsNullOrEmpty($popupViewResponse.error)) { throw "Host could not create the explicit popup WebView" }
     $popupViewId = ($popupViewResponse.payload | ConvertFrom-Json).webViewId
-    $popupHtml = '<!doctype html><meta charset="utf-8"><script>window.onload=()=>chrome.webview.postMessage("popup-message-received")</script><p>Nimino popup</p>'
+    $popupHtml = '<!doctype html><meta charset="utf-8"><p>Nimino popup</p>'
     $popupLoadRequestId = "20"
     Write-Frame @{
       requestId = $popupLoadRequestId; eventId = "0"; method = "native.webview.loadHtml"
@@ -549,11 +549,18 @@ try {
     }
     $popupLoadResponse = Read-Response $popupLoadRequestId
     if (-not [string]::IsNullOrEmpty($popupLoadResponse.error)) { throw "Host could not load the explicit popup document" }
+    $popupMessageRequestId = "21"
+    Write-Frame @{
+      requestId = $popupMessageRequestId; eventId = "0"; method = "native.webview.evalJavaScript"
+      payload = (ConvertTo-Json -Compress @{ webViewId = $popupViewId; script = "chrome.webview.postMessage('popup-message-received')" }); error = ""; timeoutMs = 5000
+    }
+    $popupMessageResponse = Read-Response $popupMessageRequestId
+    if (-not [string]::IsNullOrEmpty($popupMessageResponse.error)) { throw "Host could not send the explicit popup message" }
     Wait-ForWebMessage $popupViewId "popup-message-received"
   }
 
   $script:smokePhase = "shutdown"
-  $shutdownRequestId = if ($VerifyNewWindow) { "21" } else { "14" }
+  $shutdownRequestId = if ($VerifyNewWindow) { "22" } else { "14" }
   Write-Frame @{
     version = 1; kind = "shutdown"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = $shutdownRequestId; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000
