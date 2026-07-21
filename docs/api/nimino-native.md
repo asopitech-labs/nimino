@@ -83,12 +83,10 @@ proc hide*(window: NativeWindow): NativeResult
 proc minimize*(window: NativeWindow): NativeResult
 proc maximize*(window: NativeWindow): NativeResult
 proc state*(window: NativeWindow): NativeState
-proc onResize*(window: NativeWindow, callback: proc(bounds: Rect) {.gcsafe.})
+proc onResize*(window: NativeWindow, callback: NativeResizeHandler): NativeResult
 proc onCloseRequest*(window: NativeWindow, callback: proc(): bool {.gcsafe.})
 
-proc newWebView*(window: NativeWindow, bounds: Option[Rect] = none(Rect)):
-  NativeResultOf[NativeWebView]
-proc close*(view: NativeWebView): NativeResult
+proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView]
 proc loadUrl*(view: NativeWebView, url: string): NativeResult
 proc loadHtml*(view: NativeWebView, html: string, baseUrl = ""): NativeResult
 proc setDocumentStartScript*(view: NativeWebView, script: string): NativeResult
@@ -103,7 +101,7 @@ proc onNewWindowRequested*(view: NativeWebView,
 proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.})
 ```
 
-`newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。
+`newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。M1は一つのWindowにつき一つのWebViewを作成します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。WebView単体のcloseは複数WebView所有権を確定するまで公開せず、`window.close()`を使用します。
 
 `loadHtml`の`baseUrl`はネイティブLinuxだけで利用できます。非空値は
 [`webkit_web_view_load_html`](https://webkitgtk.org/reference/webkit2gtk/2.39.1/method.WebView.load_html.html)

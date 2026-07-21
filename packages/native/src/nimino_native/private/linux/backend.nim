@@ -179,6 +179,15 @@ proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.} =
   ## GTK close-request returns TRUE to stop the close emission.
   if nativeWindow.dispatchCloseRequested(): 0 else: 1
 
+proc linuxSizeNotify(window, pspec, userData: pointer) {.cdecl.} =
+  discard window
+  discard pspec
+  let nativeWindow = cast[NativeWindow](userData)
+  if nativeWindow != nil and nativeWindow.platformWindow != nil:
+    nativeWindow.dispatchResized(
+      gtk_widget_get_width(nativeWindow.platformWindow),
+      gtk_widget_get_height(nativeWindow.platformWindow))
+
 proc linuxSetTitle(window: NativeWindow) =
   if window.platformWindow != nil:
     let title = window.title
@@ -188,6 +197,8 @@ proc linuxSetSize(window: NativeWindow) =
   if window.platformWindow != nil:
     gtk_window_set_default_size(cast[ptr GtkWindow](window.platformWindow),
       cint(window.width), cint(window.height))
+    if window.app.state == running:
+      window.dispatchResized(window.width, window.height)
 
 proc linuxSetResizable(window: NativeWindow; resizable: bool) =
   if window.platformWindow != nil:
@@ -679,6 +690,9 @@ proc linuxDisposeWindow(window: NativeWindow) =
     if window.closeSignalHandler != 0:
       g_signal_handler_disconnect(window.platformWindow, window.closeSignalHandler)
       window.closeSignalHandler = 0
+    if window.resizeSignalHandler != 0:
+      g_signal_handler_disconnect(window.platformWindow, window.resizeSignalHandler)
+      window.resizeSignalHandler = 0
     gtk_window_destroy(cast[ptr GtkWindow](window.platformWindow))
     g_object_unref(window.platformWindow)
     window.platformWindow = nil
@@ -693,6 +707,18 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let title = window.title
   gtk_window_set_title(gtkWindow, cstring(title))
   gtk_window_set_default_size(gtkWindow, cint(window.width), cint(window.height))
+  if window.closeRequestedHandler != nil:
+    let closeSignal = g_signal_connect_data(window.platformWindow, "close-request",
+      cast[pointer](linuxCloseRequested), cast[pointer](window), nil, 0)
+    if closeSignal == 0:
+      return failure(nativeError(webViewError, "window.onCloseRequested"))
+    window.closeSignalHandler = closeSignal
+  if window.resizeHandler != nil:
+    let resizeSignal = g_signal_connect_data(window.platformWindow, "notify::width",
+      cast[pointer](linuxSizeNotify), cast[pointer](window), nil, 0)
+    if resizeSignal == 0:
+      return failure(nativeError(webViewError, "window.onResize"))
+    window.resizeSignalHandler = resizeSignal
   if window.app.nativeMenuInstalled:
     ## GtkApplicationWindow only displays the model in-window when the shell
     ## does not export it. This makes the configured menu visible in ordinary

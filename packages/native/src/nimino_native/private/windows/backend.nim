@@ -1357,6 +1357,9 @@ proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
       let resized = window.windowsResize()
       if not resized.isOk:
         window.app.windowsFail(resized.failure)
+      let dimensions = cast[uint](lParam)
+      window.dispatchResized(int(dimensions and 0xffff'u),
+        int((dimensions shr 16) and 0xffff'u))
       return 0
     of WmTimer:
       if not window.app.dispatchUiTasks():

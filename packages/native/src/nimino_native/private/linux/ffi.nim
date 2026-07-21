@@ -78,6 +78,10 @@ proc gtk_window_unmaximize*(window: ptr GtkWindow)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_widget_hide*(widget: pointer)
   {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_widget_get_width*(widget: pointer): cint
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_widget_get_height*(widget: pointer): cint
+  {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_destroy*(window: ptr GtkWindow)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_application_set_menubar*(application: ptr GtkApplication;

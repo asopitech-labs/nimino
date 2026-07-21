@@ -28,6 +28,7 @@ type
                                      progress: float) {.closure.}
   NativeCloseRequestedHandler* = proc(): bool {.closure.}
   NativeClosedHandler* = proc() {.closure.}
+  NativeResizeHandler* = proc(width, height: int) {.closure.}
   NativeMenuHandler* = proc(itemId: uint32) {.closure.}
 
   NativeMenuItem* = object
@@ -125,6 +126,8 @@ type
     closeRequestedHandler: NativeCloseRequestedHandler
     closeSignalHandler: culong
     closedHandler: NativeClosedHandler
+    resizeHandler: NativeResizeHandler
+    resizeSignalHandler: culong
     closedNotified: bool
 
   NativeWebView* = ref object
@@ -184,6 +187,7 @@ type
 
 when defined(linux) and not defined(niminoWsl):
   proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.}
+  proc linuxSizeNotify(window, pspec, userData: pointer) {.cdecl.}
   proc linuxCreateWindow(window: NativeWindow): NativeResult
   proc linuxSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
@@ -335,6 +339,15 @@ proc dispatchClosed(window: NativeWindow) =
     return
   try: window.closedHandler()
   except CatchableError: discard
+
+proc dispatchResized(window: NativeWindow; width, height: int) =
+  if window.isNil or window.resizeHandler.isNil or width <= 0 or height <= 0:
+    return
+  try:
+    window.resizeHandler(width, height)
+  except CatchableError:
+    ## A resize observer must not break the native event callback boundary.
+    discard
 
 when defined(windows):
   proc dispatchTrayMenu(app: NativeApp; itemId: uint32) =
@@ -670,6 +683,19 @@ proc onClosed*(window: NativeWindow; handler: NativeClosedHandler): NativeResult
   if window.isNil or window.state == closed:
     return failure(nativeError(invalidState, "window.onClosed"))
   window.closedHandler = handler
+  success()
+
+proc onResize*(window: NativeWindow; handler: NativeResizeHandler): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.onResize"))
+  window.resizeHandler = handler
+  when defined(linux) and not defined(niminoWsl):
+    if window.platformWindow != nil and window.resizeSignalHandler == 0:
+      let signal = g_signal_connect_data(window.platformWindow, "notify::width",
+        cast[pointer](linuxSizeNotify), cast[pointer](window), nil, 0)
+      if signal == 0:
+        return failure(nativeError(webViewError, "window.onResize"))
+      window.resizeSignalHandler = signal
   success()
 
 proc show*(window: NativeWindow): NativeResult =

@@ -3,6 +3,7 @@ import std/asyncfutures
 import nimino_native
 
 var callbackApp: pointer
+var callbackWindow: pointer
 var callbackView: pointer
 var idleTicks: int
 var evaluationFinished: bool
@@ -17,6 +18,8 @@ var baseDocumentCompleted: bool
 var baseUrlResolved: bool
 var urlRequested: bool
 var uiTaskExecuted: bool
+var resizeReceived: bool
+var resizeRequested: bool
 
 const BaseUrl = "https://example.invalid/assets/"
 const BaseUrlMessage = "Nimino Linux base:https://example.invalid/assets/images/logo.svg"
@@ -26,7 +29,7 @@ proc quitWhenComplete() =
   if idleTicks > 0 and evaluationFinished and messageReceived and
       navigationStarted and navigationCompleted and browsingDataFinished and
       notificationRequested and baseDocumentCompleted and baseUrlResolved and
-      urlRequested and uiTaskExecuted:
+      urlRequested and uiTaskExecuted and (resizeReceived or idleTicks > 200):
     doAssert cast[NativeApp](callbackApp).quit().isOk
 
 proc completeEvaluation(completed: Future[NativeResultOf[string]]) {.gcsafe.} =
@@ -67,6 +70,9 @@ proc receiveMessage(message: string) =
 
 proc receiveIdle() =
   inc idleTicks
+  if not resizeRequested:
+    doAssert cast[NativeWindow](callbackWindow).setSize(700, 500).isOk
+    resizeRequested = true
   if not notificationRequested:
     let notification = cast[NativeApp](callbackApp).sendNativeNotification(
       NativeNotification(
@@ -110,7 +116,12 @@ doAssert app.setIdleHandler(receiveIdle).isOk
 doAssert app.postToUi(proc() = uiTaskExecuted = true).isOk
 let window = app.newWindow("Nimino Linux smoke", 320, 200)
 doAssert window.isOk
+callbackWindow = cast[pointer](window.value)
 doAssert window.value.setSize(640, 480).isOk
+doAssert window.value.onResize(proc(width, height: int) =
+  doAssert width > 0 and height > 0
+  resizeReceived = true
+).isOk
 let view = window.value.newWebView()
 doAssert view.isOk
 callbackView = cast[pointer](view.value)
@@ -143,4 +154,5 @@ doAssert notificationRequested
 doAssert baseDocumentCompleted
 doAssert baseUrlResolved
 doAssert urlRequested
+doAssert resizeReceived
 echo "Linux native smoke passed"
