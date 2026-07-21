@@ -77,13 +77,13 @@ proc linuxInstallNativeMenu(app: NativeApp): NativeResult =
   success()
 
 proc linuxUninstallNativeMenu(app: NativeApp) =
-  if app.isNil or app.platformApp.isNil or not app.nativeMenuInstalled:
+  if app.isNil or not app.nativeMenuInstalled:
     return
-  gtk_application_set_menubar(cast[ptr GtkApplication](app.platformApp), nil)
-  var actionNames: seq[string]
-  for item in app.nativeMenuItems:
-    actionNames.add(linuxNativeMenuActionName(item.id))
-  app.linuxRemoveNativeMenuActions(actionNames)
+  ## `g_application_run` has already unregistered GtkApplication when this is
+  ## called. Calling gtk_application_set_menubar at that point is invalid and
+  ## emits a GTK critical. Final GApplication unref immediately below owns the
+  ## installed menu and actions and releases their signal closures, so only
+  ## clear Nimino's state here.
   app.nativeMenuInstalled = false
 
 proc linuxSendNativeNotification(app: NativeApp;
