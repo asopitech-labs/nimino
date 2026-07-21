@@ -1023,10 +1023,15 @@ proc windowsSendNativeNotification*(app: NativeApp;
       cbSize: uint32(sizeof(NotifyIconDataW)),
       window: owner,
       identifier: 2,
-      flags: NifIcon,
+      flags: NifMessage or NifIcon,
+      callbackMessage: WmTrayCallback,
       icon: icon
     )
     if shellNotifyIconW(NimAdd, addr added) == 0:
+      return failure(windowsError("app.sendNativeNotification", getLastError()))
+    added.version = NotifyIconVersion4
+    if shellNotifyIconW(NimSetVersion, addr added) == 0:
+      discard shellNotifyIconW(NimDelete, addr added)
       return failure(windowsError("app.sendNativeNotification", getLastError()))
     app.notificationVisible = true
     app.notificationWindow = owner
