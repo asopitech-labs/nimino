@@ -8,11 +8,11 @@ Status: Accepted
 
 ## Decision
 
-- `customProtocol` Capabilityは、WebView内部のリソースschemeだけを意味する。Windowsは`WebResourceRequested`、LinuxはWebKitGTK URI scheme callbackへ接続済みで、WSLはrelay未実装のため`false`または`unsupported`を返す。
+- `customProtocol` Capabilityは、WebView内部のリソースschemeだけを意味する。Windowsは`WebResourceRequested`、LinuxはWebKitGTK URI scheme callbackへ接続し、WSLは認証済み同期relayでWindows hostへ中継する。実Windows WebView2 Runtime上のWSL往復はGUI実機ハーネスで別途検証する。
 - OS deep linkは別Capability/API（将来の`openUrl`または`deepLink`）として設計する。`nimino-pack`のmanifest、Windows per-user registry、Linux Desktop Entry、WSL host activation relayを同時に設計・検証する。
 - 任意scheme、任意OS API、未検証の外部URLを暗黙に許可しない。schemeはmanifestで明示し、handlerはWindow/App scopeの許可リストに限定する。
 - Windows実装ではWebView2 SDK headerから`WebResourceRequested`のIID、vtable slot、callback寿命を固定確認し、LinuxではWebKitGTK 6.0 headerからURI scheme requestのGObject寿命を固定確認する。推測したFFI slotでは実装しない。
 
 ## Consequences
 
-Windows/Linux nativeで`customProtocol`を成功扱いにするには、scheme handlerのbody/status/MIME、navigation policy、閉鎖時callback解放、deep linkとの非混同を含む独立ハーネスが必要になる。WSL relayは未実装なのでWSLのCapabilityをfalseに維持する。
+全ターゲットで`customProtocol`を成功扱いにするには、scheme handlerのbody/status/MIME、navigation policy、閉鎖時callback解放、deep linkとの非混同を含む独立ハーネスが必要になる。DockerではLinux nativeとprotocol relayを検証し、実Windows WebView2 RuntimeのWSL往復はGUI実機ハーネスを別途実行する。

@@ -58,7 +58,7 @@ type Capability* = enum
   nativeNotification, customProtocol, webPermissionEvents
 ```
 
-`multipleWebViews`、Windows/Linuxのnative menu、system tray、native notification、web permission eventsは実装済みです。WebView内部のcustom resource schemeはWindows WebView2の`WebResourceRequested`とLinux WebKitGTKのURI scheme callbackへ接続済みで、WSL relayは未実装のためWSLでは`unsupported`です。`transparentWindow`は未対応として明示的に`false`または`unsupported`を返します。Capabilityが`true`でも、権限または現在の状態による失敗は別途結果で返します。
+`multipleWebViews`、Windows/Linuxのnative menu、system tray、native notification、web permission eventsは実装済みです。WebView内部のcustom resource schemeはWindows WebView2の`WebResourceRequested`、Linux WebKitGTKのURI scheme callback、WSLの認証済み同期relayへ接続済みです。`transparentWindow`は未対応として明示的に`false`または`unsupported`を返します。Capabilityが`true`でも、権限または現在の状態による失敗は別途結果で返します。実Windows WebView2 RuntimeでのWSL custom resource往復はGUI実機ハーネスで別途検証します。
 
 ## 所有権とスレッド
 
@@ -90,7 +90,7 @@ NativeApp (明示 close)
 
 ## リポジトリ配置
 
-M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registry、WSL client adapterを追加しています。WSL adapterはM1 setup、fake host RPC relay、実WebView2 Runtime上の読込/評価、async response/timeoutを確認済みです。M4ではprofile path、local asset境界、navigation policy、permission/download policy、デスクトップメニュー・トレイ・通知のCore/WSL relay、Windows Common Dialog/GTK FileDialogによるOSファイルダイアログを追加しました。M6ではhostless配布bundleを拒否し、Flatpak builder context生成を追加しました。WebView内部custom protocolはWindows/Linux nativeへ接続済みですがWSL relayは未実装です。正式なMSI/署名・更新、Windows toast activation、macOSは後続対象です。`pack`にはTOMLマニフェスト解析・検証と正規化JSON CLI、NSIS/Debian/RPM/AppImage/Flatpak context生成を追加しています。最終配置は次です。
+M1/M2では`native`と`wsl`を実装済みです。M3の`core`にはWindows/LinuxのApp/Window facade、WebView RPC bootstrap、GUI非依存registry、WSL client adapterを追加しています。WSL adapterはM1 setup、fake host RPC relay、実WebView2 Runtime上の読込/評価、async response/timeoutを確認済みです。M4ではprofile path、local asset境界、navigation policy、permission/download policy、デスクトップメニュー・トレイ・通知のCore/WSL relay、Windows Common Dialog/GTK FileDialogによるOSファイルダイアログを追加しました。M6ではhostless配布bundleを拒否し、Flatpak builder context生成を追加しました。WebView内部custom protocolはWindows/Linux nativeとWSL relayを実装済みですが、実Windows Runtime往復はGUI実機ハーネスで検証します。正式なMSI/署名・更新、Windows toast activation、macOSは後続対象です。`pack`にはTOMLマニフェスト解析・検証と正規化JSON CLI、NSIS/Debian/RPM/AppImage/Flatpak context生成を追加しています。最終配置は次です。
 
 ```text
 packages/

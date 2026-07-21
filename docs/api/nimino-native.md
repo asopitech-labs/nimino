@@ -212,5 +212,6 @@ discard app.run()
 resource scheme. The handler returns a status code, MIME type, and body and is
 executed synchronously on the native UI thread. This is separate from OS
 deep-link registration. Windows uses WebView2 `WebResourceRequested`; Linux
-uses WebKitGTK's URI-scheme callback. WSL relay is intentionally reported as
-unsupported until its authenticated request/response path is implemented.
+uses WebKitGTK's URI-scheme callback. WSL uses an authenticated synchronous
+request/response relay; the real Windows WebView2 Runtime path still requires
+the GUI harness.
