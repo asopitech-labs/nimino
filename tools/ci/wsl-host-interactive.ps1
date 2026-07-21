@@ -117,8 +117,31 @@ try {
       if ($message.kind -eq "event" -and $message.method -eq "native.webview.newWindowRequested") {
         $payload = $message.payload | ConvertFrom-Json
         if ($payload.webViewId -eq $webViewId) {
-          Write-Output "WSL new-window request smoke passed"
-          return
+          $popupWindowPayload = ConvertTo-Json -Compress @{ title = "Nimino interactive popup"; width = 500; height = 350; appId = "tech.asopi.nimino.interactive-popup"; profile = "interactive-popup" }
+          Write-Frame @{ version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "6"; eventId = "0"; method = "native.window.create"; payload = $popupWindowPayload; error = ""; timeoutMs = 5000 }
+          $popupWindow = Read-Frame 5000
+          if (-not [string]::IsNullOrEmpty($popupWindow.error)) { throw "Could not create explicit popup window: $($popupWindow.error)" }
+          $popupWindowId = ($popupWindow.payload | ConvertFrom-Json).windowId
+          Write-Frame @{ version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "7"; eventId = "0"; method = "native.webview.create"; payload = (ConvertTo-Json -Compress @{ windowId = $popupWindowId }); error = ""; timeoutMs = 5000 }
+          $popupView = Read-Frame 5000
+          if (-not [string]::IsNullOrEmpty($popupView.error)) { throw "Could not create explicit popup WebView: $($popupView.error)" }
+          $popupViewId = ($popupView.payload | ConvertFrom-Json).webViewId
+          $popupHtml = '<!doctype html><meta charset="utf-8"><script>window.onload=()=>chrome.webview.postMessage("interactive-popup-message")</script><p>Nimino popup opened</p>'
+          Write-Frame @{ version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""; requestId = "8"; eventId = "0"; method = "native.webview.loadHtml"; payload = (ConvertTo-Json -Compress @{ webViewId = $popupViewId; html = $popupHtml }); error = ""; timeoutMs = 5000 }
+          $popupLoad = Read-Frame 5000
+          if (-not [string]::IsNullOrEmpty($popupLoad.error)) { throw "Could not load explicit popup HTML: $($popupLoad.error)" }
+          $messageDeadline = [DateTime]::UtcNow.AddSeconds(30)
+          while ([DateTime]::UtcNow -lt $messageDeadline) {
+            try { $popupMessage = Read-Frame 1000 } catch [System.TimeoutException] { continue }
+            if ($popupMessage.kind -eq "event" -and $popupMessage.method -eq "native.webview.message") {
+              $popupMessagePayload = $popupMessage.payload | ConvertFrom-Json
+              if ($popupMessagePayload.webViewId -eq $popupViewId -and $popupMessagePayload.message -eq "interactive-popup-message") {
+                Write-Output "WSL new-window request and explicit popup message smoke passed"
+                return
+              }
+            }
+          }
+          throw "Explicit popup did not deliver its message within 30 seconds"
         }
       }
     }
