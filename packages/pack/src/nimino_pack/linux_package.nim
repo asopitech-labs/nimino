@@ -6,13 +6,14 @@
 
 import std/[json, os, osproc, strutils, times]
 
-import ./manifest
+import ./[manifest, flatpak]
 
 type
   LinuxPackageFormat* = enum
     debPackage
     rpmPackage
     appImagePackage
+    flatpakPackage
 
   LinuxPackageOptions* = object
     bundleDirectory*: string
@@ -427,6 +428,13 @@ proc buildLinuxPackage*(options: LinuxPackageOptions): PackResult[string] =
       return options.buildRpm(metadata.value, workDirectory, architecture.value)
     of appImagePackage:
       return options.buildAppImage(metadata.value, workDirectory, architecture.value)
+    of flatpakPackage:
+      let built = buildFlatpakManifest(FlatpakManifestOptions(
+        bundleDirectory: options.bundleDirectory,
+        outputDirectory: options.outputDirectory))
+      if not built.isOk:
+        return failure[string](built.error.kind, built.error.detail)
+      return built
   finally:
     if dirExists(workDirectory):
       try: removeDir(workDirectory)

@@ -5,7 +5,7 @@ import nimino_pack
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino pack <url> --name <name> --id <id> [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
+  stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
   quit(2)
 
@@ -28,6 +28,7 @@ proc runPackageLinux() =
       of "deb": options.format = debPackage
       of "rpm": options.format = rpmPackage
       of "appimage": options.format = appImagePackage
+      of "flatpak": options.format = flatpakPackage
       else: packageLinuxUsage()
       hasFormat = true
     of "--out": options.outputDirectory = value
