@@ -61,6 +61,15 @@ grep -Fx 'Icon=icon' "$root/extracted/squashfs-root/app.nimino.linux-demo.deskto
 ! grep -F 'X-Nimino-Manifest=' "$root/extracted/squashfs-root/app.nimino.linux-demo.desktop"
 APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --smoke
 
+flatpak_context="$root/out/app.nimino.linux-demo-1.2.3-flatpak"
+"$nimino" package-linux "$root/bundle" --format flatpak --out "$root/out"
+test -s "$flatpak_context/app.nimino.linux-demo.flatpak.json"
+test -f "$flatpak_context/bundle/run-nimino.sh"
+grep -F '"app-id": "app.nimino.linux-demo"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
+grep -F '"runtime": "org.gnome.Platform"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
+grep -F '"type": "dir"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
+grep -F '"path": "bundle"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
+
 if "$nimino" package-linux "$root/bundle" --format appimage --out "$root/out" --arch arm64 2>"$root/appimage-arm64.err"; then
   exit 1
 fi
