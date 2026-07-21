@@ -826,7 +826,7 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
       if hostExecutable.len == 0:
         return coreFailureOf[App](coreError(platformUnavailable, "app.create",
           detail = "nimino-wsl-host.exe was not found"))
-      let launched = launchHost(hostExecutable)
+      let launched = launchHost(hostExecutable, @[options.id])
       if not launched.isOk:
         return coreFailureOf[App](mapProtocolError("app.create", launched.failure))
       return coreSuccessOf(App(

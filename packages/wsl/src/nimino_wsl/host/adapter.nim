@@ -101,9 +101,12 @@ proc suggestedDownloadName(url: string): string =
     discard
   "download"
 
-proc newHostAdapter*(): HostAdapter =
+proc newHostAdapter*(appId = ""): HostAdapter =
   new(result)
-  result.app = newNativeApp()
+  result.app = if appId.len > 0:
+    newNativeApp(NativeAppOptions(appId: appId))
+  else:
+    newNativeApp()
   result.nextWindowId = 1
   result.nextWebViewId = 1
   let adapterPointer = cast[pointer](result)
