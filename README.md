@@ -2,7 +2,7 @@
 
 Nimをホスト言語に、OS公式APIの薄いFFIでネイティブWindowとWebViewを扱う、軽量なクロスプラットフォームWeb UIデスクトップアプリケーション基盤です。
 
-> M0〜M4のprofile、local asset境界、navigation/permission/download policy、Windows tray、Linux GTK menubar/notificationを実装済みです。`nimino-pack`はLinux desktop entryとWindowsのper-user導入用メタデータ／PowerShell templateを生成しますが、署名済みMSI・NSIS、deb・RPM・AppImageなどの正式パッケージ本体、通常Windows GUI CI、macOS、toast activationは未整備です。
+> M0〜M4のprofile、local asset境界、navigation/permission/download policy、Windows tray、Linux GTK menubar/notificationを実装済みです。`nimino-pack`はLinux desktop entry、Debian/RPM archive、Windowsのper-user導入用メタデータ／PowerShell templateを生成します。署名済みMSI・NSIS、AppImage、Flatpak、通常Windows GUI CI、macOS、toast activationは未整備です。
 
 
 ## 目標

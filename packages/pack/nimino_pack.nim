@@ -1,4 +1,5 @@
 ## Public entry point for the Nimino pack manifest and CLI helpers.
 import ./src/nimino_pack/manifest
+import ./src/nimino_pack/linux_package
 
-export manifest
+export manifest, linux_package

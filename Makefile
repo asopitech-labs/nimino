@@ -3,7 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-linux-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -63,6 +63,10 @@ pack-test: image ## nimino-packのmanifest解析テストをコンテナ内で�
 pack-cli-test: image ## nimino pack CLIのmanifest検証を実行する
 
 	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble buildPackCli && nimble testPackCli'
+
+pack-linux-test: image ## nimino-packのDebian/RPM生成とAppImage環境エラーを検証する
+
+	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble buildPackCli && nimble testPackLinux'
 
 pack-bundle-test: image ## nimino packのmanifest bundle生成を検証する
 
