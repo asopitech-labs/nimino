@@ -288,6 +288,18 @@ proc mapNativeError(error: native.NativeError): CoreError =
   
   coreError(kind, error.operation, error.platformCode, error.detail)
 
+proc normalizeCustomProtocolResponse(response: CustomProtocolResponse):
+    CustomProtocolResponse =
+  ## Keep the WSL relay identical to native dispatch: invalid status codes
+  ## become a deterministic server error and an empty MIME type uses the
+  ## WebView-safe binary default.  The handler body is preserved verbatim.
+  if response.statusCode < 100 or response.statusCode > 599:
+    return CustomProtocolResponse(statusCode: 500, mimeType: "text/plain",
+      body: "Invalid custom protocol response")
+  result = response
+  if result.mimeType.len == 0:
+    result.mimeType = "application/octet-stream"
+
 proc findWebView(window: Window; webViewId: uint64): WebView =
   if window.isNil:
     return nil
@@ -2740,10 +2752,11 @@ when defined(linux):
         mimeType: "text/plain", body: "Custom protocol request denied")
       if policy.value.kind == customProtocolPolicy and not app.customProtocolHandler.isNil:
         try:
-          customResponse = app.customProtocolHandler(CustomProtocolRequest(
+          customResponse = normalizeCustomProtocolResponse(
+            app.customProtocolHandler(CustomProtocolRequest(
             methodName: policy.value.methodName,
             url: policy.value.url,
-            path: policy.value.path))
+            path: policy.value.path)))
           allowed = customResponse.statusCode >= 100 and customResponse.statusCode <= 599
         except CatchableError:
           allowed = false
