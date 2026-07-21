@@ -18,6 +18,7 @@ var closedHandlerRan = false
 var resizeWidth = 0
 var resizeHeight = 0
 var closingAsync: Future[RpcResult]
+var desktopActionSeen = false
 
 proc startAsync(params: JsonNode): Future[RpcResult] =
   asyncRequested = true
@@ -46,6 +47,14 @@ let app = created.value
 let createdWindow = app.newWindow(title = "WSL core async test", width = 320, height = 200)
 doAssert createdWindow.isOk
 let window = createdWindow.value
+doAssert app.configureNativeMenu("File", @[
+  DesktopMenuItem(id: 9, title: "Test", enabled: true)
+], proc(itemId: uint32) =
+  doAssert itemId == 9
+  desktopActionSeen = true).isOk
+doAssert app.configureSystemTray(@[
+  DesktopMenuItem(id: 10, title: "Tray", enabled: true)
+], proc(itemId: uint32) = discard).isOk
 let extraView = window.newWebView()
 doAssert extraView.isOk
 var extraMessage = ""
@@ -75,6 +84,8 @@ doAssert window.onResize(proc(width, height: int) =
 ).isOk
 doAssert window.loadHtml("<main>WSL async adapter test</main>").isOk
 doAssert app.onReady(proc() =
+  doAssert app.sendNotification(DesktopNotification(
+    id: "async-test", title: "Async test", body: "ready")).isOk
   profileDataClear = window.clearWebViewProfileData({webViewCookies, webViewCache})
   unsupportedProfileDataClear = window.clearWebViewProfileData({webViewLocalStorage})
   doAssert not profileDataClear.finished
@@ -82,6 +93,7 @@ doAssert app.onReady(proc() =
 ).isOk
 
 doAssert app.run().isOk
+doAssert desktopActionSeen
 doAssert asyncRequested
 doAssert asyncCompleted
 doAssert neverRequested

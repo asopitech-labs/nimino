@@ -43,7 +43,8 @@ doAssert output.writeMessageTo(ProtocolMessage(
   version: ProtocolVersion,
   kind: ready,
   sessionId: SessionId,
-  payload: nativeCapabilitiesPayload(["multipleWebViews", "webPermissionEvents",
+  payload: nativeCapabilitiesPayload(["multipleWebViews", "nativeMenu", "systemTray",
+    "nativeNotification", "webPermissionEvents",
     WebViewProfileDataClearCapability])
 )).isOk
 
@@ -67,9 +68,12 @@ while true:
     case message.methodName
     of "app.capabilities":
       doAssert output.writeMessageTo(message.response($(%*{
-        "capabilities": ["multipleWebViews", "webPermissionEvents",
+        "capabilities": ["multipleWebViews", "nativeMenu", "systemTray",
+          "nativeNotification", "webPermissionEvents",
           WebViewProfileDataClearCapability]
       }))).isOk
+    of "app.configureNativeMenu", "app.configureSystemTray", "app.sendNativeNotification":
+      doAssert output.writeMessageTo(message.response("{}")).isOk
     of "native.window.create":
       doAssert output.writeMessageTo(message.response("{\"windowId\":\"1\"}")).isOk
     of "native.webview.create":
@@ -84,6 +88,9 @@ while true:
       doAssert output.writeMessageTo(message.response("{}")).isOk
       let payload = $(%*{"webViewId": "1", "url": "https://example.test/", "succeeded": true})
       doAssert output.writeMessageTo(event("native.webview.navigationCompleted", payload, nextEventId)).isOk
+      inc nextEventId
+      doAssert output.writeMessageTo(event("native.app.desktopAction",
+        $(%*{"kind": "menu", "itemId": 9}), nextEventId)).isOk
       inc nextEventId
       ## Headless harness: emulate the document-start bridge without a real
       ## WebView, so the async RPC/timeout contract can run deterministically.
