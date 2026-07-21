@@ -44,6 +44,43 @@ block systemTrayIsExplicitlyUnsupportedOffWindows:
     doAssert not configured.isOk
     doAssert configured.failure.kind == unsupported
 
+block nativeDesktopIntegrationCapabilitiesAndStatesAreExplicit:
+  let app = newNativeApp()
+  let items = [NativeMenuItem(id: 1, title: "Quit", enabled: true)]
+  when defined(linux) and not defined(niminoWsl):
+    doAssert app.supports(nativeMenu)
+    doAssert app.supports(nativeNotification)
+    doAssert app.configureNativeMenu("Nimino", items,
+      proc(itemId: uint32) = discard).isOk
+    let invalidNotification = app.sendNativeNotification(NativeNotification(
+      id: "", title: "Nimino", body: "invalid"))
+    doAssert not invalidNotification.isOk
+    doAssert invalidNotification.failure.kind == invalidArgument
+    let beforeRun = app.sendNativeNotification(NativeNotification(
+      id: "foundation", title: "Nimino", body: "not running"))
+    doAssert not beforeRun.isOk
+    doAssert beforeRun.failure.kind == invalidState
+  elif defined(windows):
+    doAssert app.supports(nativeMenu)
+    doAssert not app.supports(nativeNotification)
+    doAssert app.configureNativeMenu("Nimino", items,
+      proc(itemId: uint32) = discard).isOk
+    let notification = app.sendNativeNotification(NativeNotification(
+      id: "foundation", title: "Nimino", body: "unsupported"))
+    doAssert not notification.isOk
+    doAssert notification.failure.kind == unsupported
+  else:
+    doAssert not app.supports(nativeMenu)
+    doAssert not app.supports(nativeNotification)
+    let menu = app.configureNativeMenu("Nimino", items,
+      proc(itemId: uint32) = discard)
+    doAssert not menu.isOk
+    doAssert menu.failure.kind == unsupported
+    let notification = app.sendNativeNotification(NativeNotification(
+      id: "foundation", title: "Nimino", body: "unsupported"))
+    doAssert not notification.isOk
+    doAssert notification.failure.kind == unsupported
+
 block windowAndViewRemainSeparate:
   let app = newNativeApp()
   let window = app.newWindow("Foundation", 320, 200)

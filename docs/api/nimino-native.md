@@ -69,6 +69,10 @@ proc close*(app: NativeApp): NativeResult
 proc postToUi*(app: NativeApp, callback: proc() {.gcsafe.}): NativeResult
 proc configureSystemTray*(app: NativeApp, items: openArray[NativeMenuItem],
   handler: NativeMenuHandler): NativeResult
+proc configureNativeMenu*(app: NativeApp, title: string,
+  items: openArray[NativeMenuItem], handler: NativeMenuHandler): NativeResult
+proc sendNativeNotification*(app: NativeApp,
+  notification: NativeNotification): NativeResult
 
 proc newWindow*(app: NativeApp, options: WindowOptions): NativeResultOf[NativeWindow]
 proc close*(window: NativeWindow): NativeResult
@@ -123,6 +127,36 @@ discard app.configureSystemTray([
 
 ID `0`、空 title、重複 ID、nil handler は `invalidArgument` で拒否します。callback は
 native UI thread で呼ばれ、例外は Win32 callback 境界へ伝播しません。
+
+## Linux native menu / notification（最小実装）
+
+ネイティブLinux buildでは、`nativeMenu` と `nativeNotification` Capability を提供します。
+`configureNativeMenu` は `run` 前に一度だけ呼べ、GTK の
+[`GtkApplication.set_menubar`](https://docs.gtk.org/gtk4/method.Application.set_menubar.html)
+へ `GMenu` を登録します。各項目はアプリケーション `GSimpleAction` となり、enabled
+状態と ID を保ったまま `NativeMenuHandler` を UI thread で呼びます。現在のWindows実装は
+同じ最小メニューAPIを既存のtray context menuへ対応付けます。WSLとWindows notificationは
+Capabilityを広告せず、`unsupported` を返します。
+
+`sendNativeNotification` は `running` 状態のLinux Appだけで利用でき、GIO の
+[`GApplication.send_notification`](https://docs.gtk.org/gio/method.Application.send_notification.html)
+へ `NativeNotification(id, title, body)` を渡します。成功はOS APIに通知要求を渡せたことを
+意味するだけで、desktop shellの設定や通知抑止による非表示を検出・成功扱いにはしません。
+アプリIDに対応するdesktop entry、通知action、画像、Windows toastはこの最小実装の範囲外です。
+
+```nim
+discard app.configureNativeMenu("Nimino", [
+  NativeMenuItem(id: 1, title: "Quit", enabled: true)
+], proc(itemId: uint32) =
+  if itemId == 1:
+    discard app.quit()
+)
+
+## Idle callbackなど、app.run()中に呼ぶ
+discard app.sendNativeNotification(NativeNotification(
+  id: "ready", title: "Nimino", body: "Application started"
+))
+```
 
 `setDocumentStartScript`は`pending`のViewに一つだけscriptを設定・置換する低水準操作です。ready後の追加・変更は`invalidState`で拒否し、次のナビゲーションへ黙って適用しません。WindowsはWebView2の非同期`AddScriptToExecuteOnDocumentCreated`完了を待ってから保留中の最初の読込を開始し、LinuxはWebKitGTKの`WebKitUserScript`をdocument-startで登録します。どちらも以後のframe/ナビゲーションへ影響し得るため、URL・origin・注入ポリシーはこの層で判断しません。`nimino-core`がその制約を用いてRPC bridgeを限定します。
 
