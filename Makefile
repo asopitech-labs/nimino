@@ -64,7 +64,7 @@ pack-cli-test: image ## nimino pack CLIのmanifest検証を実行する
 
 	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble buildPackCli && nimble testPackCli'
 
-pack-linux-test: image ## nimino-packのDebian/RPM生成とAppImage環境エラーを検証する
+pack-linux-test: image ## nimino-packのDebian/RPM/AppImage生成と内容を検証する
 
 	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble buildPackCli && nimble testPackLinux'
 
