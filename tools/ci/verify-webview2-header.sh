@@ -54,3 +54,5 @@ verify_slots() {
 verify_slots ICoreWebView2 add_NewWindowRequested 44 remove_NewWindowRequested 45
 verify_slots ICoreWebView2_4 add_DownloadStarting 75 remove_DownloadStarting 76
 verify_slots ICoreWebView2PermissionRequestedEventArgs get_PermissionKind 4 put_State 7
+verify_slots ICoreWebView2DownloadStartingEventArgs get_DownloadOperation 3 put_Cancel 5
+verify_slots ICoreWebView2DownloadOperation add_BytesReceivedChanged 3 get_Uri 9

@@ -370,20 +370,29 @@ proc downloadInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
   let handler = cast[ptr DownloadStartingHandler](self)
   var allowed = false
   var downloadUrl = ""
+  var operation: pointer
+  if not args.isNil:
+    discard downloadArgsGetOperation(args, addr operation)
   if not handler.view.isNil:
+    if operation != nil:
+      var uri: WideCString
+      if succeeded(downloadOperationGetUri(operation, addr uri)) and uri != nil:
+        downloadUrl = $uri
+        coTaskMemFree(cast[pointer](uri))
     var source: WideCString
-    if succeeded(coreGetSource(handler.view, addr source)):
+    if downloadUrl.len == 0 and succeeded(coreGetSource(handler.view, addr source)):
       downloadUrl = $source
-      allowed = dispatchDownloadStarting(cast[NativeWebView](handler.view), downloadUrl)
       coTaskMemFree(cast[pointer](source))
+    allowed = dispatchDownloadStarting(cast[NativeWebView](handler.view), downloadUrl)
   if not args.isNil:
     if not allowed:
       discard downloadArgsPutCancel(args, 1)
+      if operation != nil:
+        discard comRelease(operation)
     else:
       dispatchDownloadEvent(cast[NativeWebView](handler.view), downloadUrl,
         nativeDownloadStarted, 0.0)
-      var operation: pointer
-      if succeeded(downloadArgsGetOperation(args, addr operation)) and operation != nil:
+      if operation != nil:
         var received, total: int64
         if succeeded(downloadOperationGetBytesReceived(operation, addr received)) and
             succeeded(downloadOperationGetTotalBytes(operation, addr total)) and total > 0:

@@ -110,6 +110,9 @@ type
     height*: int
     profile*: string
     inlineRemoteAssets*: bool
+    injectionCss*: seq[string]
+    injectionJavaScript*: seq[string]
+    injectionEnabled*: bool
 
   NavigationRules* = object
     allow*: seq[string]
@@ -205,6 +208,9 @@ type
     rpc*: RpcRegistry
     documentStartBridgeScript: string
     assetRoot: string
+    injectionCss: seq[string]
+    injectionJavaScript: seq[string]
+    injectionEnabled: bool
     navigationRules: NavigationRules
     navigationRulesConfigured: bool
     navigationPolicy*: proc(request: NavigationRequest): NavigationDecision
@@ -401,10 +407,27 @@ when defined(linux):
       coreFailureOf[uint64](coreError(nativeFailure, "wsl.response",
         detail = "host response is malformed"))
 
-proc bridgeDocument(html: string): string =
+proc injectionDocumentStartSource(window: Window): string
+
+proc bridgeDocument(window: Window; html: string): string =
   ## Local HTML is supplied by the application, so the bridge is part of the
   ## document before its scripts execute.
-  "<script>" & RpcBootstrapSource & "</script>" & html
+  "<script>" & RpcBootstrapSource & window.injectionDocumentStartSource() &
+    "</script>" & html
+
+proc injectionDocumentStartSource(window: Window): string =
+  if window.isNil or not window.injectionEnabled:
+    return ""
+  var source = ""
+  for css in window.injectionCss:
+    source.add("(() => { const install = () => { const style = document.createElement('style'); " &
+      "style.setAttribute('data-nimino-injection', 'css'); style.textContent = " &
+      $(%css) & "; (document.head || document.documentElement || document).appendChild(style); }; " &
+      "if (document.head || document.documentElement) install(); else " &
+      "document.addEventListener('DOMContentLoaded', install, { once: true }); })();")
+  for script in window.injectionJavaScript:
+    source.add("(() => { try { " & script & " } catch (_) {} })();")
+  source
 
 proc documentStartBridgeSource(url: string): string =
   ## The native API runs a script in every future document and child frame.
@@ -466,7 +489,8 @@ proc documentStartCookieSource(window: Window; url: string): string =
     ""
 
 proc configureDocumentStartBridge(window: Window; url: string): CoreResult =
-  let source = window.documentStartCookieSource(url) & url.documentStartBridgeSource()
+  let source = window.documentStartCookieSource(url) & url.documentStartBridgeSource() &
+    window.injectionDocumentStartSource()
   if source.len == 0 and window.documentStartBridgeScript.len == 0:
     return coreSuccess()
   ## HTTP(S) bridge guards are origin-scoped, so two paths commonly produce
@@ -761,7 +785,11 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         return coreFailureOf[Window](webViewId.failure)
       let window = Window(app: app, windowId: windowId.value, webViewId: webViewId.value,
                           profilePath: profile.value, profileName: profileName,
-                          inlineRemoteAssets: options.inlineRemoteAssets)
+                          inlineRemoteAssets: options.inlineRemoteAssets,
+                          injectionCss: options.injectionCss,
+                          injectionJavaScript: options.injectionJavaScript,
+                          injectionEnabled: options.injectionEnabled or
+                            options.injectionCss.len > 0 or options.injectionJavaScript.len > 0)
       window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
       app.windows.add(window)
       return coreSuccessOf(window)
@@ -779,7 +807,11 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   let window = Window(app: app, nativeWindow: nativeWindow.value,
                       nativeView: nativeView.value, profilePath: profile.value,
                       profileName: profileName,
-                      inlineRemoteAssets: options.inlineRemoteAssets)
+                      inlineRemoteAssets: options.inlineRemoteAssets,
+                      injectionCss: options.injectionCss,
+                      injectionJavaScript: options.injectionJavaScript,
+                      injectionEnabled: options.injectionEnabled or
+                        options.injectionCss.len > 0 or options.injectionJavaScript.len > 0)
   window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
   let configured = window.configureWindow()
   if not configured.isOk:
@@ -1502,6 +1534,28 @@ proc loadAssets*(window: Window; directory: string): CoreResult =
     coreFailure(coreError(invalidArgument, "window.loadAssets",
       detail = "asset root could not be normalized"))
 
+proc setInjection*(window: Window; css, javascript: openArray[string];
+                   enabled = true): CoreResult =
+  ## Configure application-owned CSS/JavaScript injection.  The sources are
+  ## retained in core and installed at document-start; callers must not use
+  ## this API to expose arbitrary Nim functions or OS APIs.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setInjection"))
+  for source in css:
+    if source.len == 0:
+      return coreFailure(coreError(invalidArgument, "window.setInjection",
+        detail = "CSS injection sources must not be empty"))
+  for source in javascript:
+    if source.len == 0:
+      return coreFailure(coreError(invalidArgument, "window.setInjection",
+        detail = "JavaScript injection sources must not be empty"))
+  window.injectionCss = @css
+  window.injectionJavaScript = @javascript
+  window.injectionEnabled = enabled
+  if window.lastUrl.len == 0:
+    return coreSuccess()
+  window.configureDocumentStartBridge(window.lastUrl)
+
 proc assetMime(path: string): string =
   case splitFile(path).ext.toLowerAscii()
   of ".html", ".htm": "text/html"
@@ -1907,10 +1961,12 @@ proc loadHtml*(window: Window; html: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.loadHtml"))
   window.lastUrl.setLen(0)
-  ## Inline documents carry their own bootstrap.  Force the next URL load to
-  ## install a fresh document-start bridge even when it reuses the prior URL.
-  window.documentStartBridgeScript.setLen(0)
-  let document = bridgeDocument(html)
+  ## Inline documents carry their own bootstrap. Remove any URL-scoped script
+  ## before loading so a previous origin guard cannot leak into local HTML.
+  let cleared = window.configureDocumentStartBridge("")
+  if not cleared.isOk:
+    return cleared
+  let document = window.bridgeDocument(html)
   case window.app.backend
   of nativeBackend:
     if window.nativeView.isNil:

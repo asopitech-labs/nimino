@@ -317,3 +317,12 @@ block loadUrlRejectsUnsafeInput:
   let rejected = window.loadUrl("https://example.com/has space")
   doAssert not rejected.isOk
   doAssert rejected.failure.kind == webViewError
+
+block injectionConfigurationIsValidated:
+  let created = newApp(id = "tech.asopi.injection-test", name = "Injection")
+  doAssert created.isOk
+  let window = created.value.newWindow(title = "Injection").value
+  doAssert window.setInjection(["body { color: red; }"],
+    ["globalThis.niminoInjected = true;"]).isOk
+  doAssert not window.setInjection([""], @[]).isOk
+  doAssert window.setInjection(@[], @[], enabled = false).isOk

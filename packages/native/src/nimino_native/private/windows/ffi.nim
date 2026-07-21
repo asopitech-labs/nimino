@@ -487,9 +487,9 @@ proc permissionArgsGetPermissionKind*(args: pointer; kind: ptr int32): HResult {
   dispatch(args, kind)
 
 proc downloadArgsPutCancel*(args: pointer; cancel: WinBool): HResult {.inline.} =
-  ## ICoreWebView2DownloadStartingEventArgs::put_Cancel (vtable slot 6).
+  ## ICoreWebView2DownloadStartingEventArgs::put_Cancel (vtable slot 5).
   let dispatch = cast[proc(self: pointer; cancel: WinBool): HResult {.stdcall.}](
-    cast[ptr ComInterface](args).vtable[6]
+    cast[ptr ComInterface](args).vtable[5]
   )
   dispatch(args, cancel)
 
@@ -501,30 +501,37 @@ proc downloadArgsGetOperation*(args: pointer; operation: ptr pointer): HResult {
   dispatch(args, operation)
 
 proc downloadOperationGetBytesReceived*(operation: pointer; value: ptr int64): HResult {.inline.} =
-  ## ICoreWebView2DownloadOperation::get_BytesReceived (slot 6).
+  ## ICoreWebView2DownloadOperation::get_BytesReceived (slot 13).
   let dispatch = cast[proc(self: pointer; value: ptr int64): HResult {.stdcall.}] (
-    cast[ptr ComInterface](operation).vtable[6]
+    cast[ptr ComInterface](operation).vtable[13]
   )
   dispatch(operation, value)
 
 proc downloadOperationGetTotalBytes*(operation: pointer; value: ptr int64): HResult {.inline.} =
-  ## ICoreWebView2DownloadOperation::get_TotalBytesToReceive (slot 7).
+  ## ICoreWebView2DownloadOperation::get_TotalBytesToReceive (slot 12).
   let dispatch = cast[proc(self: pointer; value: ptr int64): HResult {.stdcall.}] (
-    cast[ptr ComInterface](operation).vtable[7]
+    cast[ptr ComInterface](operation).vtable[12]
   )
   dispatch(operation, value)
 
-proc downloadOperationGetState*(operation: pointer; value: ptr int32): HResult {.inline.} =
-  ## ICoreWebView2DownloadOperation::get_State (slot 9).
-  let dispatch = cast[proc(self: pointer; value: ptr int32): HResult {.stdcall.}] (
+proc downloadOperationGetUri*(operation: pointer; value: ptr WideCString): HResult {.inline.} =
+  ## ICoreWebView2DownloadOperation::get_Uri (slot 9).
+  let dispatch = cast[proc(self: pointer; value: ptr WideCString): HResult {.stdcall.}] (
     cast[ptr ComInterface](operation).vtable[9]
   )
   dispatch(operation, value)
 
-proc downloadOperationGetInterruptReason*(operation: pointer; value: ptr int32): HResult {.inline.} =
-  ## ICoreWebView2DownloadOperation::get_InterruptReason (slot 10).
+proc downloadOperationGetState*(operation: pointer; value: ptr int32): HResult {.inline.} =
+  ## ICoreWebView2DownloadOperation::get_State (slot 16).
   let dispatch = cast[proc(self: pointer; value: ptr int32): HResult {.stdcall.}] (
-    cast[ptr ComInterface](operation).vtable[10]
+    cast[ptr ComInterface](operation).vtable[16]
+  )
+  dispatch(operation, value)
+
+proc downloadOperationGetInterruptReason*(operation: pointer; value: ptr int32): HResult {.inline.} =
+  ## ICoreWebView2DownloadOperation::get_InterruptReason (slot 17).
+  let dispatch = cast[proc(self: pointer; value: ptr int32): HResult {.stdcall.}] (
+    cast[ptr ComInterface](operation).vtable[17]
   )
   dispatch(operation, value)
 
@@ -532,14 +539,14 @@ proc downloadOperationAddBytesReceivedChanged*(operation, handler: pointer;
                                                 token: ptr EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; handler: pointer;
                            token: ptr EventRegistrationToken): HResult {.stdcall.}](
-    cast[ptr ComInterface](operation).vtable[16]
+    cast[ptr ComInterface](operation).vtable[3]
   )
   dispatch(operation, handler, token)
 
 proc downloadOperationRemoveBytesReceivedChanged*(operation: pointer;
                                                    token: EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
-    cast[ptr ComInterface](operation).vtable[17]
+    cast[ptr ComInterface](operation).vtable[4]
   )
   dispatch(operation, token)
 
@@ -547,14 +554,14 @@ proc downloadOperationAddStateChanged*(operation, handler: pointer;
                                        token: ptr EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; handler: pointer;
                            token: ptr EventRegistrationToken): HResult {.stdcall.}](
-    cast[ptr ComInterface](operation).vtable[20]
+    cast[ptr ComInterface](operation).vtable[7]
   )
   dispatch(operation, handler, token)
 
 proc downloadOperationRemoveStateChanged*(operation: pointer;
                                           token: EventRegistrationToken): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; token: EventRegistrationToken): HResult {.stdcall.}](
-    cast[ptr ComInterface](operation).vtable[21]
+    cast[ptr ComInterface](operation).vtable[8]
   )
   dispatch(operation, token)
 
