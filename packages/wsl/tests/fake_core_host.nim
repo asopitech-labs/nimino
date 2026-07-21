@@ -43,7 +43,8 @@ doAssert output.writeMessageTo(ProtocolMessage(
   version: ProtocolVersion,
   kind: ready,
   sessionId: SessionId,
-  payload: nativeCapabilitiesPayload(["webPermissionEvents"])
+  payload: nativeCapabilitiesPayload(["webPermissionEvents",
+    WebViewProfileDataClearCapability])
 )).isOk
 
 var nextEventId = 1'u64
