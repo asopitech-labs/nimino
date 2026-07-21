@@ -66,6 +66,10 @@ task testPackOnline, "Exercise the URL-to-bundle online pack flow":
   exec "nimble buildNiminoHost"
   exec "bash tools/ci/test_pack_online.sh /tmp/nimino /tmp/nimino-host"
 
+task testPackPopularCatalog, "Verify signed Popular Packages catalog entries":
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-popular-catalog-nimcache --out:/tmp/nimino-test-popular-catalog --path:packages/pack --path:packages/pack/src packages/pack/tests/test_popular_catalog.nim"
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-popular-signature-nimcache --out:/tmp/nimino-test-popular-signature --path:packages/pack --path:packages/pack/src packages/pack/tests/test_popular_catalog_signature.nim"
+
 task testPackAppImageGuardrails, "Verify incomplete AppImage closure fails closed":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-appimage-guardrails-nimcache --out:/tmp/nimino-test-appimage-guardrails --path:packages/pack --path:packages/pack/src packages/pack/tests/test_appimage_guardrails.nim"
   exec "bash tools/ci/test_pack_appimage_guardrails.sh /tmp/nimino"

@@ -42,6 +42,7 @@ jobs:
           pack-test
           pack-cli-test
           pack-linux-test
+          pack-popular-catalog-test
           pack-appimage-guardrails
           pack-windows-test
           pack-archive-test
