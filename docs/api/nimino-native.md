@@ -90,7 +90,7 @@ proc newWebView*(window: NativeWindow, bounds: Option[Rect] = none(Rect)):
   NativeResultOf[NativeWebView]
 proc close*(view: NativeWebView): NativeResult
 proc loadUrl*(view: NativeWebView, url: string): NativeResult
-proc loadHtml*(view: NativeWebView, html: string): NativeResult
+proc loadHtml*(view: NativeWebView, html: string, baseUrl = ""): NativeResult
 proc setDocumentStartScript*(view: NativeWebView, script: string): NativeResult
 proc evalJavaScript*(view: NativeWebView, script: string): Future[NativeResultOf[string]]
 proc onMessage*(view: NativeWebView, callback: proc(message: string) {.gcsafe.})
@@ -103,7 +103,19 @@ proc onNewWindowRequested*(view: NativeWebView,
 proc onError*(view: NativeWebView, callback: proc(error: NativeError) {.gcsafe.})
 ```
 
-`newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。HTMLのbase URL指定は未実装で、将来の拡張候補です。
+`newWebView`が`pending`の間でも、M1では直近の`loadUrl`または`loadHtml`を一件だけ保持し、ready後に実行します。Windowが先に閉じたときは要求を成功扱いせず`invalidState`または`webViewError`で完了します。
+
+`loadHtml`の`baseUrl`はネイティブLinuxだけで利用できます。非空値は
+[`webkit_web_view_load_html`](https://webkitgtk.org/reference/webkit2gtk/2.39.1/method.WebView.load_html.html)
+の`base_uri`へそのまま渡され、HTML内の相対URLを解決します。WebKitGTKの仕様上、base URI外の絶対ローカルパスはweb processを終了させ得るため、ローカルassetの許可・パス制御は`nimino-core`が担います。空文字列は`NULL`として渡され、WebKitGTKの既定`about:blank`を使います。
+
+Windowsの[`ICoreWebView2::NavigateToString`](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/working-with-local-content)はbase URIを受け取らず、生成文書は`about:blank` originです。そのためWindowsと`-d:niminoWsl`では非空`baseUrl`を黙って無視せず`unsupported`で拒否します。通常の`loadHtml(html)`は従来どおり全ターゲットで使えます。
+
+```nim
+## Linux native build only
+discard view.loadHtml("<img src=\"images/logo.svg\">",
+  baseUrl = "https://example.test/assets/")
+```
 
 ## Windows system tray（最小実装）
 
