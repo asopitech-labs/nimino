@@ -243,9 +243,9 @@ function Wait-ForNewWindowRequest([string]$webViewId) {
           -not $payload.url.StartsWith("data:text/html,")) {
         throw "WebView emitted a new-window request with an unexpected URL"
       }
-      $sawNewWindowRequest = $true
+      $sawNewWindowRequest = $payload
     }
-    if ($sawTrigger -and $sawNewWindowRequest) { return }
+    if ($sawTrigger -and $sawNewWindowRequest) { return $sawNewWindowRequest }
   }
   throw "New-window trigger did not produce both the DOM message and new-window request"
 }
@@ -508,11 +508,37 @@ try {
         -not [string]::IsNullOrEmpty($newWindowEvaluation.error)) {
       throw "Host did not invoke the new-window test control"
     }
-    Wait-ForNewWindowRequest $webViewId
+    $popupRequest = Wait-ForNewWindowRequest $webViewId
+    $popupWindowRequestId = "18"
+    Write-Frame @{
+      requestId = $popupWindowRequestId; eventId = "0"; method = "native.window.create"
+      payload = (ConvertTo-Json -Compress @{ title = "Nimino Popup Smoke"; width = 400; height = 300; appId = "app.nimino.popup-smoke"; profile = "popup" })
+      error = ""; timeoutMs = 5000
+    }
+    $popupWindowResponse = Read-Response $popupWindowRequestId
+    if (-not [string]::IsNullOrEmpty($popupWindowResponse.error)) { throw "Host could not create an explicit popup window" }
+    $popupWindowId = ($popupWindowResponse.payload | ConvertFrom-Json).windowId
+    $popupViewRequestId = "19"
+    Write-Frame @{
+      requestId = $popupViewRequestId; eventId = "0"; method = "native.webview.create"
+      payload = (ConvertTo-Json -Compress @{ windowId = $popupWindowId }); error = ""; timeoutMs = 5000
+    }
+    $popupViewResponse = Read-Response $popupViewRequestId
+    if (-not [string]::IsNullOrEmpty($popupViewResponse.error)) { throw "Host could not create the explicit popup WebView" }
+    $popupViewId = ($popupViewResponse.payload | ConvertFrom-Json).webViewId
+    $popupHtml = '<!doctype html><meta charset="utf-8"><script>window.onload=()=>chrome.webview.postMessage("popup-message-received")</script><p>Nimino popup</p>'
+    $popupLoadRequestId = "20"
+    Write-Frame @{
+      requestId = $popupLoadRequestId; eventId = "0"; method = "native.webview.loadHtml"
+      payload = (ConvertTo-Json -Compress @{ webViewId = $popupViewId; html = $popupHtml }); error = ""; timeoutMs = 5000
+    }
+    $popupLoadResponse = Read-Response $popupLoadRequestId
+    if (-not [string]::IsNullOrEmpty($popupLoadResponse.error)) { throw "Host could not load the explicit popup document" }
+    Wait-ForWebMessage $popupViewId "popup-message-received"
   }
 
   $script:smokePhase = "shutdown"
-  $shutdownRequestId = if ($VerifyNewWindow) { "18" } else { "14" }
+  $shutdownRequestId = if ($VerifyNewWindow) { "21" } else { "14" }
   Write-Frame @{
     version = 1; kind = "shutdown"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = $shutdownRequestId; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000
