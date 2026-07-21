@@ -25,7 +25,9 @@ task test, "Run Nimino unit tests in ARC mode":
 
 task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-linux-smoke-nimcache --out:/tmp/nimino-linux-smoke --path:packages/native packages/native/tests/test_linux_smoke.nim"
-  exec "xvfb-run -a /tmp/nimino-linux-smoke"
+  ## Keep a stalled GLib/WebKit callback from indefinitely occupying a CI
+  ## worker. The smoke itself reports all required completion assertions.
+  exec "timeout 45s xvfb-run -a /tmp/nimino-linux-smoke"
 
 task testCoreLinuxRpcSmoke, "Run the Linux core RPC smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_smoke.nim"
