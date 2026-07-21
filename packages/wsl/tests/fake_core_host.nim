@@ -68,6 +68,8 @@ while true:
       doAssert output.writeMessageTo(incomingMessage.response("{\"windowId\":\"1\"}")).isOk
     of "native.webview.create":
       doAssert output.writeMessageTo(incomingMessage.response("{\"webViewId\":\"1\"}")).isOk
+    of "native.webview.setDevToolsEnabled":
+      doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
     of "native.window.setTitle":
       if structuredError:
         doAssert output.writeMessageTo(ProtocolMessage(

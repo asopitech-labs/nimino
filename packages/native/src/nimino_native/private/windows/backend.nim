@@ -865,6 +865,19 @@ proc windowsSetSize(window: NativeWindow): NativeResult =
     return failure(windowsError("window.setSize", getLastError()))
   success()
 
+proc windowsSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult =
+  if view.isNil or view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.setDevToolsEnabled"))
+  var settings: pointer
+  let getStatus = coreGetSettings(view.platformView, addr settings)
+  if not succeeded(getStatus) or settings.isNil:
+    return failure(hresultError("webview.getSettings", getStatus))
+  let status = settingsPutAreDevToolsEnabled(settings, if enabled: 1 else: 0)
+  discard comRelease(settings)
+  if not succeeded(status):
+    return failure(hresultError("webview.setDevToolsEnabled", status))
+  success()
+
 proc windowsSetResizable(window: NativeWindow; resizable: bool): NativeResult =
   if window.platformWindow == nil:
     return failure(nativeError(invalidState, "window.setResizable"))
@@ -1430,6 +1443,10 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
 
   view.platformView = core
   view.state = ready
+  let devTools = view.windowsSetDevToolsEnabled(view.devToolsEnabled)
+  if not devTools.isOk:
+    view.window.app.windowsFail(devTools.failure)
+    return S_OK
   let navigationStarting = view.windowsConfigureNavigationStarting()
   if not navigationStarting.isOk:
     view.window.app.windowsFail(navigationStarting.failure)

@@ -177,3 +177,9 @@ Win32 `SetForegroundWindow`、WSLではWindows hostへ中継します。
 `window.onNewWindow`は新規Window要求を通知します。暗黙生成は行わず、アプリケーションが
 許可した場合に`window.openPopup(request)`を呼ぶことで、実行中のWindows/Linux/WSLでも
 Popup WindowとWebViewを生成してURLを読み込みます。
+
+`CoreWindowOptions.disableDevTools = true`または`window.setDevToolsEnabled(false)`は、
+WebView2の`ICoreWebView2Settings::put_AreDevToolsEnabled`、WebKitGTKの
+`webkit_settings_set_enable_developer_extras`へ接続します。JavaScript注入による擬似制御では
+なく、ネイティブ設定として適用されます。未対応のバックエンドは成功扱いにせず
+`platformUnavailable`を返します。

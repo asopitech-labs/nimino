@@ -19,6 +19,7 @@ type
   GAction* {.incompleteStruct.} = object
   GNotification* {.incompleteStruct.} = object
   WebKitWebView* {.incompleteStruct.} = object
+  WebKitSettings* {.incompleteStruct.} = object
   WebKitNetworkSession* {.incompleteStruct.} = object
   WebKitWebsiteDataManager* {.incompleteStruct.} = object
   WebKitUserContentManager* {.incompleteStruct.} = object
@@ -136,6 +137,11 @@ proc g_source_remove*(tag: uint32): cint
   {.cdecl, importc, dynlib: LibGlib.}
 
 proc webkit_web_view_new*(): ptr WebKitWebView
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_web_view_get_settings*(view: ptr WebKitWebView): ptr WebKitSettings
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_settings_set_enable_developer_extras*(settings: ptr WebKitSettings;
+                                                   enabled: cint)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_get_type*(): culong
   {.cdecl, importc, dynlib: LibWebKit.}

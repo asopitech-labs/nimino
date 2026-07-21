@@ -113,6 +113,8 @@ type
     injectionCss*: seq[string]
     injectionJavaScript*: seq[string]
     injectionEnabled*: bool
+    ## Disable browser developer tools for production windows.
+    disableDevTools*: bool
 
   NavigationRules* = object
     allow*: seq[string]
@@ -211,6 +213,7 @@ type
     injectionCss: seq[string]
     injectionJavaScript: seq[string]
     injectionEnabled: bool
+    devToolsEnabled: bool
     navigationRules: NavigationRules
     navigationRulesConfigured: bool
     navigationPolicy*: proc(request: NavigationRequest): NavigationDecision
@@ -554,6 +557,27 @@ proc suggestedDownloadName(url: string): string =
 
 proc syncDocumentCookies*(window: Window): Future[CoreResult]
 
+proc configureDevTools(window: Window; enabled: bool): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setDevToolsEnabled"))
+  var configured: CoreResult
+  case window.app.backend
+  of nativeBackend:
+    configured = native.setDevToolsEnabled(window.nativeView, enabled).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let response = window.app.wslCall("native.webview.setDevToolsEnabled", $(%*{
+        "webViewId": $window.webViewId,
+        "enabled": enabled
+      }))
+      configured = if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else:
+      configured = coreFailure(coreError(platformUnavailable,
+        "window.setDevToolsEnabled"))
+  if configured.isOk:
+    window.devToolsEnabled = enabled
+  configured
+
 proc configureWindow(window: Window): CoreResult =
   let messageConfigured = native.onMessage(window.nativeView, proc(message: string) =
     if window != nil and not window.closed:
@@ -789,7 +813,11 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                           injectionCss: options.injectionCss,
                           injectionJavaScript: options.injectionJavaScript,
                           injectionEnabled: options.injectionEnabled or
-                            options.injectionCss.len > 0 or options.injectionJavaScript.len > 0)
+                            options.injectionCss.len > 0 or options.injectionJavaScript.len > 0,
+                          devToolsEnabled: not options.disableDevTools)
+      let devTools = window.configureDevTools(not options.disableDevTools)
+      if not devTools.isOk:
+        return coreFailureOf[Window](devTools.failure)
       window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
       app.windows.add(window)
       return coreSuccessOf(window)
@@ -811,7 +839,11 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                       injectionCss: options.injectionCss,
                       injectionJavaScript: options.injectionJavaScript,
                       injectionEnabled: options.injectionEnabled or
-                        options.injectionCss.len > 0 or options.injectionJavaScript.len > 0)
+                        options.injectionCss.len > 0 or options.injectionJavaScript.len > 0,
+                      devToolsEnabled: not options.disableDevTools)
+  let devTools = window.configureDevTools(not options.disableDevTools)
+  if not devTools.isOk:
+    return coreFailureOf[Window](devTools.failure)
   window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
   let configured = window.configureWindow()
   if not configured.isOk:
@@ -1558,6 +1590,12 @@ proc setInjection*(window: Window; css, javascript: openArray[string];
   if window.lastUrl.len == 0:
     return coreSuccess()
   window.configureDocumentStartBridge(window.lastUrl)
+
+proc setDevToolsEnabled*(window: Window; enabled: bool): CoreResult =
+  ## Change developer-tools availability for an existing window. The request
+  ## is applied to the native WebView settings and is not implemented by
+  ## JavaScript injection.
+  window.configureDevTools(enabled)
 
 proc assetMime(path: string): string =
   case splitFile(path).ext.toLowerAscii()

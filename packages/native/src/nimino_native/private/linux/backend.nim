@@ -103,6 +103,17 @@ proc linuxSendNativeNotification(app: NativeApp;
   g_object_unref(nativeNotification)
   success()
 
+proc linuxSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult =
+  if view.isNil or view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.setDevToolsEnabled"))
+  let settings = webkit_web_view_get_settings(
+    cast[ptr WebKitWebView](view.platformView))
+  if settings.isNil:
+    return failure(nativeError(webViewError, "webview.setDevToolsEnabled",
+      detail = "WebKitSettings is unavailable"))
+  webkit_settings_set_enable_developer_extras(settings, if enabled: 1 else: 0)
+  success()
+
 proc linuxBrowsingDataTypes(kinds: set[NativeBrowsingDataKind]): uint32 =
   ## Keep this mapping deliberately narrow: WebKitGTK exposes IndexedDB and
   ## service-worker registrations as independent WebsiteDataTypes, while
@@ -718,6 +729,9 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
 
   view.platformView = g_object_ref_sink(cast[pointer](webView))
   view.state = ready
+  let devTools = view.linuxSetDevToolsEnabled(view.devToolsEnabled)
+  if not devTools.isOk:
+    return devTools
   let messaging = view.linuxConfigureMessageBridge()
   if not messaging.isOk:
     return messaging

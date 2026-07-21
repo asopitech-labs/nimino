@@ -68,6 +68,8 @@ while true:
       doAssert output.writeMessageTo(message.response("{\"windowId\":\"1\"}")).isOk
     of "native.webview.create":
       doAssert output.writeMessageTo(message.response("{\"webViewId\":\"1\"}")).isOk
+    of "native.webview.setDevToolsEnabled":
+      doAssert output.writeMessageTo(message.response("{}")).isOk
     of "native.webview.loadHtml":
       doAssert output.writeMessageTo(message.response("{}")).isOk
       let payload = $(%*{"webViewId": "1", "url": "https://example.test/", "succeeded": true})

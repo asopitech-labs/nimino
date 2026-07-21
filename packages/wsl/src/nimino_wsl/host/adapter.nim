@@ -561,6 +561,21 @@ proc handleWebViewSetDocumentStartScript(adapter: HostAdapter;
     return nativeFailure("native.webview.setDocumentStartScript", configured)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
+proc handleWebViewSetDevToolsEnabled(adapter: HostAdapter;
+                                     payload: JsonNode): ProtocolResultOf[HostAction] =
+  let webViewId = payload.requiredId("webViewId")
+  let enabled = payload.requiredBool("enabled")
+  if not webViewId.isOk:
+    return failureOf[HostAction](webViewId.failure)
+  if not enabled.isOk:
+    return failureOf[HostAction](enabled.failure)
+  if not adapter.webViews.hasKey(webViewId.value):
+    return errorAction("unknown webViewId")
+  let configured = adapter.webViews[webViewId.value].setDevToolsEnabled(enabled.value)
+  if not configured.isOk:
+    return nativeFailure("native.webview.setDevToolsEnabled", configured)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleWebViewSetNavigationRules(adapter: HostAdapter;
                                      payload: JsonNode): ProtocolResultOf[HostAction] =
   if adapter.uiStartRequested:
@@ -776,6 +791,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWebViewCreate(payload.value)
   of "native.webview.setDocumentStartScript":
     adapter.handleWebViewSetDocumentStartScript(payload.value)
+  of "native.webview.setDevToolsEnabled":
+    adapter.handleWebViewSetDevToolsEnabled(payload.value)
   of "native.webview.setNavigationRules":
     adapter.handleWebViewSetNavigationRules(payload.value)
   of "native.webview.loadUrl":

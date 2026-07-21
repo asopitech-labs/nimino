@@ -132,6 +132,7 @@ type
     pendingHtml: string
     pendingHtmlBaseUrl: string
     documentStartScript: string
+    devToolsEnabled: bool
     documentStartScriptId: string
     documentStartScriptUpdatePending: bool
     platformView: pointer
@@ -181,6 +182,7 @@ type
 when defined(linux) and not defined(niminoWsl):
   proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.}
   proc linuxCreateWindow(window: NativeWindow): NativeResult
+  proc linuxSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc linuxClearBrowsingData(view: NativeWebView;
                               request: NativeBrowsingDataRequest): NativeResult
@@ -191,6 +193,7 @@ elif defined(windows):
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc windowsClearBrowsingData(view: NativeWebView;
                                 request: NativeBrowsingDataRequest): NativeResult
+  proc windowsSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
   proc windowsReplaceDocumentStartScript(view: NativeWebView;
                                           script: string): NativeResult
 
@@ -546,7 +549,7 @@ proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView] =
   if window.views.len > 0:
     return failureOf[NativeWebView](nativeError(unsupported, "webview.create", detail = "M1 supports one view per window"))
 
-  let view = NativeWebView(window: window, state: pending)
+  let view = NativeWebView(window: window, state: pending, devToolsEnabled: true)
   window.views.add(view)
   if window.app.state == running:
     when defined(linux) and not defined(niminoWsl):
@@ -797,6 +800,21 @@ proc setDocumentStartScript*(view: NativeWebView; script: string): NativeResult 
     return view.windowsReplaceDocumentStartScript(script)
   else:
     failure(nativeError(unsupported, "webview.setDocumentStartScript"))
+
+proc setDevToolsEnabled*(view: NativeWebView; enabled: bool): NativeResult =
+  ## Configure the browser engine's developer tools at the native settings
+  ## layer. This remains effective before the first document is loaded.
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.setDevToolsEnabled"))
+  view.devToolsEnabled = enabled
+  if view.state == pending:
+    return success()
+  when defined(linux) and not defined(niminoWsl):
+    view.linuxSetDevToolsEnabled(enabled)
+  elif defined(windows):
+    view.windowsSetDevToolsEnabled(enabled)
+  else:
+    failure(nativeError(unsupported, "webview.setDevToolsEnabled"))
 
 proc evalJavaScript*(view: NativeWebView; script: string): Future[NativeResultOf[string]] =
   let request = NativeScriptRequest(

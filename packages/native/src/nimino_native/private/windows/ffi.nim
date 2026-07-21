@@ -442,6 +442,21 @@ proc controllerGetCore*(controller: pointer; core: ptr pointer): HResult {.inlin
   )
   dispatch(controller, core)
 
+proc coreGetSettings*(core: pointer; settings: ptr pointer): HResult {.inline.} =
+  ## ICoreWebView2::get_Settings (vtable slot 3).
+  let dispatch = cast[proc(self: pointer; settings: ptr pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](core).vtable[3]
+  )
+  dispatch(core, settings)
+
+proc settingsPutAreDevToolsEnabled*(settings: pointer;
+                                    enabled: WinBool): HResult {.inline.} =
+  ## ICoreWebView2Settings::put_AreDevToolsEnabled (vtable slot 12).
+  let dispatch = cast[proc(self: pointer; enabled: WinBool): HResult {.stdcall.}](
+    cast[ptr ComInterface](settings).vtable[12]
+  )
+  dispatch(settings, enabled)
+
 proc coreNavigate*(core: pointer; uri: WideCString): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; uri: WideCString): HResult {.stdcall.}](
     cast[ptr ComInterface](core).vtable[5]
