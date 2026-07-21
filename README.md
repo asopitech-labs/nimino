@@ -44,6 +44,8 @@ Linux配布物は`make pack-linux-test`でDebian/RPM/AppImageの生成、archive
 
 Windows配布物は`make pack-windows-test`でDocker内のNSISを使いper-user setup EXEをクロス生成します。setupのWindows実機でのinstall/uninstall/upgradeとcode signingは別途検証が必要です。
 
+WSLの自動smokeは既定120秒でhostを回収します。環境に応じて`WSL_SMOKE_TIMEOUT=30 make wsl-host-popup-smoke`のように短縮できます。
+
 Linuxの実ネイティブスモークは`make linux-smoke`で実行します。これはDockerのnamespace制限を回避するため、そのテストコンテナだけでWebKit sandboxを無効にし、GIO notification request用にprivate D-Bus sessionを起動します。アプリの本番実行設定にはこの環境変数やテスト用sessionを含めません。
 
 Dockerデーモンが利用できない環境では、コンテナ内ビルド・テストは実行できません。`make wsl-host-smoke`はWSL、Windows Interop、PowerShell、およびWindowsのWebView2 Evergreen Runtimeを必要とします。LoaderはDocker image内で固定SDKから取り出すため、ローカルのNim開発ツールやSDK導入は不要です。
