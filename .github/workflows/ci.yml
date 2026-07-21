@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_wsl_gui:
+        description: "Run the WSL/Windows WebView2 GUI smoke suite on a configured self-hosted WSL runner"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nimino-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux / Docker tests and Windows cross-builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the development image from the repository Dockerfile
+        run: docker compose build nimino-dev
+
+      - name: Run unit, protocol, core, pack, Linux GUI, and Windows cross checks
+        run: >-
+          make
+          verify-env
+          test
+          pack-test
+          pack-cli-test
+          pack-linux-test
+          pack-windows-test
+          pack-archive-test
+          linux-smoke
+          core-linux-rpc-smoke
+          core-linux-rpc-url-smoke
+          core-linux-rpc-async-smoke
+          windows-cross
+          core-windows-cross
+          wsl-host-cross
+
+      - name: Upload cross-build artifacts for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nimino-windows-cross-artifacts
+          if-no-files-found: ignore
+          path: |
+            .tmp/*.exe
+            .tmp/*.dll
+
+  wsl-gui:
+    name: WSL / Windows WebView2 GUI smoke (manual, self-hosted)
+    # A hosted Linux or Windows runner cannot provide the project's required
+    # logged-in Windows GUI + WSL Interop boundary. This job is therefore only
+    # eligible for an explicit workflow_dispatch request on a runner labelled
+    # self-hosted,wsl2,windows-gui.
+    if: github.event_name == 'workflow_dispatch' && inputs.run_wsl_gui == true
+    runs-on: [self-hosted, wsl2, windows-gui]
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Verify WSL GUI prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${WSL_INTEROP:-}" || { echo 'WSL_INTEROP is missing'; exit 1; }
+          command -v powershell.exe >/dev/null || { echo 'powershell.exe interop is missing'; exit 1; }
+          command -v cmd.exe >/dev/null || { echo 'cmd.exe interop is missing'; exit 1; }
+          command -v wslpath >/dev/null || { echo 'wslpath is missing'; exit 1; }
+          docker compose version
+          powershell.exe -NoProfile -Command '$roots = @((Join-Path ${env:ProgramFiles(x86)} "Microsoft\\EdgeWebView\\Application"), (Join-Path $env:ProgramFiles "Microsoft\\EdgeWebView\\Application")); if (-not ($roots | Where-Object { $_ -and (Test-Path -LiteralPath $_) })) { throw "WebView2 Evergreen Runtime is missing" }; Write-Host "WebView2 Evergreen Runtime detected"'
+
+      - name: Run host and WSL client smoke suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          make wsl-host-smoke
+          make wsl-host-abnormal-smoke
+          make wsl-host-popup-smoke
+          make wsl-client-smoke
+          make wsl-core-smoke
+          make wsl-core-rpc-url-smoke
+          make wsl-core-rpc-async-smoke
+
+      - name: Collect host logs and clean up native processes
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          make kill-nimino-windows
+
+  wsl-gui-not-requested:
+    name: WSL GUI smoke was not requested
+    # A manual dispatch that does not opt in must not be reported as a green
+    # WSL GUI verification. Pushes and pull requests intentionally omit this
+    # job because the self-hosted GUI runner is not part of ordinary CI.
+    if: github.event_name == 'workflow_dispatch' && inputs.run_wsl_gui != true
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require explicit WSL GUI smoke opt-in
+        run: |
+          echo 'Set run_wsl_gui=true and dispatch again on a self-hosted WSL GUI runner.'
+          exit 1
