@@ -21,9 +21,19 @@ if (-not (Test-Path -LiteralPath $installer)) {
 }
 
 Write-Host "Installing WebView2 Evergreen Runtime..."
-$process = Start-Process -FilePath $installer -ArgumentList "/silent", "/install" -Wait -PassThru
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+$isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($isAdmin) {
+  $process = Start-Process -FilePath $installer -ArgumentList "/silent", "/install" -Wait -PassThru
+} else {
+  Write-Host "Requesting Windows administrator elevation for Edge Update..."
+  $process = Start-Process -FilePath $installer -ArgumentList "/silent", "/install" -Verb RunAs -Wait -PassThru
+}
 if ($process.ExitCode -ne 0) {
-  throw "WebView2 installer failed with exit code $($process.ExitCode)"
+  $hex = "0x" + $process.ExitCode.ToString("X8")
+  Write-Error "WebView2 installer failed with exit code $($process.ExitCode) ($hex)."
+  Write-Error "Check EdgeUpdate logs under $env:ProgramData\Microsoft\EdgeUpdate\Log and $env:LOCALAPPDATA\Microsoft\EdgeUpdate\Log."
+  throw "WebView2 Runtime installation failed"
 }
 
 $runtimeRoots = @(
