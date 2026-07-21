@@ -8,6 +8,8 @@ if paramCount() != 1:
 putEnv("NIMINO_WSL_HOST_EXE", paramStr(1))
 
 var pendingAsync: Future[RpcResult]
+var profileDataClear: Future[CoreResult]
+var unsupportedProfileDataClear: Future[CoreResult]
 var asyncRequested = false
 var asyncCompleted = false
 var neverRequested = false
@@ -39,8 +41,22 @@ doAssert window.rpc.register("async.request", startAsync)
 doAssert window.rpc.registerSync("async.complete", completeAsync)
 doAssert window.rpc.register("never", neverCompletes)
 doAssert window.loadHtml("<main>WSL async adapter test</main>").isOk
+doAssert app.onReady(proc() =
+  profileDataClear = window.clearWebViewProfileData({webViewCookies, webViewCache})
+  unsupportedProfileDataClear = window.clearWebViewProfileData({webViewLocalStorage})
+  doAssert not profileDataClear.finished
+  doAssert not unsupportedProfileDataClear.finished
+).isOk
 
 doAssert app.run().isOk
 doAssert asyncRequested
 doAssert asyncCompleted
 doAssert neverRequested
+doAssert profileDataClear != nil
+doAssert profileDataClear.finished
+doAssert profileDataClear.read().isOk
+doAssert unsupportedProfileDataClear != nil
+doAssert unsupportedProfileDataClear.finished
+let unsupportedResult = unsupportedProfileDataClear.read()
+doAssert not unsupportedResult.isOk
+doAssert unsupportedResult.failure.kind == platformUnavailable

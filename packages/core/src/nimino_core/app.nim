@@ -173,6 +173,10 @@ type
     webViewLocalStorage
     webViewCache
 
+  PendingWslProfileDataClear = object
+    requestId: uint64
+    target: Future[CoreResult]
+
   App* = ref object
     state: CoreAppState
     backend: CoreBackend
@@ -186,6 +190,7 @@ type
     exitHandler: proc()
     when defined(linux):
       wslClient: WslClient
+      pendingWslProfileDataClears: seq[PendingWslProfileDataClear]
     windows: seq[Window]
 
   Window* = ref object
@@ -342,6 +347,31 @@ when defined(linux):
     if not reply.isOk:
       return coreFailureOf[ProtocolMessage](mapProtocolError("wsl." & methodName, reply.failure))
     coreSuccessOf(reply.value)
+
+  proc wslSupportsProfileDataClear(app: App): bool {.inline.} =
+    not app.isNil and not app.wslClient.isNil and
+      WebViewProfileDataClearCapability in app.wslClient.capabilities
+
+  proc wslNativeErrorKind(value: string): CoreErrorKind =
+    case value
+    of "unsupported": platformUnavailable
+    of "invalidArgument": invalidArgument
+    of "invalidState": invalidState
+    of "permissionDenied": permissionDenied
+    of "osError": osError
+    of "webViewError": webViewError
+    else: nativeFailure
+
+  proc wslProfileDataKinds(kinds: set[WebViewProfileDataKind]): JsonNode =
+    result = newJArray()
+    for kind in kinds:
+      case kind
+      of webViewCookies:
+        result.add(%"cookies")
+      of webViewLocalStorage:
+        result.add(%"localStorage")
+      of webViewCache:
+        result.add(%"cache")
 
   proc responseId(response: ProtocolMessage; name: string): CoreResultOf[uint64] =
     try:
@@ -928,11 +958,34 @@ proc clearWebViewProfileData*(window: Window;
         target.complete(completed.read().fromNative())
     )
   of wslBackend:
-    ## WSL must not tunnel this browser-engine operation opportunistically.
-    ## The Windows host protocol has no async profile-clear lifecycle yet.
-    target.complete(coreFailure(coreError(platformUnavailable,
-      "window.clearWebViewProfileData", detail =
-        "live browser profile clearing is unavailable through the WSL host")))
+    when defined(linux):
+      ## A pre-relay host is deliberately not probed with an unknown method.
+      ## The authenticated ready capability is the compatibility boundary.
+      if not window.app.wslSupportsProfileDataClear():
+        target.complete(coreFailure(coreError(platformUnavailable,
+          "window.clearWebViewProfileData", detail =
+            "the connected WSL host does not support browser data clearing")))
+        return
+      if window.app.state != coreRunning or not window.app.wslUiStarted:
+        target.complete(coreFailure(coreError(invalidState,
+          "window.clearWebViewProfileData", detail =
+            "WSL browser data clearing requires an active UI session")))
+        return
+      let sent = window.app.wslClient.sendRequest("native.webview.clearBrowsingData", $(%*{
+        "webViewId": $window.webViewId,
+        "kinds": wslProfileDataKinds(kinds)
+      }))
+      if not sent.isOk:
+        target.complete(coreFailure(mapProtocolError("window.clearWebViewProfileData",
+          sent.failure)))
+        return
+      window.app.pendingWslProfileDataClears.add(PendingWslProfileDataClear(
+        requestId: sent.value,
+        target: target
+      ))
+    else:
+      target.complete(coreFailure(coreError(platformUnavailable,
+        "window.clearWebViewProfileData")))
 
 proc writeCookie*(window: Window; cookie: ProfileCookie): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -1904,7 +1957,56 @@ proc invokeReady(app: App) =
     except CatchableError: discard
 
 when defined(linux):
+  proc processWslProfileDataClearResponse(app: App;
+                                          response: ProtocolMessage): CoreResultOf[bool] =
+    var index = 0
+    while index < app.pendingWslProfileDataClears.len:
+      let pending = app.pendingWslProfileDataClears[index]
+      if pending.requestId != response.requestId:
+        inc index
+        continue
+      app.pendingWslProfileDataClears.delete(index)
+      if response.error.len > 0:
+        pending.target.complete(coreFailure(coreError(nativeFailure,
+          "window.clearWebViewProfileData", detail = "WSL host rejected browser data clear")))
+        return coreSuccessOf(false)
+      try:
+        let payload = parseJson(response.payload)
+        if payload.kind != JObject or not payload.hasKey("ok") or
+            payload["ok"].kind != JBool:
+          pending.target.complete(coreFailure(coreError(nativeFailure,
+            "window.clearWebViewProfileData", detail =
+              "WSL browser data clear response is malformed")))
+          return coreSuccessOf(false)
+        if payload["ok"].getBool():
+          pending.target.complete(coreSuccess())
+          return coreSuccessOf(false)
+        if not payload.hasKey("kind") or not payload.hasKey("operation") or
+            not payload.hasKey("platformCode") or not payload.hasKey("detail") or
+            payload["kind"].kind != JString or payload["operation"].kind != JString or
+            payload["platformCode"].kind != JInt or payload["detail"].kind != JString:
+          pending.target.complete(coreFailure(coreError(nativeFailure,
+            "window.clearWebViewProfileData", detail =
+              "WSL browser data clear response is malformed")))
+          return coreSuccessOf(false)
+        pending.target.complete(coreFailure(coreError(
+          wslNativeErrorKind(payload["kind"].getStr()),
+          "window.clearWebViewProfileData",
+          platformCode = int32(payload["platformCode"].getInt()),
+          detail = payload["detail"].getStr()
+        )))
+        return coreSuccessOf(false)
+      except CatchableError:
+        pending.target.complete(coreFailure(coreError(nativeFailure,
+          "window.clearWebViewProfileData", detail =
+            "WSL browser data clear response is malformed")))
+        return coreSuccessOf(false)
+    coreFailureOf[bool](coreError(nativeFailure, "wsl.response",
+      detail = "host response does not match a pending browser data clear"))
+
   proc processWslEvent(app: App; event: ProtocolMessage): CoreResultOf[bool] =
+    if event.kind == ProtocolMessageKind.response:
+      return app.processWslProfileDataClearResponse(event)
     if event.kind == ProtocolMessageKind.request and
         event.methodName == "native.webview.policyRequested":
       let policy = parsePolicyRequest(event.payload)
@@ -2109,6 +2211,15 @@ when defined(linux):
         if handled.value:
           app.dispose()
           return coreSuccess()
+      let bufferedResponses = app.wslClient.takeResponses()
+      for response in bufferedResponses:
+        let handled = app.processWslEvent(response)
+        if not handled.isOk:
+          app.dispose()
+          return coreFailure(handled.failure)
+        if handled.value:
+          app.dispose()
+          return coreSuccess()
       ## Do not block indefinitely in the host transport.  A pending Nim RPC
       ## Future has an independent deadline and must expire even when WebView2
       ## has no subsequent event to wake this loop.
@@ -2173,6 +2284,11 @@ proc dispose(app: App) =
   app.windows.setLen(0)
   app.nativeApp = nil
   when defined(linux):
+    for pending in app.pendingWslProfileDataClears:
+      if not pending.target.finished:
+        pending.target.complete(coreFailure(coreError(invalidState,
+          "window.clearWebViewProfileData", detail = "WSL host session closed")))
+    app.pendingWslProfileDataClears.setLen(0)
     if app.wslClient != nil:
       discard app.wslClient.close()
       app.wslClient = nil

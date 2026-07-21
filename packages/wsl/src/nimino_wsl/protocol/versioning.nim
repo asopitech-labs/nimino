@@ -5,6 +5,11 @@ const
   ProtocolVersion* = 2'u16
   MaxFrameBytes* = 1_048_576
   AuthenticationTokenHexLength* = 64
+  ## This is a host protocol capability, not a public native Capability.
+  ## It means the host understands the asynchronous browser-profile-clear
+  ## request/response lifecycle. The underlying WebView runtime can still
+  ## reject a particular request as unsupported.
+  WebViewProfileDataClearCapability* = "webViewProfileDataClear"
   NativeCapabilityNames* = [
     "multipleWebViews",
     "transparentWindow",
@@ -12,5 +17,6 @@ const
     "systemTray",
     "nativeNotification",
     "customProtocol",
-    "webPermissionEvents"
+    "webPermissionEvents",
+    WebViewProfileDataClearCapability
   ]

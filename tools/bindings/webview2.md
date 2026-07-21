@@ -116,8 +116,13 @@ same Future result surface.
 This feature has a real Windows WebView2 Runtime dependency: Docker CI can
 verify the official header, fake COM dispatch, and a Windows cross-compile, but
 cannot exercise an installed Evergreen Runtime or complete a real callback.
-Linux and the WSL Windows-host adapter deliberately return `unsupported`; the
-WSL protocol has no async browser-profile-clear lifecycle yet.
+Linux deliberately returns `unsupported`. The WSL adapter relays this operation
+only after the authenticated host advertises its
+`webViewProfileDataClear` capability. The host completes the native Future with
+a request-ID-matched structured response, so an old host is safely reported as
+`platformUnavailable`, while a current host forwards the installed WebView2
+Runtime's `unsupported`/failure result without deleting its live user-data
+folder.
 
 Profile reset remains a restart operation.  Microsoft documents the User Data
 Folder as in-use while a WebView2 session is active, so deleting or recreating

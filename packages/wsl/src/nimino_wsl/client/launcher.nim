@@ -16,6 +16,7 @@ type
     capabilities*: seq[string]
     nextRequestId*: uint64
     events: seq[ProtocolMessage]
+    responses: seq[ProtocolMessage]
 
 when defined(posix):
   proc readExactly(handle: FileHandle; size: int): ProtocolResultOf[string] =
@@ -294,6 +295,17 @@ proc receiveResponse*(client: WslClient; requestId: uint64): ProtocolResultOf[Pr
     return failureOf[ProtocolMessage](protocolError(invalidMessage, "WSL client is closed"))
 
   while true:
+    var bufferedIndex = 0
+    while bufferedIndex < client.responses.len:
+      let buffered = client.responses[bufferedIndex]
+      if buffered.requestId != requestId:
+        inc bufferedIndex
+        continue
+      client.responses.delete(bufferedIndex)
+      if buffered.error.len != 0:
+        return failureOf[ProtocolMessage](protocolError(invalidMessage,
+          "host rejected request: " & buffered.error))
+      return successOf(buffered)
     let received = client.receiveNext()
     if not received.isOk:
       return failureOf[ProtocolMessage](received.failure)
@@ -301,8 +313,14 @@ proc receiveResponse*(client: WslClient; requestId: uint64): ProtocolResultOf[Pr
     if hostResponse.kind == event:
       client.events.add(hostResponse)
       continue
-    if hostResponse.kind != ProtocolMessageKind.response or hostResponse.requestId != requestId:
+    if hostResponse.kind != ProtocolMessageKind.response:
       return failureOf[ProtocolMessage](protocolError(invalidMessage, "host response does not match request"))
+    if hostResponse.requestId != requestId:
+      ## A UI-loop request may complete while a synchronous setup/RPC request
+      ## is waiting. Preserve it for the core request-ID dispatcher instead of
+      ## turning valid concurrent completions into a protocol failure.
+      client.responses.add(hostResponse)
+      continue
     if hostResponse.error.len != 0:
       return failureOf[ProtocolMessage](protocolError(invalidMessage, "host rejected request: " & hostResponse.error))
     return successOf(hostResponse)
@@ -312,6 +330,14 @@ proc takeEvents*(client: WslClient): seq[ProtocolMessage] =
     return @[]
   result = client.events
   client.events.setLen(0)
+
+proc takeResponses*(client: WslClient): seq[ProtocolMessage] =
+  ## Returns authenticated responses parked while another request waited for
+  ## its own completion. Callers must still validate request IDs locally.
+  if client.isNil:
+    return @[]
+  result = client.responses
+  client.responses.setLen(0)
 
 proc call*(client: WslClient; methodName: string; payload: string;
            timeoutMs: uint32 = 5_000): ProtocolResultOf[ProtocolMessage] =
