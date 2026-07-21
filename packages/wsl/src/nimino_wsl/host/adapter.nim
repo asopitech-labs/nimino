@@ -30,6 +30,10 @@ type
     width*: int
     height*: int
 
+  HostDesktopAction* = object
+    kind*: string
+    itemId*: uint32
+
   HostNavigationStarting* = object
     webViewId*: uint64
     url*: string
@@ -76,6 +80,7 @@ type
     pendingDownloadEvents: seq[HostDownloadEvent]
     pendingWindowResized: seq[HostWindowResized]
     pendingWindowClosed: seq[uint64]
+    pendingDesktopActions: seq[HostDesktopAction]
     ## Optional synchronous decision hook owned by the transport layer.
     ## Returning false is the fail-closed default.
     policyDecision*: proc(request: PolicyRequest): bool {.closure.}
@@ -137,6 +142,34 @@ proc requiredBool(node: JsonNode; name: string): ProtocolResultOf[bool] =
   if not node.hasKey(name) or node[name].kind != JBool:
     return failureOf[bool](protocolError(invalidMessage, name & " must be a boolean"))
   successOf(node[name].getBool())
+
+proc requiredMenuItems(node: JsonNode; name: string): ProtocolResultOf[seq[NativeMenuItem]] =
+  if not node.hasKey(name) or node[name].kind != JArray:
+    return failureOf[seq[NativeMenuItem]](protocolError(invalidMessage,
+      name & " must be an array"))
+  if node[name].len == 0:
+    return failureOf[seq[NativeMenuItem]](protocolError(invalidMessage,
+      name & " must not be empty"))
+  var items: seq[NativeMenuItem]
+  for entry in node[name].items:
+    if entry.kind != JObject or not entry.hasKey("id") or
+        not entry.hasKey("title") or not entry.hasKey("enabled") or
+        entry["id"].kind != JInt or entry["title"].kind != JString or
+        entry["enabled"].kind != JBool:
+      return failureOf[seq[NativeMenuItem]](protocolError(invalidMessage,
+        name & " contains a malformed item"))
+    let id = entry["id"].getInt()
+    let title = entry["title"].getStr()
+    if id <= 0 or id > int64(high(uint32)) or title.len == 0 or '\0' in title:
+      return failureOf[seq[NativeMenuItem]](protocolError(invalidMessage,
+        name & " contains an invalid item"))
+    for existing in items:
+      if existing.id == uint32(id):
+        return failureOf[seq[NativeMenuItem]](protocolError(invalidMessage,
+          name & " contains duplicate item IDs"))
+    items.add(NativeMenuItem(id: uint32(id), title: title,
+      enabled: entry["enabled"].getBool()))
+  successOf(items)
 
 proc requiredInteger(node: JsonNode; name: string): ProtocolResultOf[int] =
   if not node.hasKey(name) or node[name].kind != JInt:
@@ -693,6 +726,12 @@ proc takeWindowResized*(adapter: HostAdapter): seq[HostWindowResized] =
   result = adapter.pendingWindowResized
   adapter.pendingWindowResized.setLen(0)
 
+proc takeDesktopActions*(adapter: HostAdapter): seq[HostDesktopAction] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingDesktopActions
+  adapter.pendingDesktopActions.setLen(0)
+
 
 proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;
                        contentField, operation: string): ProtocolResultOf[HostAction] =
@@ -781,6 +820,60 @@ proc handleClearBrowsingData(adapter: HostAdapter;
     browsingDataClear: adapter.webViews[webViewId.value].clearBrowsingData(kinds.value)
   ))
 
+proc handleConfigureNativeMenu(adapter: HostAdapter;
+                               payload: JsonNode): ProtocolResultOf[HostAction] =
+  if adapter.uiStartRequested:
+    return errorAction("native menu must be configured before the UI loop starts")
+  let title = payload.requiredString("title")
+  let items = payload.requiredMenuItems("items")
+  if not title.isOk:
+    return failureOf[HostAction](title.failure)
+  if not items.isOk:
+    return failureOf[HostAction](items.failure)
+  let adapterPointer = cast[pointer](adapter)
+  let configured = adapter.app.configureNativeMenu(title.value, items.value,
+    proc(itemId: uint32) =
+      let owner = cast[HostAdapter](adapterPointer)
+      if owner != nil:
+        owner.pendingDesktopActions.add(HostDesktopAction(kind: "menu", itemId: itemId)))
+  if not configured.isOk:
+    return nativeFailure("app.configureNativeMenu", configured)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
+proc handleConfigureSystemTray(adapter: HostAdapter;
+                               payload: JsonNode): ProtocolResultOf[HostAction] =
+  if adapter.uiStartRequested:
+    return errorAction("system tray must be configured before the UI loop starts")
+  let items = payload.requiredMenuItems("items")
+  if not items.isOk:
+    return failureOf[HostAction](items.failure)
+  let adapterPointer = cast[pointer](adapter)
+  let configured = adapter.app.configureSystemTray(items.value,
+    proc(itemId: uint32) =
+      let owner = cast[HostAdapter](adapterPointer)
+      if owner != nil:
+        owner.pendingDesktopActions.add(HostDesktopAction(kind: "tray", itemId: itemId)))
+  if not configured.isOk:
+    return nativeFailure("app.configureSystemTray", configured)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
+proc handleSendNativeNotification(adapter: HostAdapter;
+                                  payload: JsonNode): ProtocolResultOf[HostAction] =
+  let id = payload.requiredString("id")
+  let title = payload.requiredString("title")
+  let body = payload.requiredString("body")
+  if not id.isOk:
+    return failureOf[HostAction](id.failure)
+  if not title.isOk:
+    return failureOf[HostAction](title.failure)
+  if not body.isOk:
+    return failureOf[HostAction](body.failure)
+  let sent = adapter.app.sendNativeNotification(NativeNotification(
+    id: id.value, title: title.value, body: body.value))
+  if not sent.isOk:
+    return nativeFailure("app.sendNativeNotification", sent)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleCapabilities(adapter: HostAdapter): ProtocolResultOf[HostAction] =
   var capabilities = newJArray()
   for capability in Capability:
@@ -807,6 +900,12 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     return failureOf[HostAction](payload.failure)
 
   case message.methodName
+  of "app.configureNativeMenu":
+    adapter.handleConfigureNativeMenu(payload.value)
+  of "app.configureSystemTray":
+    adapter.handleConfigureSystemTray(payload.value)
+  of "app.sendNativeNotification":
+    adapter.handleSendNativeNotification(payload.value)
   of "native.window.create":
     adapter.handleWindowCreate(payload.value)
   of "native.window.setTitle":

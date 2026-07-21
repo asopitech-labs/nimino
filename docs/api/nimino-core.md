@@ -46,6 +46,20 @@ proc run*(app: App): CoreResult
 
 `onReady`は`run()`がUIイベントループを開始する直前に、`onBeforeQuit`は明示的な`app.quit()`の前に、`onExit`はネイティブ資源の破棄時に呼び出されます。`onBeforeQuit`が`false`を返した場合は終了を拒否します。コールバックの例外はイベントループへ伝播させず、終了処理を継続します。WSLでも同じ順序で通知されます。
 
+## デスクトップ統合
+
+`configureNativeMenu`と`configureSystemTray`は`run()`前に一度だけ呼び出し、明示したIDの項目だけをクリックイベントとして通知します。Windows/Linux nativeとWSL hostで同じ`DesktopMenuItem`型を使用し、WSLでは認証済みIPCイベントとしてCoreへ戻します。`sendNotification`は`run()`後にOS通知を要求し、表示がシェル側で抑制された場合も成功を表示保証とは解釈しません。未対応OSは`platformUnavailable`を返します。
+
+```nim
+discard app.configureNativeMenu("File", @[
+  DesktopMenuItem(id: 1, title: "Quit", enabled: true)
+], proc(itemId: uint32) =
+  if itemId == 1: discard app.quit())
+
+discard app.sendNotification(DesktopNotification(
+  id: "sync", title: "Sync complete", body: "Your files are up to date"))
+```
+
 ## M3以降のRPC面
 
 ```nim

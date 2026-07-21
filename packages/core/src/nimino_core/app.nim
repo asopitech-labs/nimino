@@ -104,6 +104,17 @@ type
     id*: string
     name*: string
 
+  DesktopMenuItem* = object
+    ## A validated command item for the application menu or system tray.
+    id*: uint32
+    title*: string
+    enabled*: bool
+
+  DesktopNotification* = object
+    id*: string
+    title*: string
+    body*: string
+
   CoreWindowOptions* = object
     title*: string
     width*: int
@@ -193,6 +204,8 @@ type
     readyHandler: proc()
     beforeQuitHandler: proc(): bool
     exitHandler: proc()
+    nativeMenuHandler: proc(itemId: uint32)
+    trayMenuHandler: proc(itemId: uint32)
     when defined(linux):
       wslClient: WslClient
       pendingWslProfileDataClears: seq[PendingWslProfileDataClear]
@@ -847,6 +860,128 @@ proc onBeforeQuit*(app: App; handler: proc(): bool): CoreResult =
     return coreFailure(coreError(invalidState, "app.onBeforeQuit"))
   app.beforeQuitHandler = handler
   coreSuccess()
+
+proc validateDesktopMenuItems(items: openArray[DesktopMenuItem]): CoreResult =
+  if items.len == 0:
+    return coreFailure(coreError(invalidArgument, "app.desktopMenu",
+      detail = "at least one menu item is required"))
+  for item in items:
+    if item.id == 0 or item.title.len == 0 or '\0' in item.title:
+      return coreFailure(coreError(invalidArgument, "app.desktopMenu",
+        detail = "menu item IDs must be non-zero and titles must not be empty or contain NUL"))
+  for i in 0 ..< items.len:
+    for j in i + 1 ..< items.len:
+      if items[i].id == items[j].id:
+        return coreFailure(coreError(invalidArgument, "app.desktopMenu",
+          detail = "menu item IDs must be unique"))
+  coreSuccess()
+
+proc desktopMenuJson(items: openArray[DesktopMenuItem]): JsonNode =
+  result = newJArray()
+  for item in items:
+    result.add(%*{
+      "id": item.id,
+      "title": item.title,
+      "enabled": item.enabled
+    })
+
+proc configureNativeMenu*(app: App; title: string;
+                          items: openArray[DesktopMenuItem];
+                          handler: proc(itemId: uint32)): CoreResult =
+  if app.isNil or app.state != coreCreated:
+    return coreFailure(coreError(invalidState, "app.configureNativeMenu"))
+  if title.len == 0 or '\0' in title:
+    return coreFailure(coreError(invalidArgument, "app.configureNativeMenu",
+      detail = "menu title must be non-empty and must not contain NUL"))
+  if handler.isNil:
+    return coreFailure(coreError(invalidArgument, "app.configureNativeMenu",
+      detail = "a menu handler is required"))
+  let valid = validateDesktopMenuItems(items)
+  if not valid.isOk:
+    return valid
+  case app.backend
+  of nativeBackend:
+    var nativeItems: seq[native.NativeMenuItem]
+    for item in items:
+      nativeItems.add(native.NativeMenuItem(id: item.id, title: item.title,
+        enabled: item.enabled))
+    let configured = native.configureNativeMenu(app.nativeApp, title, nativeItems,
+      proc(itemId: uint32) =
+        if not handler.isNil:
+          try: handler(itemId)
+          except CatchableError: discard)
+    if not configured.isOk:
+      return coreFailure(configured.failure.mapNativeError())
+  of wslBackend:
+    when defined(linux):
+      let response = app.wslCall("app.configureNativeMenu", $(%*{
+        "title": title,
+        "items": desktopMenuJson(items)
+      }))
+      if not response.isOk:
+        return coreFailure(response.failure)
+    else:
+      return coreFailure(coreError(platformUnavailable, "app.configureNativeMenu"))
+  app.nativeMenuHandler = handler
+  coreSuccess()
+
+proc configureSystemTray*(app: App; items: openArray[DesktopMenuItem];
+                          handler: proc(itemId: uint32)): CoreResult =
+  if app.isNil or app.state != coreCreated:
+    return coreFailure(coreError(invalidState, "app.configureSystemTray"))
+  if handler.isNil:
+    return coreFailure(coreError(invalidArgument, "app.configureSystemTray",
+      detail = "a tray menu handler is required"))
+  let valid = validateDesktopMenuItems(items)
+  if not valid.isOk:
+    return valid
+  case app.backend
+  of nativeBackend:
+    var nativeItems: seq[native.NativeMenuItem]
+    for item in items:
+      nativeItems.add(native.NativeMenuItem(id: item.id, title: item.title,
+        enabled: item.enabled))
+    let configured = native.configureSystemTray(app.nativeApp, nativeItems,
+      proc(itemId: uint32) =
+        if not handler.isNil:
+          try: handler(itemId)
+          except CatchableError: discard)
+    if not configured.isOk:
+      return coreFailure(configured.failure.mapNativeError())
+  of wslBackend:
+    when defined(linux):
+      let response = app.wslCall("app.configureSystemTray", $(%*{
+        "items": desktopMenuJson(items)
+      }))
+      if not response.isOk:
+        return coreFailure(response.failure)
+    else:
+      return coreFailure(coreError(platformUnavailable, "app.configureSystemTray"))
+  app.trayMenuHandler = handler
+  coreSuccess()
+
+proc sendNotification*(app: App; notification: DesktopNotification): CoreResult =
+  if app.isNil or app.state != coreRunning:
+    return coreFailure(coreError(invalidState, "app.sendNotification"))
+  if notification.id.len == 0 or notification.title.len == 0 or
+      '\0' in notification.id or '\0' in notification.title or '\0' in notification.body:
+    return coreFailure(coreError(invalidArgument, "app.sendNotification",
+      detail = "notification ID and title are required and text must not contain NUL"))
+  case app.backend
+  of nativeBackend:
+    let sent = native.sendNativeNotification(app.nativeApp, native.NativeNotification(
+      id: notification.id, title: notification.title, body: notification.body))
+    if sent.isOk: coreSuccess() else: coreFailure(sent.failure.mapNativeError())
+  of wslBackend:
+    when defined(linux):
+      let response = app.wslCall("app.sendNativeNotification", $(%*{
+        "id": notification.id,
+        "title": notification.title,
+        "body": notification.body
+      }))
+      if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else:
+      coreFailure(coreError(platformUnavailable, "app.sendNotification"))
 
 proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
   if app.isNil or app.state == coreFinished:
@@ -2493,6 +2628,31 @@ when defined(linux):
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "Window resized event is malformed"))
+    of "native.app.desktopAction":
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("kind") or
+            not payload.hasKey("itemId") or payload["kind"].kind != JString or
+            payload["itemId"].kind != JInt:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "desktop action event is malformed"))
+        let itemId = payload["itemId"].getInt()
+        if itemId <= 0 or itemId > int64(high(uint32)):
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "desktop action item ID is out of range"))
+        let actionKind = payload["kind"].getStr()
+        let handler = case actionKind
+          of "menu": app.nativeMenuHandler
+          of "tray": app.trayMenuHandler
+          else: nil
+        if handler.isNil:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "desktop action kind has no registered handler"))
+        try: handler(uint32(itemId))
+        except CatchableError: discard
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "desktop action event is malformed"))
     of "app.error":
       return coreFailureOf[bool](coreError(nativeFailure, "app.run",
         detail = "WSL host reported an application error"))
