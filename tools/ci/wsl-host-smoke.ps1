@@ -532,6 +532,7 @@ try {
       payload = (ConvertTo-Json -Compress @{ title = "Nimino Popup Smoke"; width = 400; height = 300; appId = "app.nimino.popup-smoke"; profile = "popup" })
       error = ""; timeoutMs = 5000
     }
+    Set-SmokePhase "popup window response"
     $popupWindowResponse = Read-Response $popupWindowRequestId
     if (-not [string]::IsNullOrEmpty($popupWindowResponse.error)) { throw "Host could not create an explicit popup window" }
     $popupWindowId = ($popupWindowResponse.payload | ConvertFrom-Json).windowId
