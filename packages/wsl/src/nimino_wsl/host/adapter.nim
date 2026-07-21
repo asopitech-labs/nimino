@@ -87,6 +87,7 @@ type
     ## Optional synchronous decision hook owned by the transport layer.
     ## Returning false is the fail-closed default.
     policyDecision*: proc(request: PolicyRequest): bool {.closure.}
+    customProtocolDecision*: proc(request: PolicyRequest): NativeCustomProtocolResponse {.closure.}
     navigationDecisionHook*: proc(webViewId: uint64; url: string): bool {.closure.}
     navigationRules: Table[uint64, NavigationRules]
 
@@ -916,6 +917,27 @@ proc handleSendNativeNotification(adapter: HostAdapter;
     return nativeFailure("app.sendNativeNotification", sent)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
+proc handleRegisterCustomProtocol(adapter: HostAdapter;
+                                  payload: JsonNode): ProtocolResultOf[HostAction] =
+  let scheme = payload.requiredString("scheme")
+  if not scheme.isOk:
+    return failureOf[HostAction](scheme.failure)
+  if adapter.customProtocolDecision.isNil:
+    return errorAction("custom protocol decision relay is unavailable")
+  let registered = adapter.app.registerCustomProtocol(scheme.value,
+    proc(request: NativeCustomProtocolRequest): NativeCustomProtocolResponse =
+      let owner = adapter
+      let decision = owner.customProtocolDecision(PolicyRequest(
+        kind: customProtocolPolicy,
+        url: request.url,
+        permissionKind: "",
+        methodName: request.methodName,
+        path: request.path))
+      decision)
+  if not registered.isOk:
+    return nativeFailure("app.registerCustomProtocol", registered)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
 proc handleCapabilities(adapter: HostAdapter): ProtocolResultOf[HostAction] =
   var capabilities = newJArray()
   for capability in Capability:
@@ -948,6 +970,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleConfigureSystemTray(payload.value)
   of "app.sendNativeNotification":
     adapter.handleSendNativeNotification(payload.value)
+  of "app.registerCustomProtocol":
+    adapter.handleRegisterCustomProtocol(payload.value)
   of "native.window.create":
     adapter.handleWindowCreate(payload.value)
   of "native.window.setTitle":

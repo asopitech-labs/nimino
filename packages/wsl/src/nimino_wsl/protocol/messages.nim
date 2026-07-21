@@ -73,6 +73,7 @@ type
     downloadPolicy
     navigationPolicy
     closePolicy
+    customProtocolPolicy
 
   PolicyRequest* = object
     kind*: PolicyKind
@@ -81,10 +82,15 @@ type
     permissionKind*: string
     url*: string
     suggestedName*: string
+    methodName*: string
+    path*: string
 
   PolicyResponse* = object
     allow*: bool
     error*: string
+    statusCode*: int
+    mimeType*: string
+    body*: string
 
 proc `$`*(kind: PolicyKind): string =
   case kind
@@ -92,6 +98,7 @@ proc `$`*(kind: PolicyKind): string =
   of downloadPolicy: "download"
   of navigationPolicy: "navigation"
   of closePolicy: "close"
+  of customProtocolPolicy: "customProtocol"
 
 proc policyRequestJson*(request: PolicyRequest): string =
   $(%*{
@@ -100,11 +107,15 @@ proc policyRequestJson*(request: PolicyRequest): string =
     "webViewId": $request.webViewId,
     "permissionKind": request.permissionKind,
     "url": request.url,
-    "suggestedName": request.suggestedName
+    "suggestedName": request.suggestedName,
+    "method": request.methodName,
+    "path": request.path
   })
 
 proc policyResponseJson*(response: PolicyResponse): string =
-  $(%*{"allow": response.allow, "error": response.error})
+  $(%*{"allow": response.allow, "error": response.error,
+       "statusCode": response.statusCode, "mimeType": response.mimeType,
+       "body": response.body})
 
 proc protocolError*(kind: ProtocolErrorKind; detail: string): ProtocolError =
   ProtocolError(kind: kind, detail: detail)
@@ -172,6 +183,7 @@ proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
       of "download": downloadPolicy
       of "navigation": navigationPolicy
       of "close": closePolicy
+      of "customProtocol": customProtocolPolicy
       else: return failureOf[PolicyRequest](protocolError(invalidMessage,
         "unknown policy kind"))
     let windowId = if node.hasKey("windowId") and node["windowId"].kind == JString:
@@ -183,7 +195,8 @@ proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
     let url = if node.hasKey("url") and node["url"].kind == JString:
         node["url"].getStr()
       else: ""
-    if kind != closePolicy and (webViewId == 0 or not node.hasKey("url")):
+    if kind notin {closePolicy, customProtocolPolicy} and
+        (webViewId == 0 or not node.hasKey("url")):
       return failureOf[PolicyRequest](protocolError(invalidMessage,
         "policy request is missing webViewId or url"))
     let suggestedName = if node.hasKey("suggestedName") and
@@ -200,9 +213,14 @@ proc parsePolicyRequest*(payload: string): ProtocolResultOf[PolicyRequest] =
           suggestedName in [".", ".."]:
         return failureOf[PolicyRequest](protocolError(invalidMessage,
           "download suggestedName is unsafe"))
+    let methodName = if node.hasKey("method") and node["method"].kind == JString:
+        node["method"].getStr() else: "GET"
+    let path = if node.hasKey("path") and node["path"].kind == JString:
+        node["path"].getStr() else: ""
     successOf(PolicyRequest(kind: kind,
       windowId: windowId, webViewId: webViewId,
-      permissionKind: permissionKind, url: url, suggestedName: suggestedName))
+      permissionKind: permissionKind, url: url, suggestedName: suggestedName,
+      methodName: methodName, path: path))
   except CatchableError:
     failureOf[PolicyRequest](protocolError(invalidMessage,
       "malformed policy request"))
@@ -217,7 +235,18 @@ proc parsePolicyResponse*(payload: string): ProtocolResultOf[PolicyResponse] =
     let error = if node.hasKey("error") and node["error"].kind == JString:
       node["error"].getStr()
     else: ""
-    successOf(PolicyResponse(allow: node["allow"].getBool(), error: error))
+    let statusCode = if node.hasKey("statusCode") and node["statusCode"].kind == JInt:
+        node["statusCode"].getInt() else: 200
+    let normalizedStatus = if statusCode == 0: 200 else: statusCode
+    if normalizedStatus < 100 or normalizedStatus > 599:
+      return failureOf[PolicyResponse](protocolError(invalidMessage,
+        "policy response statusCode is out of range"))
+    let mimeType = if node.hasKey("mimeType") and node["mimeType"].kind == JString:
+        node["mimeType"].getStr() else: "application/octet-stream"
+    let body = if node.hasKey("body") and node["body"].kind == JString:
+        node["body"].getStr() else: ""
+    successOf(PolicyResponse(allow: node["allow"].getBool(), error: error,
+      statusCode: normalizedStatus, mimeType: mimeType, body: body))
   except CatchableError:
     failureOf[PolicyResponse](protocolError(invalidMessage,
       "malformed policy response"))

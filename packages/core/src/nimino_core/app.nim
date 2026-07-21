@@ -230,6 +230,7 @@ type
     nativeMenuHandler: proc(itemId: uint32)
     trayMenuHandler: proc(itemId: uint32)
     notificationActivatedHandler: proc(notificationId: string)
+    customProtocolHandler: CustomProtocolHandler
     when defined(linux):
       wslClient: WslClient
       pendingWslProfileDataClears: seq[PendingWslProfileDataClear]
@@ -878,8 +879,17 @@ proc registerCustomProtocol*(app: App; scheme: string;
     return coreFailure(coreError(invalidArgument, "app.registerCustomProtocol",
       detail = "a protocol handler is required"))
   if app.backend == wslBackend:
-    return coreFailure(coreError(platformUnavailable, "app.registerCustomProtocol",
-      detail = "WSL protocol relay is not implemented yet"))
+    when defined(linux):
+      let registered = app.wslCall("app.registerCustomProtocol", $(%*{
+        "scheme": scheme
+      }))
+      if not registered.isOk:
+        return coreFailure(registered.failure)
+      app.customProtocolHandler = handler
+      return coreSuccess()
+    else:
+      return coreFailure(coreError(platformUnavailable, "app.registerCustomProtocol"))
+  app.customProtocolHandler = handler
   let registered = native.registerCustomProtocol(app.nativeApp, scheme,
     proc(request: native.NativeCustomProtocolRequest): native.NativeCustomProtocolResponse =
       let response = handler(CustomProtocolRequest(methodName: request.methodName,
@@ -2726,6 +2736,17 @@ when defined(linux):
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.policy",
           detail = policy.failure.detail))
       var allowed = false
+      var customResponse = CustomProtocolResponse(statusCode: 500,
+        mimeType: "text/plain", body: "Custom protocol request denied")
+      if policy.value.kind == customProtocolPolicy and not app.customProtocolHandler.isNil:
+        try:
+          customResponse = app.customProtocolHandler(CustomProtocolRequest(
+            methodName: policy.value.methodName,
+            url: policy.value.url,
+            path: policy.value.path))
+          allowed = customResponse.statusCode >= 100 and customResponse.statusCode <= 599
+        except CatchableError:
+          allowed = false
       for window in app.windows:
         if not window.closed and policy.value.kind == closePolicy and
             window.windowId == policy.value.windowId:
@@ -2761,7 +2782,10 @@ when defined(linux):
               url: policy.value.url))
           break
       let sent = app.wslClient.sendResponse(event.requestId,
-        policyResponseJson(PolicyResponse(allow: allowed)))
+        policyResponseJson(PolicyResponse(allow: allowed,
+          statusCode: customResponse.statusCode,
+          mimeType: customResponse.mimeType,
+          body: customResponse.body)))
       if not sent.isOk:
         let detail = sent.failure.detail
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.policy",

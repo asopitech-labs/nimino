@@ -374,6 +374,32 @@ proc requestPolicy(state: HostState; request: PolicyRequest): bool =
     return false
   true
 
+proc requestCustomProtocol(state: HostState;
+                           request: PolicyRequest): NativeCustomProtocolResponse =
+  let requestId = state.nextPolicyRequestId
+  inc state.nextPolicyRequestId
+  let fallback = NativeCustomProtocolResponse(statusCode: 500,
+    mimeType: "text/plain", body: "Custom protocol relay failed")
+  if not state.writeMessage(ProtocolMessage(
+      version: ProtocolVersion, kind: ProtocolMessageKind.request,
+      sessionId: state.sessionId, requestId: requestId,
+      methodName: "native.webview.customProtocolRequested",
+      payload: request.policyRequestJson(), timeoutMs: 5_000)):
+    return fallback
+  let received = state.input.next(5_000)
+  if not received.isOk:
+    return fallback
+  let response = received.value
+  let validated = state.sessionId.validatePolicyResponse(requestId, response)
+  if not validated.isOk:
+    discard state.adapter.app.close()
+    return fallback
+  let decision = response.payload.parsePolicyResponse()
+  if not decision.isOk or not decision.value.allow:
+    return fallback
+  NativeCustomProtocolResponse(statusCode: decision.value.statusCode,
+    mimeType: decision.value.mimeType, body: decision.value.body)
+
 proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
   let session = state.sessionId.validateSessionMessage(message)
   if not session.isOk:
@@ -477,6 +503,8 @@ proc runHost(): int =
   let statePointer = cast[pointer](state)
   state.adapter.policyDecision = proc(request: PolicyRequest): bool =
     cast[HostState](statePointer).requestPolicy(request)
+  state.adapter.customProtocolDecision = proc(request: PolicyRequest): NativeCustomProtocolResponse =
+    cast[HostState](statePointer).requestCustomProtocol(request)
   state.adapter.navigationDecisionHook = proc(webViewId: uint64; url: string): bool =
     cast[HostState](statePointer).requestPolicy(PolicyRequest(kind: navigationPolicy,
       webViewId: webViewId, url: url))
