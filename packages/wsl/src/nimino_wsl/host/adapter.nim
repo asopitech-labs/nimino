@@ -469,13 +469,17 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   )
   if not errorConfigured.isOk:
     return nativeFailure("native.webview.onError", errorConfigured)
-  let newWindowConfigured = created.value.onNewWindowRequested(proc(url: string) =
+  let newWindowConfigured = created.value.onNewWindowRequested(proc(url: string): bool =
     let owner = cast[HostAdapter](adapterPointer)
     if owner != nil:
       owner.pendingNewWindowRequests.add(HostNewWindowRequested(
         webViewId: webViewId,
         url: url
       ))
+    ## WSL cannot synchronously await the client policy while inside the
+    ## native callback. Keep the request fail-closed and resolve it through
+    ## the authenticated event stream.
+    true
   )
   if not newWindowConfigured.isOk:
     return nativeFailure("native.webview.onNewWindowRequested", newWindowConfigured)

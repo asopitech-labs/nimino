@@ -102,7 +102,7 @@ block windowAndViewRemainSeparate:
   doAssert not emptyScript.read().isOk
   doAssert view.value.loadHtml("<main>Foundation</main>").isOk
   doAssert window.value.setTitle("Foundation updated").isOk
-  doAssert view.value.onNewWindowRequested(proc(url: string) = discard).isOk
+  doAssert view.value.onNewWindowRequested(proc(url: string): bool = true).isOk
   doAssert view.value.onNavigationStarting(proc(url: string): bool = true).isOk
   doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
   doAssert window.value.onCloseRequested(proc(): bool = true).isOk

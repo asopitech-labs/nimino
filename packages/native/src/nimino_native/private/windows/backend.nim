@@ -1583,9 +1583,11 @@ proc newWindowRequestedInvoke(self: pointer; sender, args: pointer): HResult {.s
   let copiedUri = if succeeded(uriStatus) and uri != nil: $uri else: ""
   if uri != nil:
     coTaskMemFree(cast[pointer](uri))
-  view.dispatchNewWindowRequested(copiedUri)
-  ## A new native Window/WebView is never created implicitly at this layer.
-  discard newWindowRequestedSetHandled(args, 1)
+  ## The application callback is the explicit decision boundary.  No callback,
+  ## callback failure, and WSL relay paths return true and remain fail-closed;
+  ## only an explicit false delegates to WebView2's default popup behavior.
+  let handled = view.dispatchNewWindowRequested(copiedUri)
+  discard newWindowRequestedSetHandled(args, if handled: 1 else: 0)
   S_OK
 
 proc windowsQuit(app: NativeApp): NativeResult =

@@ -372,8 +372,13 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
     let request = if action.isNil: nil else: webkit_navigation_action_get_request(action)
     let uri = if request.isNil: nil else: webkit_uri_request_get_uri(request)
     let copiedUri = if uri.isNil: "" else: $uri
-    view.dispatchNewWindowRequested(copiedUri)
-    webkit_policy_decision_ignore(decision)
+    if view.dispatchNewWindowRequested(copiedUri):
+      webkit_policy_decision_ignore(decision)
+    else:
+      ## A false application decision delegates to WebKitGTK's normal policy
+      ## path. The create signal still returns nil unless the application
+      ## supplies a managed WebView through the higher-level API.
+      webkit_policy_decision_use(decision)
   of 2: # WEBKIT_POLICY_DECISION_TYPE_RESPONSE
     let response = cast[ptr WebKitResponsePolicyDecision](policyDecision)
     if webkit_response_policy_decision_is_mime_type_supported(response) != 0:
@@ -525,7 +530,7 @@ proc linuxCreateRequested(webView: pointer; action: ptr WebKitNavigationAction;
   if view != nil and view.state notin {closing, closed}:
     let request = if action.isNil: nil else: webkit_navigation_action_get_request(action)
     let uri = if request.isNil: nil else: webkit_uri_request_get_uri(request)
-    view.dispatchNewWindowRequested(if uri.isNil: "" else: $uri)
+    discard view.dispatchNewWindowRequested(if uri.isNil: "" else: $uri)
   ## Nimino does not create an implicit Window/WebView for window.open().
   nil
 

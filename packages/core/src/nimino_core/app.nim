@@ -572,11 +572,11 @@ proc configureWindow(window: Window): CoreResult =
     return coreFailure(errorConfigured.failure.mapNativeError())
 
   let newWindowConfigured = native.onNewWindowRequested(window.nativeView,
-    proc(url: string) =
+    proc(url: string): bool =
       if window.newWindowHandler.isNil:
-        return
-      try: discard window.newWindowHandler(NewWindowRequest(url: url))
-      except CatchableError: discard)
+        return true
+      try: window.newWindowHandler(NewWindowRequest(url: url))
+      except CatchableError: true)
   if not newWindowConfigured.isOk:
     return coreFailure(newWindowConfigured.failure.mapNativeError())
 
@@ -1425,6 +1425,9 @@ proc onDownloadEvent*(window: Window;
 
 proc onNewWindow*(window: Window;
                   handler: proc(request: NewWindowRequest): bool): CoreResult =
+  ## Return true to consume the request (typically after `openPopup` or an
+  ## explicit deny). Return false only when the application intentionally
+  ## delegates to the native WebView popup policy.
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.onNewWindow"))
   window.newWindowHandler = handler

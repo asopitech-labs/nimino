@@ -6,7 +6,9 @@ type
   NativeIdleHandler* = proc() {.closure.}
   NativeMessageHandler* = proc(message: string) {.closure.}
   NativeErrorHandler* = proc(error: NativeError) {.closure.}
-  NativeNewWindowRequestedHandler* = proc(url: string) {.closure.}
+  ## Return true when the application consumed the request.  Returning false
+  ## explicitly delegates to the WebView engine's default popup behavior.
+  NativeNewWindowRequestedHandler* = proc(url: string): bool {.closure.}
   NativeNavigationStartingHandler* = proc(url: string): bool {.closure.}
   NativeNavigationCompletedHandler* = proc(url: string; succeeded: bool) {.closure.}
   ## `kind` is the OS/WebView permission name (for example `microphone`,
@@ -299,15 +301,15 @@ proc dispatchError(view: NativeWebView; error: NativeError) =
     ## A user callback must not unwind through a native C/COM callback.
     discard
 
-proc dispatchNewWindowRequested(view: NativeWebView; url: string) =
+proc dispatchNewWindowRequested(view: NativeWebView; url: string): bool =
   if view.isNil or view.state in {closing, closed} or
       view.newWindowRequestedHandler.isNil:
-    return
+    return true
   try:
     view.newWindowRequestedHandler(url)
   except CatchableError:
     ## A user callback must not unwind through a native C/COM callback.
-    discard
+    true
 
 proc dispatchCloseRequested(window: NativeWindow): bool =
   if window.isNil or window.state in {closing, closed}:
