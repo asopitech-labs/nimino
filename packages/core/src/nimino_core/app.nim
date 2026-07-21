@@ -2114,8 +2114,22 @@ when defined(linux):
           break
         if not window.closed and window.webViewId == policy.value.webViewId:
           if policy.value.kind == permissionPolicy:
-            allowed = window.decidePermission(PermissionRequest(
-              kind: microphone, url: policy.value.url)) == permissionGrant
+            var permissionKnown = true
+            var permissionKind = microphone
+            case policy.value.permissionKind
+            of "microphone": permissionKind = microphone
+            of "camera": permissionKind = camera
+            of "notifications": permissionKind = notifications
+            of "geolocation": permissionKind = geolocation
+            of "clipboard": permissionKind = clipboard
+            of "screenCapture": permissionKind = screenCapture
+            else: permissionKnown = false
+            ## Unknown host/WebView permission names must never inherit a
+            ## known grant.  The native adapter has already fail-closed;
+            ## keep the client-side policy equally strict.
+            if permissionKnown:
+              allowed = window.decidePermission(PermissionRequest(
+                kind: permissionKind, url: policy.value.url)) == permissionGrant
           elif policy.value.kind == downloadPolicy:
             allowed = window.decideDownload(DownloadRequest(
               url: policy.value.url,
