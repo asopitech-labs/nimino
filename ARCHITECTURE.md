@@ -1,6 +1,6 @@
 # Nimino Architecture
 
-**状態: M0/M1完了、M2（JavaScript評価・文字列message・ナビゲーション開始/完了・基本エラー通知・新規Window拒否）とM3 Windows/Linux facade・RPC、WSL core adapterを部分実装中（2026-07-18）**
+**状態: M0〜M4の主要機能を実装済み（2026-07-22）。M5/M6の配布・カスタムプロトコル・実機署名検証は後続。**
 
 Niminoは、NimアプリケーションがOS固有のWindow、WebView、またはWSL通信を直接意識せずにWeb UIを構築できるようにするモノレポです。レンダリングエンジンや汎用WebViewラッパーは実装・導入しません。
 
@@ -58,7 +58,7 @@ type Capability* = enum
   nativeNotification, customProtocol, webPermissionEvents
 ```
 
-M1では`multipleWebViews`だけを実装候補とし、残りは明示的に`false`または`unsupported`です。Capabilityが`true`でも、権限または現在の状態による失敗は別途結果で返します。
+`multipleWebViews`、Windows/Linuxのnative menu、system tray、native notification、web permission eventsは実装済みです。`customProtocol`とtransparent windowは未対応として明示的に`false`または`unsupported`を返します。Capabilityが`true`でも、権限または現在の状態による失敗は別途結果で返します。
 
 ## 所有権とスレッド
 
