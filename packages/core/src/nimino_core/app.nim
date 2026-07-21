@@ -704,6 +704,75 @@ proc configureWindow(window: Window): CoreResult =
 
   coreSuccess()
 
+proc configureAdditionalWebView(window: Window; view: WebView): CoreResult =
+  let messageConfigured = native.onMessage(view.nativeView, proc(message: string) =
+    if view != nil and not view.closed and not view.messageHandler.isNil:
+      try: view.messageHandler(message)
+      except CatchableError: discard)
+  if not messageConfigured.isOk:
+    return coreFailure(messageConfigured.failure.mapNativeError())
+  let errorConfigured = native.onError(view.nativeView,
+    proc(error: native.NativeError) =
+      if not window.errorHandler.isNil:
+        try: window.errorHandler(WindowError(operation: error.operation,
+          detail: error.detail))
+        except CatchableError: discard)
+  if not errorConfigured.isOk:
+    return coreFailure(errorConfigured.failure.mapNativeError())
+  let navigationConfigured = native.onNavigationStarting(view.nativeView,
+    proc(url: string): bool = window.applyNavigationDecision(NavigationRequest(url: url)))
+  if not navigationConfigured.isOk:
+    return coreFailure(navigationConfigured.failure.mapNativeError())
+  let completionConfigured = native.onNavigationCompleted(view.nativeView,
+    proc(url: string; succeeded: bool) =
+      if not window.navigationCompletedHandler.isNil:
+        try: window.navigationCompletedHandler(url, succeeded)
+        except CatchableError: discard)
+  if not completionConfigured.isOk:
+    return coreFailure(completionConfigured.failure.mapNativeError())
+  let newWindowConfigured = native.onNewWindowRequested(view.nativeView,
+    proc(url: string): bool =
+      if window.newWindowHandler.isNil:
+        return true
+      try: window.newWindowHandler(NewWindowRequest(url: url))
+      except CatchableError: true)
+  if not newWindowConfigured.isOk:
+    return coreFailure(newWindowConfigured.failure.mapNativeError())
+  let permissionConfigured = native.onPermissionRequested(view.nativeView,
+    proc(kind, url: string): bool =
+      let permissionKind = case kind
+        of "microphone": microphone
+        of "camera": camera
+        of "notifications": notifications
+        of "geolocation": geolocation
+        of "clipboard": clipboard
+        of "screenCapture": screenCapture
+        else: return false
+      window.decidePermission(PermissionRequest(kind: permissionKind, url: url)) == permissionGrant)
+  if not permissionConfigured.isOk:
+    return coreFailure(permissionConfigured.failure.mapNativeError())
+  let downloadConfigured = native.onDownloadStarting(view.nativeView,
+    proc(url: string): bool = window.decideDownload(DownloadRequest(
+      url: url, suggestedName: suggestedDownloadName(url))) == downloadAllow)
+  if not downloadConfigured.isOk:
+    return coreFailure(downloadConfigured.failure.mapNativeError())
+  let downloadEventsConfigured = native.onDownloadEvent(view.nativeView,
+    proc(url: string; state: native.NativeDownloadState; progress: float) =
+      if not window.downloadEventHandler.isNil:
+        try: window.downloadEventHandler(DownloadEvent(
+          request: DownloadRequest(url: url, suggestedName: suggestedDownloadName(url)),
+          state: case state
+            of native.nativeDownloadStarted: downloadStarted
+            of native.nativeDownloadProgress: downloadProgress
+            of native.nativeDownloadCompleted: downloadCompleted
+            of native.nativeDownloadFailed: downloadFailed
+            of native.nativeDownloadCancelled: downloadCancelled,
+          progress: progress))
+        except CatchableError: discard)
+  if not downloadEventsConfigured.isOk:
+    return coreFailure(downloadEventsConfigured.failure.mapNativeError())
+  coreSuccess()
+
 proc newApp*(options: AppOptions): CoreResultOf[App] =
   if options.id.len == 0:
     return coreFailureOf[App](coreError(invalidArgument, "app.create",
@@ -912,13 +981,10 @@ proc newWebView*(window: Window): CoreResultOf[WebView] =
   if not created.isOk:
     return coreFailureOf[WebView](created.failure.mapNativeError())
   let view = WebView(window: window, nativeView: created.value)
-  let configured = created.value.onMessage(proc(message: string) =
-    if view != nil and not view.closed and not view.messageHandler.isNil:
-      try: view.messageHandler(message)
-      except CatchableError: discard)
+  let configured = window.configureAdditionalWebView(view)
   if not configured.isOk:
     discard native.close(created.value)
-    return coreFailureOf[WebView](configured.failure.mapNativeError())
+    return coreFailureOf[WebView](configured.failure)
   window.webViews.add(view)
   coreSuccessOf(view)
 
@@ -941,10 +1007,11 @@ proc loadUrl*(view: WebView; url: string): CoreResult =
       }))
       if not loaded.isOk:
         return coreFailure(loaded.failure)
-      view.window.lastUrl = url
+      if view == view.window.webViews[0]:
+        view.window.lastUrl = url
       return coreSuccess()
   let loaded = native.loadUrl(view.nativeView, url).fromNative()
-  if loaded.isOk:
+  if loaded.isOk and view == view.window.webViews[0]:
     view.window.lastUrl = url
   loaded
 
