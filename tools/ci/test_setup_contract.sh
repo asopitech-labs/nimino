@@ -16,6 +16,7 @@ grep -Fq 'NIM_IMAGE: nimlang/nim:latest@sha256:' "$compose"
 grep -Fq 'setup: verify-env' "$makefile"
 grep -Fq 'setup-windows-webview2' "$makefile"
 grep -Fq 'Start-Process -FilePath $installer -ArgumentList "/silent", "/install" -Verb RunAs' "$setup"
+grep -Fq 'WebView2 Runtime already installed' "$setup"
 grep -Fq 'WebView2 Runtime installation could not be verified' "$setup"
 grep -Fq 'Where-Object { $_.Name -match' "$setup"
 

@@ -14,6 +14,19 @@ $temp = Join-Path $env:TEMP "nimino-webview2"
 $installer = Join-Path $temp "MicrosoftEdgeWebView2RuntimeInstaller.exe"
 New-Item -ItemType Directory -Force -Path $temp | Out-Null
 
+$runtimeRoots = @(
+  (Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application"),
+  (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application")
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+$versions = foreach ($root in $runtimeRoots) {
+  Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' }
+}
+if ($versions) {
+  Write-Host ("WebView2 Runtime already installed: " + (($versions | Sort-Object Name -Descending | Select-Object -First 1).Name))
+  exit 0
+}
+
 Write-Host "Downloading WebView2 Evergreen Bootstrapper ($Architecture)..."
 Invoke-WebRequest -UseBasicParsing -Uri $bootstrapperLinks[$Architecture] -OutFile $installer
 if (-not (Test-Path -LiteralPath $installer)) {
@@ -36,10 +49,6 @@ if ($process.ExitCode -ne 0) {
   throw "WebView2 Runtime installation failed"
 }
 
-$runtimeRoots = @(
-  (Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application"),
-  (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application")
-) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
 $versions = foreach ($root in $runtimeRoots) {
   Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' }
