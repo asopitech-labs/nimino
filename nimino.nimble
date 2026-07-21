@@ -45,21 +45,7 @@ task buildPackCli, "Build the nimino-pack validation CLI":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"
 
 task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
-  exec "mkdir -p /tmp/nimino-pack-cli-test && printf 'name = \"Demo\"\\nid = \"app.nimino.demo\"\\nurl = \"https://example.com\"\\n' > /tmp/nimino-pack-cli-test/input.toml && printf '#!/bin/sh\\n' > /tmp/nimino-pack-cli-test/host && printf 'icon' > /tmp/nimino-pack-cli-test/icon.png && printf 'body{}' > /tmp/nimino-pack-cli-test/custom.css && printf 'console.log(1)' > /tmp/nimino-pack-cli-test/custom.js"
-  exec "/tmp/nimino pack /tmp/nimino-pack-cli-test/input.toml --out /tmp/nimino-pack-cli-test/out --host /tmp/nimino-pack-cli-test/host"
-  exec "test -s /tmp/nimino-pack-cli-test/out/nimino-manifest.json && test -x /tmp/nimino-pack-cli-test/out/run-nimino.sh && test -x /tmp/nimino-pack-cli-test/out/host && test -s /tmp/nimino-pack-cli-test/out/run-nimino.cmd && grep -q 'host\"' /tmp/nimino-pack-cli-test/out/run-nimino.cmd && test -s /tmp/nimino-pack-cli-test/out/nimino.desktop && test -s /tmp/nimino-pack-cli-test/out/install-windows.ps1"
-  exec "printf '#!/bin/sh\\n' > '/tmp/nimino-pack-cli-test/host&name' && /tmp/nimino pack https://example.com --name DemoCmdEscape --id app.nimino.demo-cmd-escape --out /tmp/nimino-pack-cli-test/cmd-escape-out --host '/tmp/nimino-pack-cli-test/host&name' && grep -q 'host^&name' /tmp/nimino-pack-cli-test/cmd-escape-out/run-nimino.cmd"
-  exec "/tmp/nimino pack https://example.com --name DemoUrl --id app.nimino.demo-url --icon https://example.com/icon.png --out /tmp/nimino-pack-cli-test/url-out"
-  exec "grep -q 'DemoUrl' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json && grep -q 'https://example.com' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json && grep -q 'icon.png' /tmp/nimino-pack-cli-test/url-out/nimino-manifest.json"
-  exec "/tmp/nimino pack HTTPS://example.com --name DemoUpperUrl --id app.nimino.demo-upper-url --out /tmp/nimino-pack-cli-test/upper-url-out"
-  exec "grep -q 'DemoUpperUrl' /tmp/nimino-pack-cli-test/upper-url-out/nimino-manifest.json"
-  exec "! /tmp/nimino pack https://example.com --name MissingHost --id app.nimino.missing-host --out /tmp/nimino-pack-cli-test/missing-host-out --host /tmp/nimino-pack-cli-test/no-such-host && test ! -e /tmp/nimino-pack-cli-test/missing-host-out"
-  exec "/tmp/nimino pack https://example.com --name DemoLocalIcon --id app.nimino.demo-local-icon --icon /tmp/nimino-pack-cli-test/icon.png --out /tmp/nimino-pack-cli-test/local-icon-out"
-  exec "test -s /tmp/nimino-pack-cli-test/local-icon-out/icon.png && grep -q '\"icon\": \"icon.png\"' /tmp/nimino-pack-cli-test/local-icon-out/nimino-manifest.json"
-  exec "! /tmp/nimino pack https://example.com --name MissingIcon --id app.nimino.missing-icon --icon /tmp/nimino-pack-cli-test/no-such-icon.png --out /tmp/nimino-pack-cli-test/missing-icon-out && test ! -e /tmp/nimino-pack-cli-test/missing-icon-out"
-  exec "printf 'name = \"DemoInject\"\\nid = \"app.nimino.demo-inject\"\\nurl = \"https://example.com\"\\n\\n[injection]\\ncss = [\"/tmp/nimino-pack-cli-test/custom.css\"]\\njavascript = [\"/tmp/nimino-pack-cli-test/custom.js\"]\\n' > /tmp/nimino-pack-cli-test/inject.toml && /tmp/nimino pack /tmp/nimino-pack-cli-test/inject.toml --out /tmp/nimino-pack-cli-test/inject-out"
-  exec "test -s /tmp/nimino-pack-cli-test/inject-out/custom.css && test -s /tmp/nimino-pack-cli-test/inject-out/custom.js && grep -q 'custom.css' /tmp/nimino-pack-cli-test/inject-out/nimino-manifest.json && grep -q 'custom.js' /tmp/nimino-pack-cli-test/inject-out/nimino-manifest.json"
-  exec "printf 'name = \"MissingInject\"\\nid = \"app.nimino.missing-inject\"\\nurl = \"https://example.com\"\\n\\n[injection]\\ncss = [\"/tmp/nimino-pack-cli-test/no-such.css\"]\\n' > /tmp/nimino-pack-cli-test/missing-inject.toml && ! /tmp/nimino pack /tmp/nimino-pack-cli-test/missing-inject.toml --out /tmp/nimino-pack-cli-test/missing-inject-out && test ! -e /tmp/nimino-pack-cli-test/missing-inject-out"
+  exec "bash tools/ci/test_pack_cli.sh /tmp/nimino"
 
 task testPackArchive, "Verify Linux and Windows pack archives":
   exec "tar -czf /tmp/nimino-pack-cli-test/nimino-demo-linux.tar.gz -C /tmp/nimino-pack-cli-test/out ."

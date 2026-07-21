@@ -1,0 +1,105 @@
+#!/bin/sh
+set -eu
+
+nimino="${1:-/tmp/nimino}"
+root=/tmp/nimino-pack-cli-test
+
+rm -rf "$root"
+mkdir -p "$root"
+printf '%s\n' \
+  'name = "Demo"' \
+  'id = "app.nimino.demo"' \
+  'url = "https://example.com"' \
+  'icon = "/tmp/nimino-pack-cli-test/icon.png"' \
+  '' \
+  '[package]' \
+  'version = "1.2.3"' \
+  'description = "Demo desktop application"' \
+  'publisher = "Nimino Labs"' \
+  'homepage = "https://nimino.example/demo"' \
+  'categories = ["Network", "Utility"]' \
+  > "$root/input.toml"
+printf '#!/bin/sh\n' > "$root/host"
+printf 'icon' > "$root/icon.png"
+printf 'body{}' > "$root/custom.css"
+printf 'console.log(1)' > "$root/custom.js"
+
+"$nimino" pack "$root/input.toml" --out "$root/out" --host "$root/host"
+test -s "$root/out/nimino-manifest.json"
+test -x "$root/out/run-nimino.sh"
+test -x "$root/out/host"
+test -s "$root/out/run-nimino.cmd"
+grep -q 'host"' "$root/out/run-nimino.cmd"
+test -s "$root/out/app.nimino.demo.desktop"
+test -s "$root/out/nimino-linux-package.json"
+test -s "$root/out/nimino-windows-installer.json"
+test -s "$root/out/install-windows.ps1"
+test -s "$root/out/uninstall-windows.ps1"
+grep -Fx 'Version=1.0' "$root/out/app.nimino.demo.desktop"
+grep -Fx 'Name=Demo' "$root/out/app.nimino.demo.desktop"
+grep -Fx 'Comment=Demo desktop application' "$root/out/app.nimino.demo.desktop"
+grep -Fx 'Exec=/opt/nimino/app.nimino.demo/run-nimino.sh' "$root/out/app.nimino.demo.desktop"
+grep -Fx 'TryExec=/opt/nimino/app.nimino.demo/run-nimino.sh' "$root/out/app.nimino.demo.desktop"
+grep -Fx 'Icon=/opt/nimino/app.nimino.demo/icon.png' "$root/out/app.nimino.demo.desktop"
+grep -Fx 'Categories=Network;Utility;' "$root/out/app.nimino.demo.desktop"
+grep -q '"version": "1.2.3"' "$root/out/nimino-manifest.json"
+grep -q '"installScope": "perUser"' "$root/out/nimino-windows-installer.json"
+grep -q 'DisplayVersion' "$root/out/install-windows.ps1"
+grep -q 'UninstallString' "$root/out/install-windows.ps1"
+grep -q 'Remove-Item -LiteralPath \$target' "$root/out/uninstall-windows.ps1"
+
+printf '#!/bin/sh\n' > "$root/host&name"
+"$nimino" pack https://example.com --name DemoCmdEscape --id app.nimino.demo-cmd-escape \
+  --out "$root/cmd-escape-out" --host "$root/host&name"
+grep -q 'host^&name' "$root/cmd-escape-out/run-nimino.cmd"
+
+"$nimino" pack https://example.com --name DemoUrl --id app.nimino.demo-url \
+  --icon https://example.com/icon.png --out "$root/url-out"
+grep -q 'DemoUrl' "$root/url-out/nimino-manifest.json"
+grep -q 'https://example.com' "$root/url-out/nimino-manifest.json"
+grep -q 'icon.png' "$root/url-out/nimino-manifest.json"
+test -s "$root/url-out/app.nimino.demo-url.desktop"
+! grep -q '^Icon=' "$root/url-out/app.nimino.demo-url.desktop"
+
+"$nimino" pack HTTPS://example.com --name DemoUpperUrl --id app.nimino.demo-upper-url \
+  --out "$root/upper-url-out"
+grep -q 'DemoUpperUrl' "$root/upper-url-out/nimino-manifest.json"
+
+! "$nimino" pack https://example.com --name MissingHost --id app.nimino.missing-host \
+  --out "$root/missing-host-out" --host "$root/no-such-host"
+test ! -e "$root/missing-host-out"
+
+"$nimino" pack https://example.com --name DemoLocalIcon --id app.nimino.demo-local-icon \
+  --icon "$root/icon.png" --out "$root/local-icon-out"
+test -s "$root/local-icon-out/icon.png"
+grep -q '"icon": "icon.png"' "$root/local-icon-out/nimino-manifest.json"
+
+! "$nimino" pack https://example.com --name MissingIcon --id app.nimino.missing-icon \
+  --icon "$root/no-such-icon.png" --out "$root/missing-icon-out"
+test ! -e "$root/missing-icon-out"
+
+printf '%s\n' \
+  'name = "DemoInject"' \
+  'id = "app.nimino.demo-inject"' \
+  'url = "https://example.com"' \
+  '' \
+  '[injection]' \
+  'css = ["/tmp/nimino-pack-cli-test/custom.css"]' \
+  'javascript = ["/tmp/nimino-pack-cli-test/custom.js"]' \
+  > "$root/inject.toml"
+"$nimino" pack "$root/inject.toml" --out "$root/inject-out"
+test -s "$root/inject-out/custom.css"
+test -s "$root/inject-out/custom.js"
+grep -q 'custom.css' "$root/inject-out/nimino-manifest.json"
+grep -q 'custom.js' "$root/inject-out/nimino-manifest.json"
+
+printf '%s\n' \
+  'name = "MissingInject"' \
+  'id = "app.nimino.missing-inject"' \
+  'url = "https://example.com"' \
+  '' \
+  '[injection]' \
+  'css = ["/tmp/nimino-pack-cli-test/no-such.css"]' \
+  > "$root/missing-inject.toml"
+! "$nimino" pack "$root/missing-inject.toml" --out "$root/missing-inject-out"
+test ! -e "$root/missing-inject-out"
