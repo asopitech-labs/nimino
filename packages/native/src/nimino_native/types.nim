@@ -545,15 +545,10 @@ proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView] =
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
     elif defined(windows):
-      if window.platformWindow == nil:
-        let created = window.windowsCreateWindow()
-        if not created.isOk:
-          window.views.setLen(window.views.len - 1)
-          return failureOf[NativeWebView](created.failure)
-      let started = view.windowsStartWebView()
-      if not started.isOk:
+      let created = window.windowsCreateWindow()
+      if not created.isOk:
         window.views.setLen(window.views.len - 1)
-        return failureOf[NativeWebView](started.failure)
+        return failureOf[NativeWebView](created.failure)
   successOf(view)
 
 proc setTitle*(window: NativeWindow; title: string): NativeResult =

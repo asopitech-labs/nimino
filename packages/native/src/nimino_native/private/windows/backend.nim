@@ -1249,6 +1249,13 @@ proc windowsCreateWindow(window: NativeWindow): NativeResult =
   window.state = ready
   discard showWindow(hwnd, SwShow)
   discard updateWindow(hwnd)
+  if window.views.len == 0:
+    return failure(nativeError(invalidState, "window.create", detail = "WebView is required"))
+
+  let started = window.views[0].windowsStartWebView()
+  if not started.isOk:
+    discard destroyWindow(hwnd)
+    return started
   success()
 
 proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
