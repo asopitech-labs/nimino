@@ -3,6 +3,7 @@
 COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 WSL_SMOKE_TIMEOUT ?= 120
+WSL_INTERACTIVE_TIMEOUT ?= 300
 
 .PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-linux-test pack-windows-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
@@ -122,7 +123,7 @@ wsl-host-abnormal-smoke: image ## WSL clientのstdin異常終了時にWindows ho
 wsl-host-interactive: image ## WebView2実Windowを開き、ユーザー操作を待つ
 
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
-	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-interactive.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)"
+	(timeout --foreground $(WSL_INTERACTIVE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-interactive.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)") || { status=$$?; taskkill.exe /IM nimino-wsl-host.exe /F >/dev/null 2>&1 || true; exit $$status; }
 
 wsl-host-popup-smoke: image ## WebView2新規Window要求・明示popup message受信を実機確認する
 
