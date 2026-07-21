@@ -453,9 +453,12 @@ proc downloadOperationInvoke(self: pointer; sender, args: pointer): HResult {.st
       float(received) / float(total))
   var state: int32
   if succeeded(downloadOperationGetState(sender, addr state)):
+    ## COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS=1 is non-terminal.  Do not
+    ## report a failure for the progress notification; only Completed (2) and
+    ## Interrupted (3) finish the download lifecycle.
     if state == 2:
       view.dispatchDownloadEvent(handler.url, nativeDownloadCompleted, 1.0)
-    elif state == 1:
+    elif state == 3:
       var reason: int32
       if succeeded(downloadOperationGetInterruptReason(sender, addr reason)) and reason == 26:
         view.dispatchDownloadEvent(handler.url, nativeDownloadCancelled, -1.0)
