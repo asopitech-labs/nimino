@@ -16,3 +16,5 @@ ADRは設計判断と、その判断を覆す条件を記録します。M0では
 12. [ADR-0015: nimino-pack Linux archive generation](0015-pack-linux-archive-generation.md)
 13. [ADR-0016: nimino-pack Windows NSIS generation](0016-pack-windows-nsis-generation.md)
 14. [ADR-0017: custom WebView scheme and OS deep-link boundary](0017-custom-protocol-boundary.md)
+15. [ADR-0018: nimino-pack online build and Popular Packages](0018-pack-online-build-and-popular-catalog.md)
+16. [ADR-0019: AppImage fail-closed dependency boundary](0019-appimage-fail-closed-boundary.md)

@@ -90,9 +90,9 @@ nimino package-linux dist/discord --format rpm --out dist/packages \
 nimino package-linux dist/discord --format appimage --out dist/packages --arch amd64
 ```
 
-AppImageはchecksum固定済みの公式`appimagetool`で、`AppRun`、移植可能なdesktop entry、対応icon、`usr/bin`起動器、bundle本体を含むType 2 AppImageを生成します。ローカルiconを同梱したbundleが必須で、現時点のDocker imageはx86_64 toolを使うため`--arch amd64`だけを受け付けます。生成時はDocker内でFUSEを使わずtoolを自己展開して実行しますが、配布先でのAppImage runtime/FUSE互換性は別途確認が必要です。
+`appimage`というformat名は予約済みですが、現時点では不完全なType 2 AppImageを生成しません。生成前に固定build tool、GTK 4/WebKitGTK 6.0のpkg-config module、GLib schema、GIO/GdkPixbuf module、WebKitGPU/Network/Web process、injected bundle、`bwrap`、`xdg-dbus-proxy`を検査します。ELF依存検査には`lddtree`を要求し、`ldd`で利用者提供hostを実行しません。toolまたはruntime assetがなければ、CLIは`AppImage package generation is unavailable:`で始まる固定エラーを返し、`.AppImage`を残しません。
 
-この段階ではNimino host、GTK、WebKitGTKなどの動的依存ライブラリのdependency closure、署名、update information、各ディストリビューション実機での起動確認は実装していません。bundleにはCycloneDX 1.6の`nimino-sbom.cdx.json`を生成しますが、これは依存関係の宣言であり、動的ライブラリの同梱や署名を保証しません。したがって「単一ファイルを配布できる」ことは保証しますが、「追加のsystem libraryなしで任意のLinux上で起動できる」ことは保証しません。
+すべてのpreflightが通っても、依存ライブラリのAppDirへのcopy、RPATH、WebKitGTK補助processの安全な再配置、配布先でsandboxを有効にした起動test、同梱ライセンスとSBOMが未実装の間は`unsupportedFeature`を返します。署名とupdate informationも未実装です。これらが揃うまで「単一ファイルを配布できる」とは扱いません。
 
 Flatpak build contextは次で生成できます。
 
@@ -110,8 +110,9 @@ nimino package-linux dist/discord --format flatpak --out dist/packages
 make pack-test
 make pack-cli-test
 make pack-linux-test
+make pack-appimage-guardrails
 make pack-windows-test
 make pack-archive-test
 ```
 
-`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMの内容と、AppImageの生成・自己展開・起動器・amd64制約、`pack-windows-test`はNSIS setup EXEのクロス生成とMSI未対応エラー、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。最後の四つはDockerコンテナ内で実行します。
+`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMとFlatpak context、`pack-appimage-guardrails`は未解決依存と不完全なAppImage生成の拒否、`pack-windows-test`はNSIS setup EXEのクロス生成とMSI未対応エラー、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。CLIを使う検査はDockerコンテナ内で実行します。
