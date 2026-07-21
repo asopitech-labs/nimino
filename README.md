@@ -46,6 +46,32 @@ Windows配布物は`make pack-windows-test`でDocker内のNSISを使いper-user 
 
 WSLの自動smokeは既定120秒でhostを回収します。環境に応じて`WSL_SMOKE_TIMEOUT=30 make wsl-host-popup-smoke`のように短縮できます。手動操作用`wsl-host-interactive`は既定300秒で、`WSL_INTERACTIVE_TIMEOUT=600 make wsl-host-interactive`のように延長できます。
 
+### Windows WebView2/Interopのセットアップ
+
+WSLから`powershell.exe`が`UtilBindVsockAnyPort: socket failed`で起動できない場合は、まずWindows Terminal（管理者）でInteropを再起動します。
+
+```powershell
+wsl --shutdown
+Restart-Service LxssManager
+wsl -d Ubuntu-22.04 -- bash -lc 'echo interop-ok'
+```
+
+`echo interop-ok`が成功した後、Windows PowerShellでWebView2 Evergreen Runtimeを導入します。RuntimeはDocker内のSDK DLLとは別物です。
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+& "$env:USERPROFILE\works\nimino\tools\ci\setup-windows-webview2.ps1"
+```
+
+リポジトリがWindows側にない場合は、WSLからWindows PowerShellを直接呼び出せます。
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
+  "$(wslpath -w "$PWD/tools/ci/setup-windows-webview2.ps1")"
+```
+
+このWindows側セットアップはWSL開発環境の事前条件です。具体的には、(1) WSL 2、(2) Windows Interop、(3) WebView2 Evergreen Runtime、(4) WindowsユーザーのGUIログオンを満たしてから、WindowsにユーザーとしてログオンしたGUIセッションで`make wsl-host-popup-smoke`を実行します。WSLgの`DISPLAY`はLinux GUI用であり、Windows WebView2のRuntime/Win32 Windowの代替ではありません。
+
 Linuxの実ネイティブスモークは`make linux-smoke`で実行します。これはDockerのnamespace制限を回避するため、そのテストコンテナだけでWebKit sandboxを無効にし、GIO notification request用にprivate D-Bus sessionを起動します。アプリの本番実行設定にはこの環境変数やテスト用sessionを含めません。
 
 Dockerデーモンが利用できない環境では、コンテナ内ビルド・テストは実行できません。`make wsl-host-smoke`はWSL、Windows Interop、PowerShell、およびWindowsのWebView2 Evergreen Runtimeを必要とします。LoaderはDocker image内で固定SDKから取り出すため、ローカルのNim開発ツールやSDK導入は不要です。
