@@ -46,6 +46,11 @@ let app = created.value
 let createdWindow = app.newWindow(title = "WSL core async test", width = 320, height = 200)
 doAssert createdWindow.isOk
 let window = createdWindow.value
+let extraView = window.newWebView()
+doAssert extraView.isOk
+var extraMessage = ""
+doAssert extraView.value.onMessage(proc(message: string) = extraMessage = message).isOk
+doAssert extraView.value.close().isOk
 
 doAssert window.rpc.register("async.request", startAsync)
 doAssert window.rpc.registerSync("async.complete", completeAsync)

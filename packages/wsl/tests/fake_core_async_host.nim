@@ -43,11 +43,12 @@ doAssert output.writeMessageTo(ProtocolMessage(
   version: ProtocolVersion,
   kind: ready,
   sessionId: SessionId,
-  payload: nativeCapabilitiesPayload(["webPermissionEvents",
+  payload: nativeCapabilitiesPayload(["multipleWebViews", "webPermissionEvents",
     WebViewProfileDataClearCapability])
 )).isOk
 
 var nextEventId = 1'u64
+var nextWebViewId = 1'u64
 var rpcRequestsSent = false
 var asyncReplySeen = false
 while true:
@@ -64,10 +65,19 @@ while true:
     break
   of request:
     case message.methodName
+    of "app.capabilities":
+      doAssert output.writeMessageTo(message.response($(%*{
+        "capabilities": ["multipleWebViews", "webPermissionEvents",
+          WebViewProfileDataClearCapability]
+      }))).isOk
     of "native.window.create":
       doAssert output.writeMessageTo(message.response("{\"windowId\":\"1\"}")).isOk
     of "native.webview.create":
-      doAssert output.writeMessageTo(message.response("{\"webViewId\":\"1\"}")).isOk
+      let webViewId = $nextWebViewId
+      inc nextWebViewId
+      doAssert output.writeMessageTo(message.response($(%*{"webViewId": webViewId}))).isOk
+    of "native.webview.close":
+      doAssert output.writeMessageTo(message.response("{}")).isOk
     of "native.webview.setDevToolsEnabled":
       doAssert output.writeMessageTo(message.response("{}")).isOk
     of "native.webview.loadHtml":

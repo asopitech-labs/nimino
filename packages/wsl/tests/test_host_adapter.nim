@@ -53,6 +53,11 @@ block createsWindowViewAndUrlBeforeStartingUi:
   let popupView = adapter.handleRequest(requestMessage("native.webview.create",
     $(%*{"windowId": popupId})))
   doAssert popupView.isOk
+  let popupViewId = parseJson(popupView.value.payload)["webViewId"].getStr()
+  when not defined(niminoWsl):
+    let closedPopupView = adapter.handleRequest(requestMessage("native.webview.close",
+      $(%*{"webViewId": popupViewId})))
+    doAssert closedPopupView.isOk
 
 block navigationRulesAreEvaluatedOnHostWithoutIpcWait:
   let adapter = newHostAdapter()
