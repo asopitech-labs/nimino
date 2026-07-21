@@ -318,6 +318,7 @@ proc windowsInstallScript(manifest: PackManifest; localIcon: string): string =
     "if (-not (Test-Path -LiteralPath $shortcutProperties)) { throw 'shortcut property helper is missing from bundle' }\n" &
     "& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $shortcutProperties -ShortcutPath $shortcutPath -AppUserModelId " &
       powershellLiteral(manifest.id) & "\n" &
+    "if ($LASTEXITCODE -ne 0) { throw 'unable to configure Windows AppUserModelId shortcut property' }\n" &
     "$uninstallKey = " & powershellLiteral(uninstallKey) & "\n" &
     "New-Item -Force -Path $uninstallKey | Out-Null\n" &
     "New-ItemProperty -Force -LiteralPath $uninstallKey -Name 'DisplayName' -Value " &
