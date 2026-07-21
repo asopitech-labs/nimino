@@ -213,6 +213,8 @@ proc webkit_policy_decision_ignore*(decision: ptr WebKitPolicyDecision)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_permission_request_deny*(request: ptr WebKitPermissionRequest)
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_permission_request_allow*(request: ptr WebKitPermissionRequest)
+  {.cdecl, importc, dynlib: LibWebKit.}
 
 const LibJavaScriptCore = "libjavascriptcoregtk-6.0.so.1"
 

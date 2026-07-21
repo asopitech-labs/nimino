@@ -462,8 +462,11 @@ proc linuxPermissionRequested(webView: pointer; request: ptr WebKitPermissionReq
   let view = cast[NativeWebView](userData)
   let uri = webkit_web_view_get_uri(cast[ptr WebKitWebView](webView))
   let allowed = if uri.isNil: false else: view.dispatchPermissionRequested($uri)
-  if not allowed and not request.isNil:
-    webkit_permission_request_deny(request)
+  if not request.isNil:
+    if allowed:
+      webkit_permission_request_allow(request)
+    else:
+      webkit_permission_request_deny(request)
   1
 
 proc linuxConfigurePermissionRequests(view: NativeWebView): NativeResult =
