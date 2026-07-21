@@ -98,7 +98,7 @@ discard app.run()
 
 Web側には`window.nimino.invoke(method, params, { timeoutMs })`および`window.nimino.notify(method, params)`を提供する。wire形式は`nimino = "rpc"`、`kind = request | notification | cancel`、文字列ID、明示的method、JSON params、timeoutMsである。responseは同じIDに`ok/result`または構造化`error`を返す。未登録methodは拒否し、cancel/timeout後の遅延Futureはresponseを二重送信しない。
 
-registryの`tick()`はWindows timerとLinux GLib timeout sourceからUI threadで呼ばれる。Linuxの実smokeは`invoke → 許可済みhandler → response → notify`に加え、通知で完了するFutureと許可済み未完了Futureのtimeout responseを確認している。WSLではcoreがhostの`native.webview.message` eventを同じWindow registryへ渡し、responseを`native.webview.evalJavaScript` requestとして中継する。WSL clientは10ms以下の待機ごとにregistryをtickするため、host eventが続かない無応答requestも期限切れになる。fake hostとWindows WebView2 Runtimeの実スモークでasync response/timeoutを確認済みである。Window close中の遅延Futureと通常Windows Runtime上のcore RPCは未確認である。
+registryの`tick()`はWindows timerとLinux GLib timeout sourceからUI threadで呼ばれる。Linuxの実smokeは`invoke → 許可済みhandler → response → notify`に加え、通知で完了するFutureと許可済み未完了Futureのtimeout responseを確認している。WSLではcoreがhostの`native.webview.message` eventを同じWindow registryへ渡し、responseを`native.webview.evalJavaScript` requestとして中継する。WSL clientは10ms以下の待機ごとにregistryをtickするため、host eventが続かない無応答requestも期限切れになる。fake hostとWindows WebView2 Runtimeの実スモークでasync response/timeoutを確認済みである。Window close中の遅延Futureも単体テストで、完了後に破棄済みWindowへcallbackを配送しないことを確認している。
 
 `loadHtml`はbridgeを文書の先頭へ挿入します。Viewが`pending`の間の最初の対象`loadUrl`では、native Viewにdocument-start scriptとしてbridgeを登録してから読込を開始します。このため許可されたURLの最初期scriptも`window.nimino.invoke`を利用できます。
 

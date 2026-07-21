@@ -178,7 +178,7 @@ discard app.sendNativeNotification(NativeNotification(
 
 `onNavigationStarting` はWindowsで `NavigationStartingEventArgs::put_Cancel`、Linuxで `decide-policy` の`use/ignore`を使い、callbackが`false`または例外を返したときに中止します。handler未登録時は許可します。Linux実WebViewでは許可経路を確認済みです。WSL hostは`native.webview.navigationStarting` eventをclientへ中継しますが、eventはnative callbackが戻った後に送信されるため、現時点では既定許可でありclientが中止を決めることはできません。この差をcore APIへ漏らさないための候補は[ADR-0005提案](../adr/0005-wsl-navigation-policy.md)で管理します。
 
-`onNavigationCompleted` は主frameの読込完了後に URL と成功可否を通知します。Linuxは `load-changed` と `load-failed` を併用して失敗を成功扱いせず、Windowsは `ICoreWebView2::NavigationCompleted` の `IsSuccess` を使用します。hostは `native.webview.navigationCompleted` eventとして中継します。各バックエンドはWindow破棄前にsignal/COM event登録を解除します。Linux実WebViewでの成功経路、Windows/WSLのクロスコンパイルは確認済みですが、Windows Runtime とWSL往復での実行確認は未完了です。
+`onNavigationCompleted` は主frameの読込完了後に URL と成功可否を通知します。Linuxは `load-changed` と `load-failed` を併用して失敗を成功扱いせず、Windowsは `ICoreWebView2::NavigationCompleted` の `IsSuccess` を使用します。hostは `native.webview.navigationCompleted` eventとして中継します。各バックエンドはWindow破棄前にsignal/COM event登録を解除します。Linux実WebView、Windows Runtime、WSL往復の成功経路を確認済みです。
 
 `onCloseRequested` はユーザーまたはOSからWindow終了要求が発生した時に同期的に呼ばれ、`true`で終了を許可し、`false`で拒否します。コールバック例外は安全側（拒否）として扱います。
 `onClosed`はOS側の破棄完了後に一度だけ通知されます。coreはこの通知でWindow状態とWindow単位RPCを終了させます。
