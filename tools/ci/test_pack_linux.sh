@@ -70,6 +70,12 @@ grep -F '"runtime": "org.gnome.Platform"' "$flatpak_context/app.nimino.linux-dem
 grep -F '"type": "dir"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
 grep -F '"path": "bundle"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
 
+"$nimino" pack "$root/input.toml" --out "$root/no-host-bundle"
+if "$nimino" package-linux "$root/no-host-bundle" --format deb --out "$root/no-host-out" 2>"$root/no-host.err"; then
+  exit 1
+fi
+grep -Fx 'nimino package-linux: Linux package bundle is missing the host executable referenced by launcher' "$root/no-host.err"
+
 if "$nimino" package-linux "$root/bundle" --format appimage --out "$root/out" --arch arm64 2>"$root/appimage-arm64.err"; then
   exit 1
 fi

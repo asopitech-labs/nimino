@@ -36,6 +36,12 @@ grep -Fx '  WriteUninstaller "$INSTDIR\uninstall.exe"' "$script"
 grep -Fx '  CreateShortcut "$SMPROGRAMS\Nimino\app.nimino.windows-demo.lnk" "$INSTDIR\run-nimino.cmd"' "$script"
 grep -F '  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\app.nimino.windows-demo" "UninstallString"' "$script"
 
+"$nimino" pack "$root/input.toml" --out "$root/no-host-bundle"
+if "$nimino" package-windows "$root/no-host-bundle" --format nsis --out "$root/no-host-out" 2>"$root/no-host.err"; then
+  exit 1
+fi
+grep -Fx 'nimino package-windows: Windows package bundle is missing a host executable' "$root/no-host.err"
+
 if "$nimino" package-windows "$root/bundle" --format msi --out "$root/out/msi" 2>"$root/msi.err"; then
   exit 1
 fi
