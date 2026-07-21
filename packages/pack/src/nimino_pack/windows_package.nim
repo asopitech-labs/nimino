@@ -53,7 +53,8 @@ proc validateWindowsHost(bundleDirectory: string): PackResult[bool] =
   var found = false
   try:
     for path in walkDirRec(bundleDirectory):
-      if path.toLowerAscii().endsWith(".exe") and fileExists(path):
+      if parentDir(path) == bundleDirectory and
+          path.toLowerAscii().endsWith(".exe") and fileExists(path):
         found = true
         break
   except OSError:
