@@ -179,9 +179,7 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxSendNativeNotification(app: NativeApp;
                                    notification: NativeNotification): NativeResult
 elif defined(windows):
-  proc windowsCreateWindowShell(window: NativeWindow): NativeResult
   proc windowsCreateWindow(window: NativeWindow): NativeResult
-  proc windowsStartWebView(view: NativeWebView): NativeResult
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc windowsClearBrowsingData(view: NativeWebView;
                                 request: NativeBrowsingDataRequest): NativeResult
@@ -530,12 +528,6 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
     profilePath: profilePath
   )
   app.windows.add(window)
-  when defined(windows):
-    if app.state == running:
-      let created = window.windowsCreateWindowShell()
-      if not created.isOk:
-        app.windows.setLen(app.windows.len - 1)
-        return failureOf[NativeWindow](created.failure)
   successOf(window)
 
 proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView] =
@@ -553,16 +545,10 @@ proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView] =
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
     elif defined(windows):
-      if window.platformWindow == nil:
-        let created = window.windowsCreateWindow()
-        if not created.isOk:
-          window.views.setLen(window.views.len - 1)
-          return failureOf[NativeWebView](created.failure)
-      else:
-        let started = view.windowsStartWebView()
-        if not started.isOk:
-          window.views.setLen(window.views.len - 1)
-          return failureOf[NativeWebView](started.failure)
+      let created = window.windowsCreateWindow()
+      if not created.isOk:
+        window.views.setLen(window.views.len - 1)
+        return failureOf[NativeWebView](created.failure)
   successOf(view)
 
 proc setTitle*(window: NativeWindow; title: string): NativeResult =
