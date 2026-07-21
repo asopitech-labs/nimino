@@ -109,6 +109,17 @@ block windowAndViewRemainSeparate:
   doAssert window.value.onClosed(proc() = discard).isOk
   doAssert not window.value.newWebView().isOk
 
+block lifecycleStateQueriesAreExplicit:
+  let app = newNativeApp()
+  let window = app.newWindow("Lifecycle", 320, 200)
+  doAssert window.isOk
+  doAssert not window.value.isReady()
+  doAssert not window.value.isClosed()
+  let view = window.value.newWebView()
+  doAssert view.isOk
+  doAssert not view.value.isReady()
+  doAssert not view.value.isClosed()
+
 block htmlBaseUrlIsValidatedBeforeNativeCreation:
   let app = newNativeApp()
   let window = app.newWindow("HTML base URL", 320, 200)

@@ -418,6 +418,18 @@ proc newNativeApp*(): NativeApp =
 proc supports*(app: NativeApp; capability: Capability): bool {.inline.} =
   app.capabilities.supports(capability)
 
+proc isReady*(window: NativeWindow): bool {.inline.} =
+  not window.isNil and window.state == ready
+
+proc isClosed*(window: NativeWindow): bool {.inline.} =
+  window.isNil or window.state == closed
+
+proc isReady*(view: NativeWebView): bool {.inline.} =
+  not view.isNil and view.state == ready
+
+proc isClosed*(view: NativeWebView): bool {.inline.} =
+  view.isNil or view.state == closed
+
 proc configureSystemTray*(app: NativeApp; items: openArray[NativeMenuItem];
                           handler: NativeMenuHandler): NativeResult =
   ## Configures the initial Windows system-tray context menu.  It is deliberately
