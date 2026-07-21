@@ -2,7 +2,7 @@
 
 Nimをホスト言語に、OS公式APIの薄いFFIでネイティブWindowとWebViewを扱う、軽量なクロスプラットフォームWeb UIデスクトップアプリケーション基盤です。
 
-> M0〜M4のprofile、local asset境界、navigation/permission/download policy、Windows tray、Linux GTK menubar/notificationを実装済みです。`nimino-pack`はLinux desktop entry、Debian/RPM archive、Windowsのper-user導入用メタデータ／PowerShell templateを生成します。署名済みMSI・NSIS、AppImage、Flatpak、通常Windows GUI CI、macOS、toast activationは未整備です。
+> M0〜M4のprofile、local asset境界、navigation/permission/download policy、Windows tray、Linux GTK menubar/notificationを実装済みです。`nimino-pack`はLinux desktop entry、Debian/RPM archive、amd64 AppImage、Windowsのper-user導入用メタデータ／PowerShell templateを生成します。署名済みMSI・NSIS、Flatpak、通常Windows GUI CI、macOS、toast activationは未整備です。AppImageのGTK/WebKitGTK依存ライブラリ同梱と署名は未実装です。
 
 
 ## 目標
@@ -39,6 +39,8 @@ make verify-env
 ```
 
 主なターゲットは`make image`（image作成）、`make verify-env`（Nim/Nimble/GTK/WebKitGTK検証）、`make shell`（コンテナshell）、`make test`（単体テストとfake hostによるWSL core RPC）、`make linux-smoke`（native Linux GUI smoke）、`make core-linux-rpc-smoke`（core RPC同期往復）、`make core-linux-rpc-url-smoke`（core URLのdocument-start RPC実往復）、`make core-linux-rpc-async-smoke`（core RPC async/timeout実往復）、`make windows-cross`（Windows native x64クロスコンパイル）、`make core-windows-cross`（Windows core x64クロスコンパイル）、`make wsl-host-cross`（Windows WSL hostクロスコンパイル）、`make wsl-host-smoke`（host単体のWebView2実機確認）、`make wsl-host-abnormal-smoke`（client EOF時のhost終了確認）、`make wsl-host-popup-smoke`（WebView2新規Window要求と暗黙popup抑止の実機確認）、`make wsl-client-smoke`（通常WSL client APIでWindows hostを起動する実機確認）、`make wsl-core-smoke`（通常core APIでWindows hostを選ぶ実機確認）、`make wsl-core-rpc-url-smoke`（Windows WebView2上のWSL core URL document-start RPC実機確認）、`make wsl-core-rpc-async-smoke`（Windows WebView2上のWSL core async RPC/timeout実機確認）、`make clean`（Compose資源と一時成果物の削除）です。
+
+Linux配布物は`make pack-linux-test`でDebian/RPM/AppImageの生成、archive内容、AppImageの自己展開・起動器をDocker内で検証します。
 
 Linuxの実ネイティブスモークは`make linux-smoke`で実行します。これはDockerのnamespace制限を回避するため、そのテストコンテナだけでWebKit sandboxを無効にし、GIO notification request用にprivate D-Bus sessionを起動します。アプリの本番実行設定にはこの環境変数やテスト用sessionを含めません。
 

@@ -48,7 +48,7 @@ RUN curl --fail --location --retry 3 --silent --show-error \
     && echo "${APPIMAGETOOL_X86_64_SHA256}  /tmp/appimagetool-x86_64.AppImage" | sha256sum --check --status \
     && install -d /opt/nimino/appimagetool \
     && install -m 0755 /tmp/appimagetool-x86_64.AppImage /opt/nimino/appimagetool/appimagetool-x86_64.AppImage \
-    && printf '%s\n' '#!/bin/sh' 'exec env APPIMAGE_EXTRACT_AND_RUN=1 /opt/nimino/appimagetool/appimagetool-x86_64.AppImage "$@"' \
+    && printf '%s\n' '#!/bin/sh' 'exec env APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 /opt/nimino/appimagetool/appimagetool-x86_64.AppImage "$@"' \
       > /usr/local/bin/appimagetool \
     && chmod 0755 /usr/local/bin/appimagetool \
     && rm /tmp/appimagetool-x86_64.AppImage
