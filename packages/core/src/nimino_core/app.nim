@@ -203,7 +203,7 @@ type
     profileName: string
     lastUrl: string
     rpc*: RpcRegistry
-    documentStartBridgeUrl: string
+    documentStartBridgeScript: string
     assetRoot: string
     navigationRules: NavigationRules
     navigationRulesConfigured: bool
@@ -449,10 +449,14 @@ proc documentStartCookieSource(window: Window; url: string): string =
     ""
 
 proc configureDocumentStartBridge(window: Window; url: string): CoreResult =
-  if window.documentStartBridgeUrl == url:
-    return coreSuccess()
   let source = window.documentStartCookieSource(url) & url.documentStartBridgeSource()
   if source.len == 0:
+    return coreSuccess()
+  ## HTTP(S) bridge guards are origin-scoped, so two paths commonly produce
+  ## exactly the same script.  Compare the effective script rather than the
+  ## raw URL; otherwise every same-origin navigation attempts an unnecessary
+  ## document-start re-registration after the WebView is already running.
+  if window.documentStartBridgeScript == source:
     return coreSuccess()
   var configured: CoreResult
   case window.app.backend
@@ -473,7 +477,7 @@ proc configureDocumentStartBridge(window: Window; url: string): CoreResult =
     else:
       configured = coreFailure(coreError(platformUnavailable, "window.loadUrl"))
   if configured.isOk:
-    window.documentStartBridgeUrl = url
+    window.documentStartBridgeScript = source
   configured
 
 proc sendRpcReply(window: Window; message: string) =
@@ -1879,7 +1883,7 @@ proc loadHtml*(window: Window; html: string): CoreResult =
   window.lastUrl.setLen(0)
   ## Inline documents carry their own bootstrap.  Force the next URL load to
   ## install a fresh document-start bridge even when it reuses the prior URL.
-  window.documentStartBridgeUrl.setLen(0)
+  window.documentStartBridgeScript.setLen(0)
   let document = bridgeDocument(html)
   case window.app.backend
   of nativeBackend:
