@@ -1,4 +1,4 @@
-import std/[atomics, os, widestrs]
+import std/[atomics, os, strutils, widestrs]
 
 type
   EnvironmentCompletedVTable = object
@@ -525,9 +525,24 @@ proc webResourceRequestedInvoke(self: pointer; sender, args: pointer): HResult {
   let prefix = app.customProtocolScheme & "://"
   if not url.toLowerAscii().startsWith(prefix):
     return S_OK
+  var methodName: WideCString
+  let methodResult = webResourceRequestGetMethod(request, addr methodName)
+  let requestMethod = if succeeded(methodResult) and not methodName.isNil:
+      let value = $methodName
+      coTaskMemFree(cast[pointer](methodName))
+      value
+    else:
+      "GET"
+  let suffix = url.substr(prefix.len)
+  let authorityEnd = suffix.find('/')
+  var path = if authorityEnd >= 0: suffix.substr(authorityEnd) else: "/"
+  let queryStart = path.find({'?', '#'})
+  if queryStart >= 0:
+    path = path.substr(0, queryStart)
+  if path.len == 0:
+    path = "/"
   let response = app.dispatchCustomProtocol(NativeCustomProtocolRequest(
-    methodName: "GET", url: url,
-    path: url.substr(prefix.len)))
+    methodName: requestMethod, url: url, path: path))
   let content = shCreateMemStream(cast[ptr uint8](response.body.cstring),
     response.body.len.uint32)
   if content.isNil or view.platformEnvironment.isNil:

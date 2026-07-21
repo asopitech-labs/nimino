@@ -709,6 +709,14 @@ proc webResourceRequestGetUri*(request: pointer; uri: ptr WideCString): HResult 
   )
   dispatch(request, uri)
 
+proc webResourceRequestGetMethod*(request: pointer; methodName: ptr WideCString): HResult {.inline.} =
+  ## ICoreWebView2WebResourceRequest::get_Method (vtable slot 5), verified
+  ## against the pinned WebView2 SDK header.
+  let dispatch = cast[proc(self: pointer; methodName: ptr WideCString): HResult {.stdcall.}](
+    cast[ptr ComInterface](request).vtable[5]
+  )
+  dispatch(request, methodName)
+
 proc coreGetSource*(core: pointer; source: ptr WideCString): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; source: ptr WideCString): HResult {.stdcall.}](
     cast[ptr ComInterface](core).vtable[4]
