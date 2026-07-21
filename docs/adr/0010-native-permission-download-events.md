@@ -33,7 +33,7 @@ provides the official `webkit_permission_request_allow()` and
 `webkit_permission_request_deny()` completion functions. The response-policy
 path also exposes `webkit_policy_decision_download()` for forced downloads.
 These declarations are now confirmed from the installed headers; the Nim FFI
-and lifetime bridge are the remaining implementation work.
+and lifetime bridge set the result file path before an accepted download starts.
 
 The pinned WebView2 SDK header (`1.0.3967.48`) also confirms
 `ICoreWebView2::add_PermissionRequested` and
@@ -44,8 +44,8 @@ closure.
 
 ## Consequences
 
-Until those headers are verified and implemented, permission and download
-requests remain explicitly denied by the core policy layer. No backend may
-silently allow or drop a request. The implementation is complete only after
-Windows, Linux, and WSL relay tests prove grant, deny, timeout/default-deny,
-and duplicate-completion behavior.
+Permission and download requests remain explicitly denied by the core policy
+layer unless the application grants them. No backend may silently allow or
+drop a request. Download destinations are now wired to the profile downloads
+directory on Windows, Linux, and the WSL host; runtime GUI tests still need a
+real download response to prove the OS write path end-to-end.

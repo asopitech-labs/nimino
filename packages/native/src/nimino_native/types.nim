@@ -18,6 +18,9 @@ type
   ## `unknown` and therefore remain denied by higher layers.
   NativePermissionRequestedHandler* = proc(kind, url: string): bool {.closure.}
   NativeDownloadStartingHandler* = proc(url: string): bool {.closure.}
+  ## Return an absolute destination path for an accepted download. An empty
+  ## result keeps the WebView engine's default destination.
+  NativeDownloadPathHandler* = proc(url: string): string {.closure.}
   NativeDownloadState* = enum
     nativeDownloadStarted
     nativeDownloadProgress
@@ -168,6 +171,7 @@ type
     navigationCompletedHandler: NativeNavigationCompletedHandler
     permissionRequestedHandler: NativePermissionRequestedHandler
     downloadStartingHandler: NativeDownloadStartingHandler
+    downloadPathHandler: NativeDownloadPathHandler
     downloadEventHandler: NativeDownloadEventHandler
     permissionHandlerPointer: pointer
     permissionRegistrationToken: int64
@@ -415,6 +419,12 @@ proc dispatchDownloadStarting(view: NativeWebView; url: string): bool =
     return false
   try: view.downloadStartingHandler(url)
   except CatchableError: false
+
+proc dispatchDownloadPath(view: NativeWebView; url: string): string =
+  if view.isNil or view.downloadPathHandler.isNil:
+    return ""
+  try: view.downloadPathHandler(url)
+  except CatchableError: ""
 
 proc hasUiTasks(app: NativeApp): bool =
   if app.isNil:
@@ -1017,6 +1027,13 @@ proc onDownloadStarting*(view: NativeWebView;
   if view.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.onDownloadStarting"))
   view.downloadStartingHandler = handler
+  success()
+
+proc onDownloadPath*(view: NativeWebView;
+                     handler: NativeDownloadPathHandler): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.onDownloadPath"))
+  view.downloadPathHandler = handler
   success()
 
 proc onDownloadEvent*(view: NativeWebView;

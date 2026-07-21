@@ -132,7 +132,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
 `window.clearSettings()`では同じprofileのJSON設定を全削除できます。
 `window.clearCache()`ではNimino管理のprofile cacheファイルだけを削除できます。実行中のWebView2 user-data folderを直接走査・削除しません。
 `window.clearDownloads()`ではprofile内のNimino管理downloadファイルを削除できます。
-`window.downloadPath(suggestedName)`ではprofile内downloadsディレクトリに限定した安全な保存先を取得できます。実際の書込みはアプリケーション側で行います。
+`window.downloadPath(suggestedName)`ではprofile内downloadsディレクトリに限定した安全な保存先を取得できます。許可したWebViewダウンロードはこの保存先へネイティブに接続され、`saveDownload`はアプリケーションが生成した内容を同じ領域へ保存します。
 `window.saveDownload(suggestedName, content)`は一時ファイル経由でprofile内へ保存し、成功時に実パスを返します。
 `window.listDownloads()`はprofile内の保存済みダウンロード実パスを返します。
 `window.deleteDownload(path)`はprofile内に限定して一つの保存済みファイルを削除します。

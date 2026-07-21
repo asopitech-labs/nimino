@@ -516,6 +516,13 @@ proc downloadArgsGetOperation*(args: pointer; operation: ptr pointer): HResult {
   )
   dispatch(args, operation)
 
+proc downloadArgsPutResultFilePath*(args: pointer; path: WideCString): HResult {.inline.} =
+  ## ICoreWebView2DownloadStartingEventArgs::put_ResultFilePath (slot 7).
+  let dispatch = cast[proc(self: pointer; path: WideCString): HResult {.stdcall.}] (
+    cast[ptr ComInterface](args).vtable[7]
+  )
+  dispatch(args, path)
+
 proc downloadOperationGetBytesReceived*(operation: pointer; value: ptr int64): HResult {.inline.} =
   ## ICoreWebView2DownloadOperation::get_BytesReceived (slot 13).
   let dispatch = cast[proc(self: pointer; value: ptr int64): HResult {.stdcall.}] (

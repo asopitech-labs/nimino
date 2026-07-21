@@ -133,6 +133,8 @@ proc g_object_new*(objectType: culong; firstPropertyName: cstring): pointer {.va
   importc, dynlib: LibGObject.}
 proc g_free*(memory: pointer)
   {.cdecl, importc, dynlib: LibGlib.}
+proc g_filename_to_uri*(filename, hostname: cstring; error: ptr ptr GError): cstring
+  {.cdecl, importc, dynlib: LibGlib.}
 proc g_error_free*(error: ptr GError)
   {.cdecl, importc, dynlib: LibGlib.}
 proc g_signal_connect_data*(instance: pointer; detailedSignal: cstring;
@@ -166,6 +168,8 @@ proc webkit_web_view_load_uri*(view: ptr WebKitWebView; uri: cstring)
 proc webkit_web_view_load_html*(view: ptr WebKitWebView; content: cstring; baseUri: cstring)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_download_uri*(view: ptr WebKitWebView; uri: cstring): pointer
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_download_set_destination*(download: pointer; destination: cstring)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_download_get_estimated_progress*(download: pointer): cdouble
   {.cdecl, importc, dynlib: LibWebKit.}

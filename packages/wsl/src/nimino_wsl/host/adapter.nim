@@ -545,6 +545,20 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   )
   if not downloadConfigured.isOk:
     return nativeFailure("native.webview.onDownloadStarting", downloadConfigured)
+  let downloadPathConfigured = created.value.onDownloadPath(proc(url: string): string =
+    let owner = cast[HostAdapter](adapterPointer)
+    if owner.isNil or not owner.windows.hasKey(windowId.value):
+      return ""
+    let window = owner.windows[windowId.value]
+    let destinationDirectory = window.profilePath / "downloads"
+    try:
+      createDir(destinationDirectory)
+      destinationDirectory / suggestedDownloadName(url)
+    except CatchableError:
+      ""
+  )
+  if not downloadPathConfigured.isOk:
+    return nativeFailure("native.webview.onDownloadPath", downloadPathConfigured)
   let downloadEventsConfigured = created.value.onDownloadEvent(
     proc(url: string; state: NativeDownloadState; progress: float) =
       let owner = cast[HostAdapter](adapterPointer)

@@ -418,6 +418,19 @@ proc linuxDecidePolicy(webView: pointer; policyDecision: pointer;
         ## failed page navigation. Destination/progress management remains a
         ## higher-level Core concern.
         let download = webkit_web_view_download_uri(cast[ptr WebKitWebView](webView), copiedUri.cstring)
+        if not download.isNil:
+          let destination = view.dispatchDownloadPath(copiedUri)
+          if destination.len > 0:
+            var conversionError: ptr GError
+            let fileUri = g_filename_to_uri(destination.cstring, nil, addr conversionError)
+            if fileUri.isNil:
+              if conversionError != nil:
+                g_error_free(conversionError)
+              view.dispatchError(nativeError(osError, "webview.downloadPath",
+                detail = "unable to convert download path to a file URI"))
+            else:
+              webkit_download_set_destination(download, fileUri)
+              g_free(cast[pointer](fileUri))
         view.linuxTrackDownload(download, copiedUri)
         view.dispatchDownloadEvent(copiedUri, nativeDownloadStarted, 0.0)
       webkit_policy_decision_ignore(decision)

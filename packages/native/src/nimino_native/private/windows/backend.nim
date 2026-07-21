@@ -390,6 +390,17 @@ proc downloadInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.} =
       if operation != nil:
         discard comRelease(operation)
     else:
+      let destination = dispatchDownloadPath(cast[NativeWebView](handler.view), downloadUrl)
+      if destination.len > 0:
+        let wideDestination = newWideCString(destination)
+        let pathStatus = downloadArgsPutResultFilePath(args, wideDestination)
+        if not succeeded(pathStatus):
+          discard downloadArgsPutCancel(args, 1)
+          if operation != nil:
+            discard comRelease(operation)
+          cast[NativeWebView](handler.view).dispatchError(hresultError(
+            "webview.downloadPath", pathStatus))
+          return S_OK
       dispatchDownloadEvent(cast[NativeWebView](handler.view), downloadUrl,
         nativeDownloadStarted, 0.0)
       if operation != nil:

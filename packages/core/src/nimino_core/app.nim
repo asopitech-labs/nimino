@@ -572,6 +572,7 @@ proc suggestedDownloadName(url: string): string =
   "download"
 
 proc syncDocumentCookies*(window: Window): Future[CoreResult]
+proc downloadPath*(window: Window; suggestedName: string): CoreResultOf[string]
 
 proc configureDevTools(window: Window; enabled: bool): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -686,6 +687,13 @@ proc configureWindow(window: Window): CoreResult =
   if not downloadConfigured.isOk:
     return coreFailure(downloadConfigured.failure.mapNativeError())
 
+  let downloadPathConfigured = native.onDownloadPath(window.nativeView,
+    proc(url: string): string =
+      let path = window.downloadPath(suggestedDownloadName(url))
+      if path.isOk: path.value else: "")
+  if not downloadPathConfigured.isOk:
+    return coreFailure(downloadPathConfigured.failure.mapNativeError())
+
   let downloadEventsConfigured = native.onDownloadEvent(window.nativeView,
     proc(url: string; state: native.NativeDownloadState; progress: float) =
       if not window.downloadEventHandler.isNil:
@@ -756,6 +764,13 @@ proc configureAdditionalWebView(window: Window; view: WebView): CoreResult =
       url: url, suggestedName: suggestedDownloadName(url))) == downloadAllow)
   if not downloadConfigured.isOk:
     return coreFailure(downloadConfigured.failure.mapNativeError())
+
+  let downloadPathConfigured = native.onDownloadPath(view.nativeView,
+    proc(url: string): string =
+      let path = window.downloadPath(suggestedDownloadName(url))
+      if path.isOk: path.value else: "")
+  if not downloadPathConfigured.isOk:
+    return coreFailure(downloadPathConfigured.failure.mapNativeError())
   let downloadEventsConfigured = native.onDownloadEvent(view.nativeView,
     proc(url: string; state: native.NativeDownloadState; progress: float) =
       if not window.downloadEventHandler.isNil:
