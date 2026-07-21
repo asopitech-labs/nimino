@@ -38,6 +38,7 @@ jobs:
         run: >-
           make
           verify-env
+          setup-contract-test
           test
           pack-test
           pack-cli-test
