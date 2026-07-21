@@ -68,7 +68,7 @@ function Read-Exactly([int]$count) {
   $offset = 0
   while ($offset -lt $count) {
     $readTask = $process.StandardOutput.BaseStream.ReadAsync($buffer, $offset, $count - $offset)
-    if (-not $readTask.Wait(10000)) {
+    if (-not $readTask.Wait(3000)) {
       throw "Host stdout timed out during $script:smokePhase before a complete frame was received"
     }
     $read = $readTask.Result
