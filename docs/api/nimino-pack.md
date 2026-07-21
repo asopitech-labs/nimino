@@ -54,7 +54,7 @@ categories = ["Network", "Utility"]
 
 `<id>.desktop`はreverse-DNS形式のアプリIDをファイル名に使います。`Icon`はbundleに同梱できるローカルアイコンだけを参照します。リモートURLの`--icon`は実行時に取得しないため、desktop entryの`Icon`へ書き込みません。パッケージャーはローカルアイコンを所定のicon directoryに配置する場合、生成metadataと同じアプリIDを使ってdesktop entryを調整する必要があります。
 
-WindowsのMSI、署名、Flatpak、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。`install-windows.ps1`もWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
+WindowsのMSI、署名、Flatpak、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。NSIS setupは下記のDocker生成経路で実装済みです。`install-windows.ps1`はWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
 
 ### Windows NSIS setup
 
