@@ -24,11 +24,18 @@ type
   NativeMenuHandler* = proc(itemId: uint32) {.closure.}
 
   NativeMenuItem* = object
-    ## A command exposed in the native system-tray context menu.
-    ## ID 0 is reserved for a cancelled Win32 menu selection.
+    ## A command exposed through an operating-system native menu.
+    ## ID 0 is reserved as an invalid menu action identifier.
     id*: uint32
     title*: string
     enabled*: bool
+
+  NativeNotification* = object
+    ## A request for a desktop notification. Delivery remains under the
+    ## desktop shell's control and is never reported as a display guarantee.
+    id*: string
+    title*: string
+    body*: string
 
   NativeState* = enum
     pending
@@ -63,6 +70,10 @@ type
     kinds: set[NativeBrowsingDataKind]
     future: Future[NativeResult]
 
+  NativeMenuAction = ref object
+    app: NativeApp
+    itemId: uint32
+
   NativeApp* = ref object
     state: NativeAppState
     capabilities: CapabilitySet
@@ -81,7 +92,13 @@ type
     trayConfigured: bool
     trayVisible: bool
     trayWindow: pointer
+    nativeMenuItems: seq[NativeMenuItem]
+    nativeMenuHandler: NativeMenuHandler
+    nativeMenuTitle: string
+    nativeMenuConfigured: bool
+    nativeMenuInstalled: bool
     activateHandler: culong
+    startupHandler: culong
     quitRequested: bool
     hasRunError: bool
     runError: NativeError
@@ -158,6 +175,8 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc linuxClearBrowsingData(view: NativeWebView;
                               request: NativeBrowsingDataRequest): NativeResult
+  proc linuxSendNativeNotification(app: NativeApp;
+                                   notification: NativeNotification): NativeResult
 elif defined(windows):
   proc windowsCreateWindow(window: NativeWindow): NativeResult
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
@@ -311,6 +330,17 @@ when defined(windows):
     except CatchableError:
       discard
 
+when defined(linux) and not defined(niminoWsl):
+  proc dispatchNativeMenu(app: NativeApp; itemId: uint32) =
+    ## GTK invokes this on its UI thread through a GSimpleAction. User code
+    ## must not unwind through the GObject signal trampoline.
+    if app.isNil or app.nativeMenuHandler.isNil:
+      return
+    try:
+      app.nativeMenuHandler(itemId)
+    except CatchableError:
+      discard
+
 proc dispatchNavigationCompleted(view: NativeWebView; url: string; succeeded: bool) =
   if view.isNil or view.state in {closing, closed} or
       view.navigationCompletedHandler.isNil:
@@ -367,6 +397,9 @@ proc newNativeApp*(): NativeApp =
   when defined(windows):
     result.capabilities.incl(nativeMenu)
     result.capabilities.incl(systemTray)
+  elif defined(linux) and not defined(niminoWsl):
+    result.capabilities.incl(nativeMenu)
+    result.capabilities.incl(nativeNotification)
 
 proc supports*(app: NativeApp; capability: Capability): bool {.inline.} =
   app.capabilities.supports(capability)
@@ -405,6 +438,77 @@ proc configureSystemTray*(app: NativeApp; items: openArray[NativeMenuItem];
   app.trayMenuHandler = handler
   app.trayConfigured = true
   success()
+
+proc validNativeDesktopText(value: string): bool {.inline.} =
+  '\0' notin value
+
+proc configureNativeMenu*(app: NativeApp; title: string;
+                          items: openArray[NativeMenuItem];
+                          handler: NativeMenuHandler): NativeResult =
+  ## Configure the application's command menu before `run`. Linux creates a
+  ## GTK menubar; Windows maps this minimal command menu to its existing tray
+  ## context menu. No menu is silently emulated on unsupported platforms.
+  if app.isNil or not app.supports(nativeMenu):
+    return failure(nativeError(unsupported, "app.configureNativeMenu"))
+  if app.state != created:
+    return failure(nativeError(invalidState, "app.configureNativeMenu"))
+  if title.len == 0 or not validNativeDesktopText(title):
+    return failure(nativeError(invalidArgument, "app.configureNativeMenu",
+      detail = "a non-empty menu title without NUL is required"))
+  if handler.isNil:
+    return failure(nativeError(invalidArgument, "app.configureNativeMenu",
+      detail = "a menu handler is required"))
+  if items.len == 0:
+    return failure(nativeError(invalidArgument, "app.configureNativeMenu",
+      detail = "at least one menu item is required"))
+
+  var copied: seq[NativeMenuItem]
+  for item in items:
+    if item.id == 0 or item.title.len == 0 or not validNativeDesktopText(item.title):
+      return failure(nativeError(invalidArgument, "app.configureNativeMenu",
+        detail = "menu item IDs must be non-zero and titles must not contain NUL"))
+    for existing in copied:
+      if existing.id == item.id:
+        return failure(nativeError(invalidArgument, "app.configureNativeMenu",
+          detail = "menu item IDs must be unique"))
+    copied.add(item)
+
+  when defined(windows):
+    ## The existing Win32 implementation owns only a tray command menu. Keep
+    ## one source of validation/ownership rather than inventing a second menu
+    ## model solely for this facade.
+    app.configureSystemTray(copied, handler)
+  elif defined(linux) and not defined(niminoWsl):
+    if app.nativeMenuConfigured:
+      return failure(nativeError(invalidState, "app.configureNativeMenu",
+        detail = "the native menu can only be configured once"))
+    app.nativeMenuItems = copied
+    app.nativeMenuHandler = handler
+    app.nativeMenuTitle = title
+    app.nativeMenuConfigured = true
+    success()
+  else:
+    failure(nativeError(unsupported, "app.configureNativeMenu"))
+
+proc sendNativeNotification*(app: NativeApp;
+                             notification: NativeNotification): NativeResult =
+  ## Ask the desktop shell to display a notification. A successful return
+  ## means the request reached the OS API; shells may still suppress display.
+  if app.isNil or not app.supports(nativeNotification):
+    return failure(nativeError(unsupported, "app.sendNativeNotification"))
+  if notification.id.len == 0 or notification.title.len == 0 or
+      not validNativeDesktopText(notification.id) or
+      not validNativeDesktopText(notification.title) or
+      not validNativeDesktopText(notification.body):
+    return failure(nativeError(invalidArgument, "app.sendNativeNotification",
+      detail = "notification ID and title are required and text must not contain NUL"))
+  if app.state != running:
+    return failure(nativeError(invalidState, "app.sendNativeNotification",
+      detail = "the native application must be running"))
+  when defined(linux) and not defined(niminoWsl):
+    app.linuxSendNativeNotification(notification)
+  else:
+    failure(nativeError(unsupported, "app.sendNativeNotification"))
 
 proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
                 profilePath = ""):
