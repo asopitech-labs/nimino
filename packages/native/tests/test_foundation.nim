@@ -109,6 +109,32 @@ block windowAndViewRemainSeparate:
   doAssert window.value.onClosed(proc() = discard).isOk
   doAssert not window.value.newWebView().isOk
 
+block htmlBaseUrlIsValidatedBeforeNativeCreation:
+  let app = newNativeApp()
+  let window = app.newWindow("HTML base URL", 320, 200)
+  doAssert window.isOk
+  let view = window.value.newWebView()
+  doAssert view.isOk
+  var malformedBaseNotified = false
+  doAssert view.value.onError(proc(error: NativeError) =
+    malformedBaseNotified = true
+    doAssert error.kind == invalidArgument
+    doAssert error.operation == "webview.loadHtml"
+  ).isOk
+  let malformedBase = view.value.loadHtml("<main>Foundation</main>",
+    baseUrl = "https://example.test/assets/\n")
+  doAssert not malformedBase.isOk
+  doAssert malformedBase.failure.kind == invalidArgument
+  doAssert malformedBaseNotified
+  when defined(linux) and not defined(niminoWsl):
+    doAssert view.value.loadHtml("<main>Foundation</main>",
+      baseUrl = "https://example.test/assets/").isOk
+  else:
+    let based = view.value.loadHtml("<main>Foundation</main>",
+      baseUrl = "https://example.test/assets/")
+    doAssert not based.isOk
+    doAssert based.failure.kind == unsupported
+
 block documentStartScriptIsConfiguredBeforeNativeCreation:
   let app = newNativeApp()
   let window = app.newWindow("Document start", 320, 200)

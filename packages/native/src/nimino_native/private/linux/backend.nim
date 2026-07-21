@@ -214,7 +214,13 @@ proc linuxLoadUrl(view: NativeWebView) =
 proc linuxLoadHtml(view: NativeWebView) =
   if view.platformView != nil:
     let html = view.pendingHtml
-    webkit_web_view_load_html(cast[ptr WebKitWebView](view.platformView), cstring(html), nil)
+    let baseUri =
+      if view.pendingHtmlBaseUrl.len == 0:
+        nil
+      else:
+        cstring(view.pendingHtmlBaseUrl)
+    webkit_web_view_load_html(cast[ptr WebKitWebView](view.platformView),
+      cstring(html), baseUri)
 
 proc linuxLoadPendingContent(view: NativeWebView) =
   case view.pendingContentKind
