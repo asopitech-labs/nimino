@@ -54,6 +54,7 @@ type
     startUiLoop
     deferredResponse
     deferredBrowsingDataClear
+    deferredFileDialog
     shutdownHost
     restartHostForProfileReset
 
@@ -62,6 +63,7 @@ type
     payload*: string
     evaluation*: Future[NativeResultOf[string]]
     browsingDataClear*: Future[NativeResult]
+    fileDialog*: Future[NativeResultOf[seq[string]]]
 
   HostAdapter* = ref object
     app*: NativeApp
@@ -466,6 +468,33 @@ proc handleWindowClearDownloads(adapter: HostAdapter; payload: JsonNode): Protoc
   if not clearDirectoryContents(downloads):
     return errorAction("unable to clear WebView2 downloads")
   successOf(HostAction(kind: noHostAction, payload: "{}"))
+
+proc handleWindowOpenFileDialog(adapter: HostAdapter;
+                                payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  let title = payload.requiredString("title")
+  let save = payload.requiredBool("save")
+  let multiple = payload.requiredBool("multiple")
+  let suggestedName = payload.requiredString("suggestedName")
+  if not title.isOk: return failureOf[HostAction](title.failure)
+  if not save.isOk: return failureOf[HostAction](save.failure)
+  if not multiple.isOk: return failureOf[HostAction](multiple.failure)
+  if not suggestedName.isOk: return failureOf[HostAction](suggestedName.failure)
+  if title.value.len == 0:
+    return errorAction("title must not be empty")
+  if multiple.value and save.value:
+    return errorAction("save dialogs cannot select multiple files")
+  let opened = adapter.windows[windowId.value].openFileDialog(NativeFileDialogOptions(
+    title: title.value,
+    save: save.value,
+    multiple: multiple.value,
+    suggestedName: suggestedName.value
+  ))
+  successOf(HostAction(kind: deferredFileDialog, fileDialog: opened))
 
 proc handleActiveProfileReset(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
   ## WebView2 owns files below its user-data folder while a controller is
@@ -932,6 +961,8 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowClearCache(payload.value)
   of "native.window.clearDownloads":
     adapter.handleWindowClearDownloads(payload.value)
+  of "native.window.openFileDialog":
+    adapter.handleWindowOpenFileDialog(payload.value)
   of "native.window.resetProfile":
     adapter.handleActiveProfileReset(payload.value)
   of "native.window.focus":

@@ -34,6 +34,33 @@ type
     right*: int32
     bottom*: int32
 
+  ## OPENFILENAMEW layout from the Windows SDK.  The dialog backend uses the
+  ## common-dialog API directly and keeps this binding private.
+  OpenFileNameW* {.bycopy.} = object
+    structSize*: uint32
+    owner*: HWND
+    instance*: HInstance
+    filter*: WideCString
+    customFilter*: WideCString
+    maxCustFilter*: uint32
+    filterIndex*: uint32
+    file*: WideCString
+    maxFile*: uint32
+    fileTitle*: WideCString
+    maxFileTitle*: uint32
+    initialDir*: WideCString
+    title*: WideCString
+    flags*: uint32
+    fileOffset*: uint16
+    fileExtension*: uint16
+    defExt*: WideCString
+    custData*: LParam
+    hook*: pointer
+    templateName*: WideCString
+    reservedPtr*: pointer
+    reservedInt*: uint32
+    flagsEx*: uint32
+
   ## NOTIFYICONDATAW layout verified against the MinGW Win32 SDK header.
   ## `version` is the uTimeout/uVersion union and must stay at this offset.
   NotifyIconDataW* {.bycopy.} = object
@@ -116,6 +143,7 @@ when defined(windows) and defined(amd64):
     ## The matching C header assertion is fixed in Makefile's
     ## verify-windows-tray-abi target.
     doAssert sizeof(NotifyIconDataW) == 976
+    doAssert sizeof(OpenFileNameW) == 152
 
 const
   S_OK* = 0'i32
@@ -147,6 +175,11 @@ const
   SwpNoSize* = 0x0001'u32
   SwpNoMove* = 0x0002'u32
   SwpNoZOrder* = 0x0004'u32
+  OfnAllowMultiSelect* = 0x00000200'u32
+  OfnExplorer* = 0x00080000'u32
+  OfnFileMustExist* = 0x00001000'u32
+  OfnPathMustExist* = 0x00000800'u32
+  OfnOverwritePrompt* = 0x00000002'u32
 
   WmSize* = 0x0005'u32
   WmDestroy* = 0x0002'u32
@@ -342,6 +375,12 @@ proc killTimer*(window: HWND; identifier: uint): WinBool
   {.stdcall, importc: "KillTimer", dynlib: "user32.dll".}
 proc shellNotifyIconW*(message: uint32; data: ptr NotifyIconDataW): WinBool
   {.stdcall, importc: "Shell_NotifyIconW", dynlib: "shell32.dll".}
+proc getOpenFileNameW*(fileName: ptr OpenFileNameW): WinBool
+  {.stdcall, importc: "GetOpenFileNameW", dynlib: "comdlg32.dll".}
+proc getSaveFileNameW*(fileName: ptr OpenFileNameW): WinBool
+  {.stdcall, importc: "GetSaveFileNameW", dynlib: "comdlg32.dll".}
+proc commDlgExtendedError*(): uint32
+  {.stdcall, importc: "CommDlgExtendedError", dynlib: "comdlg32.dll".}
 
 proc makeIntResourceW*(identifier: uint16): WideCString {.inline.} =
   ## MAKEINTRESOURCEW without exposing a Win32 macro to public API users.

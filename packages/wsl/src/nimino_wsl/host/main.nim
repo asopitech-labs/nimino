@@ -21,6 +21,10 @@ type
     request: ProtocolMessage
     future: Future[NativeResult]
 
+  PendingFileDialog = object
+    request: ProtocolMessage
+    future: Future[NativeResultOf[seq[string]]]
+
   HostState = ref object
     adapter: HostAdapter
     input: HostInput
@@ -28,6 +32,7 @@ type
     sessionId: string
     pendingEvaluations: seq[PendingEvaluation]
     pendingBrowsingDataClears: seq[PendingBrowsingDataClear]
+    pendingFileDialogs: seq[PendingFileDialog]
     nextEventId: uint64
     nextPolicyRequestId: uint64
 
@@ -176,6 +181,43 @@ proc flushBrowsingDataClears(state: HostState) =
       return
     state.pendingBrowsingDataClears.delete(index)
 
+proc flushFileDialogs(state: HostState) =
+  var index = 0
+  while index < state.pendingFileDialogs.len:
+    let pending = state.pendingFileDialogs[index]
+    if not pending.future.finished:
+      inc index
+      continue
+    var response: ProtocolMessage
+    if pending.future.failed:
+      response = state.responseFor(pending.request, payload = $(%*{
+        "ok": false,
+        "kind": "webViewError",
+        "operation": "window.openFileDialog",
+        "platformCode": 0,
+        "detail": "native file dialog did not complete"
+      }))
+    else:
+      let opened = pending.future.read()
+      if opened.isOk:
+        response = state.responseFor(pending.request, payload = $(%*{
+          "ok": true,
+          "paths": opened.value
+        }))
+      else:
+        let failure = opened.failure
+        response = state.responseFor(pending.request, payload = $(%*{
+          "ok": false,
+          "kind": $failure.kind,
+          "operation": failure.operation,
+          "platformCode": failure.platformCode,
+          "detail": failure.detail
+        }))
+    if not state.writeMessage(response):
+      discard state.adapter.app.close()
+      return
+    state.pendingFileDialogs.delete(index)
+
 proc cancelPending(state: HostState; requestId: uint64) =
   ## Native WebView2 operations may already be in flight and cannot always be
   ## interrupted.  Removing the protocol waiter guarantees that a cancelled
@@ -185,6 +227,12 @@ proc cancelPending(state: HostState; requestId: uint64) =
   while index < state.pendingEvaluations.len:
     if state.pendingEvaluations[index].request.requestId == requestId:
       state.pendingEvaluations.delete(index)
+    else:
+      inc index
+  index = 0
+  while index < state.pendingFileDialogs.len:
+    if state.pendingFileDialogs[index].request.requestId == requestId:
+      state.pendingFileDialogs.delete(index)
     else:
       inc index
   index = 0
@@ -341,6 +389,9 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
     elif action.value.kind == deferredBrowsingDataClear:
       state.pendingBrowsingDataClears.add(PendingBrowsingDataClear(
         request: message, future: action.value.browsingDataClear))
+    elif action.value.kind == deferredFileDialog:
+      state.pendingFileDialogs.add(PendingFileDialog(
+        request: message, future: action.value.fileDialog))
     else:
       discard state.writeMessage(state.responseFor(message, payload = action.value.payload))
       if action.value.kind in {shutdownHost, restartHostForProfileReset}:
@@ -373,6 +424,7 @@ proc pollHost(state: HostState) =
     state.handleRunningMessage(message)
   state.flushEvaluations()
   state.flushBrowsingDataClears()
+  state.flushFileDialogs()
   state.flushMessages()
   state.flushErrors()
   state.flushNewWindowRequests()
@@ -472,6 +524,10 @@ proc runHost(): int =
       discard state.writeMessage(state.responseFor(message,
         error = "browser data clearing requires the UI loop"))
       continue
+    if action.value.kind == deferredFileDialog:
+      discard state.writeMessage(state.responseFor(message,
+        error = "file dialogs require the UI loop"))
+      continue
     if not state.writeMessage(state.responseFor(message, payload = action.value.payload)):
       discard state.adapter.app.close()
       return 2
@@ -481,6 +537,8 @@ proc runHost(): int =
     of deferredResponse:
       discard
     of deferredBrowsingDataClear:
+      discard
+    of deferredFileDialog:
       discard
     of shutdownHost, restartHostForProfileReset:
       discard state.adapter.closeAllWindows()
@@ -494,6 +552,7 @@ proc runHost(): int =
       let finished = state.adapter.app.run()
       state.flushEvaluations()
       state.flushBrowsingDataClears()
+      state.flushFileDialogs()
       state.flushMessages()
       state.flushErrors()
       state.flushNewWindowRequests()

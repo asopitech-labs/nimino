@@ -48,6 +48,14 @@ type
     title*: string
     body*: string
 
+  NativeFileDialogOptions* = object
+    ## Common open/save dialog options.  An empty result means the user
+    ## cancelled the dialog; that is not an OS error.
+    title*: string
+    save*: bool
+    multiple*: bool
+    suggestedName*: string
+
   NativeState* = enum
     pending
     ready
@@ -80,6 +88,10 @@ type
     view: NativeWebView
     kinds: set[NativeBrowsingDataKind]
     future: Future[NativeResult]
+
+  NativeFileDialogRequest = ref object
+    future: Future[NativeResultOf[seq[string]]]
+    options: NativeFileDialogOptions
 
   NativeMenuAction = ref object
     app: NativeApp
@@ -201,6 +213,9 @@ when defined(linux) and not defined(niminoWsl):
                               request: NativeBrowsingDataRequest): NativeResult
   proc linuxSendNativeNotification(app: NativeApp;
                                    notification: NativeNotification): NativeResult
+  proc linuxOpenFileDialog*(window: NativeWindow;
+                            options: NativeFileDialogOptions):
+                            Future[NativeResultOf[seq[string]]]
 elif defined(windows):
   proc windowsCreateWindow(window: NativeWindow): NativeResult
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
@@ -210,6 +225,8 @@ elif defined(windows):
   proc windowsReplaceDocumentStartScript(view: NativeWebView;
                                           script: string): NativeResult
   proc windowsDisposeView(view: NativeWebView)
+  proc windowsOpenFileDialog*(window: NativeWindow;
+                              options: NativeFileDialogOptions): NativeResultOf[seq[string]]
 
 proc completeScriptRequest(view: NativeWebView; request: NativeScriptRequest;
                            evaluation: NativeResultOf[string]) =
@@ -981,6 +998,39 @@ proc clearBrowsingData*(view: NativeWebView;
   else:
     result.complete(failure(nativeError(unsupported, "webview.clearBrowsingData",
       detail = "live browser data clearing is unavailable on this platform")))
+
+proc openFileDialog*(window: NativeWindow;
+                     options: NativeFileDialogOptions):
+                     Future[NativeResultOf[seq[string]]] =
+  ## Open an OS-owned file dialog.  The native backend owns the dialog
+  ## lifetime; callers receive a Future so GTK's asynchronous API and the
+  ## Windows common-dialog completion share one contract.
+  let target = newFuture[NativeResultOf[seq[string]]]("nimino.native.openFileDialog")
+  result = target
+  if window.isNil or window.state in {closing, closed}:
+    target.complete(failureOf[seq[string]](nativeError(invalidState, "window.openFileDialog")))
+    return
+  if options.title.len == 0:
+    target.complete(failureOf[seq[string]](nativeError(invalidArgument,
+      "window.openFileDialog", detail = "title must not be empty")))
+    return
+  for value in [options.title, options.suggestedName]:
+    for character in value:
+      if ord(character) < 0x20 or ord(character) == 0x7f:
+        target.complete(failureOf[seq[string]](nativeError(invalidArgument,
+          "window.openFileDialog", detail = "dialog text contains a control character")))
+        return
+  when defined(linux) and not defined(niminoWsl):
+    let opened = window.linuxOpenFileDialog(options)
+    opened.addCallback(proc(completed: Future[NativeResultOf[seq[string]]]) {.gcsafe.} =
+      if not target.finished:
+        target.complete(completed.read())
+    )
+  elif defined(windows):
+    target.complete(window.windowsOpenFileDialog(options))
+  else:
+    target.complete(failureOf[seq[string]](nativeError(unsupported,
+      "window.openFileDialog", detail = "native file dialogs are unavailable")))
 
 proc onMessage*(view: NativeWebView; handler: NativeMessageHandler): NativeResult =
   if view.isNil or view.state in {closing, closed}:

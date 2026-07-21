@@ -909,6 +909,59 @@ proc windowsSetPosition(window: NativeWindow; x, y: int): NativeResult =
     return failure(windowsError("window.setPosition", getLastError()))
   success()
 
+proc windowsDialogBufferStrings(buffer: openArray[uint16]): seq[string] =
+  var start = 0
+  for index in 0 ..< buffer.len:
+    if buffer[index] != 0'u16:
+      continue
+    if index == start:
+      break
+    result.add($cast[WideCString](unsafeAddr buffer[start]))
+    start = index + 1
+
+proc windowsOpenFileDialog*(window: NativeWindow; options: NativeFileDialogOptions):
+                            NativeResultOf[seq[string]] =
+  if window.isNil or window.platformWindow.isNil or window.state != ready:
+    return failureOf[seq[string]](nativeError(invalidState, "window.openFileDialog"))
+  var buffer: array[32768, uint16]
+  if options.suggestedName.len > 0:
+    let initial = newWideCString(options.suggestedName)
+    var index = 0
+    while index < buffer.len - 1 and ord(initial[index]) != 0:
+      buffer[index] = uint16(ord(initial[index]))
+      inc index
+  let filter = newWideCString("All files\0*.*\0\0")
+  let title = newWideCString(options.title)
+  var dialog = OpenFileNameW(
+    structSize: uint32(sizeof(OpenFileNameW)),
+    owner: window.platformWindow,
+    filter: filter,
+    file: cast[WideCString](addr buffer[0]),
+    maxFile: uint32(buffer.len),
+    title: title,
+    flags: OfnExplorer or OfnPathMustExist or
+      (if options.save: OfnOverwritePrompt else: OfnFileMustExist) or
+      (if options.multiple and not options.save: OfnAllowMultiSelect else: 0'u32)
+  )
+  let selected = if options.save: getSaveFileNameW(addr dialog)
+                 else: getOpenFileNameW(addr dialog)
+  if selected == 0:
+    let code = commDlgExtendedError()
+    if code == 0:
+      return successOf(newSeq[string]())
+    return failureOf[seq[string]](nativeError(osError, "window.openFileDialog",
+      platformCode = int32(code), detail = "Windows common dialog failed"))
+  let parts = windowsDialogBufferStrings(buffer)
+  if parts.len == 0:
+    return successOf(newSeq[string]())
+  if options.multiple and not options.save and parts.len > 1:
+    let directory = parts[0]
+    var paths: seq[string]
+    for part in parts[1 .. ^1]:
+      paths.add(directory / part)
+    return successOf(paths)
+  successOf(@[parts[0]])
+
 proc windowsCopyTrayTip(destination: var array[128, uint16]; value: string) =
   let wide = newWideCString(value)
   for index in 0 ..< destination.high:

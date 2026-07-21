@@ -104,6 +104,98 @@ proc linuxSendNativeNotification(app: NativeApp;
   g_object_unref(nativeNotification)
   success()
 
+proc linuxFileDialogComplete(request: NativeFileDialogRequest;
+                             paths: seq[string]; error: ptr GError) =
+  if request.isNil:
+    return
+  var completion: NativeResultOf[seq[string]]
+  if error != nil and error.code != GtkDialogErrorCancelled and
+      error.code != GtkDialogErrorDismissed:
+    completion = failureOf[seq[string]](nativeError(osError, "window.openFileDialog",
+      detail = if error.message.isNil: "GTK file dialog failed" else: $error.message))
+  else:
+    completion = successOf(paths)
+  if error != nil:
+    g_error_free(error)
+  if not request.future.finished:
+    request.future.complete(completion)
+  GC_unref(request)
+
+proc linuxFileDialogFinished(sourceObject: pointer; asyncResult: ptr GAsyncResult;
+                             userData: pointer) {.cdecl.} =
+  let request = cast[NativeFileDialogRequest](userData)
+  if request.isNil:
+    return
+  let dialog = cast[ptr GtkFileDialog](sourceObject)
+  var error: ptr GError
+  if request.options.multiple and not request.options.save:
+    let model = gtk_file_dialog_open_multiple_finish(dialog, asyncResult, addr error)
+    if model.isNil:
+      request.linuxFileDialogComplete(@[], error)
+      g_object_unref(dialog)
+      return
+    var paths: seq[string]
+    let count = g_list_model_get_n_items(model)
+    for index in 0'u32 ..< count:
+      let item = cast[ptr GFile](g_list_model_get_item(model, index))
+      if item != nil:
+        let path = g_file_get_path(item)
+        if not path.isNil:
+          paths.add($path)
+        g_object_unref(item)
+    g_object_unref(model)
+    request.linuxFileDialogComplete(paths, nil)
+  elif request.options.save:
+    let file = gtk_file_dialog_save_finish(dialog, asyncResult, addr error)
+    if file.isNil:
+      request.linuxFileDialogComplete(@[], error)
+      g_object_unref(dialog)
+      return
+    let path = g_file_get_path(file)
+    let paths = if path.isNil: @[] else: @[$path]
+    g_object_unref(file)
+    request.linuxFileDialogComplete(paths, nil)
+  else:
+    let file = gtk_file_dialog_open_finish(dialog, asyncResult, addr error)
+    if file.isNil:
+      request.linuxFileDialogComplete(@[], error)
+      g_object_unref(dialog)
+      return
+    let path = g_file_get_path(file)
+    let paths = if path.isNil: @[] else: @[$path]
+    g_object_unref(file)
+    request.linuxFileDialogComplete(paths, nil)
+  g_object_unref(dialog)
+
+proc linuxOpenFileDialog*(window: NativeWindow; options: NativeFileDialogOptions):
+                          Future[NativeResultOf[seq[string]]] =
+  let target = newFuture[NativeResultOf[seq[string]]]("nimino.native.openFileDialog.linux")
+  result = target
+  if window.isNil or window.platformWindow.isNil or window.state != ready:
+    target.complete(failureOf[seq[string]](nativeError(invalidState,
+      "window.openFileDialog")))
+    return
+  let dialog = gtk_file_dialog_new()
+  if dialog.isNil:
+    target.complete(failureOf[seq[string]](nativeError(osError, "window.openFileDialog",
+      detail = "GTK file dialog allocation failed")))
+    return
+  gtk_file_dialog_set_modal(dialog, 1)
+  gtk_file_dialog_set_title(dialog, options.title.cstring)
+  if options.suggestedName.len > 0:
+    gtk_file_dialog_set_initial_name(dialog, options.suggestedName.cstring)
+  let request = NativeFileDialogRequest(future: target, options: options)
+  GC_ref(request)
+  if options.multiple and not options.save:
+    gtk_file_dialog_open_multiple(dialog, cast[ptr GtkWindow](window.platformWindow), nil,
+      linuxFileDialogFinished, cast[pointer](request))
+  elif options.save:
+    gtk_file_dialog_save(dialog, cast[ptr GtkWindow](window.platformWindow), nil,
+      linuxFileDialogFinished, cast[pointer](request))
+  else:
+    gtk_file_dialog_open(dialog, cast[ptr GtkWindow](window.platformWindow), nil,
+      linuxFileDialogFinished, cast[pointer](request))
+
 proc linuxSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult =
   if view.isNil or view.platformView.isNil:
     return failure(nativeError(invalidState, "webview.setDevToolsEnabled"))

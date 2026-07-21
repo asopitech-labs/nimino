@@ -13,6 +13,7 @@ type
   GtkApplication* {.incompleteStruct.} = object
   GtkWindow* {.incompleteStruct.} = object
   GtkApplicationWindow* {.incompleteStruct.} = object
+  GtkFileDialog* {.incompleteStruct.} = object
   GMenu* {.incompleteStruct.} = object
   GMenuModel* {.incompleteStruct.} = object
   GSimpleAction* {.incompleteStruct.} = object
@@ -31,7 +32,12 @@ type
   WebKitURIRequest* {.incompleteStruct.} = object
   WebKitPermissionRequest* {.incompleteStruct.} = object
   GAsyncResult* {.incompleteStruct.} = object
-  GError* {.incompleteStruct.} = object
+  GFile* {.incompleteStruct.} = object
+  GListModel* {.incompleteStruct.} = object
+  GError* {.bycopy.} = object
+    domain*: uint32
+    code*: cint
+    message*: cstring
   JSCValue* {.incompleteStruct.} = object
   JSCContext* {.incompleteStruct.} = object
   JSCException* {.incompleteStruct.} = object
@@ -47,6 +53,8 @@ type
 const
   WebKitUserContentInjectAllFrames* = 0.cint
   WebKitUserScriptInjectAtDocumentStart* = 0.cint
+  GtkDialogErrorCancelled* = 1.cint
+  GtkDialogErrorDismissed* = 2.cint
   ## WebKitWebsiteDataTypes, verified against WebKitWebsiteData.h from the
   ## fixed WebKitGTK 6.0 development package used by the Docker image.
   WebKitWebsiteDataMemoryCache* = 1'u32 shl 0
@@ -89,6 +97,36 @@ proc gtk_widget_get_width*(widget: pointer): cint
 proc gtk_widget_get_height*(widget: pointer): cint
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_destroy*(window: ptr GtkWindow)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_new*(): ptr GtkFileDialog
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_set_title*(dialog: ptr GtkFileDialog; title: cstring)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_set_modal*(dialog: ptr GtkFileDialog; modal: cint)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_set_initial_name*(dialog: ptr GtkFileDialog; name: cstring)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_open*(dialog: ptr GtkFileDialog; parent: ptr GtkWindow;
+                           cancellable: pointer; callback: GAsyncReadyCallback;
+                           userData: pointer)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_open_finish*(dialog: ptr GtkFileDialog; asyncResult: ptr GAsyncResult;
+                                  error: ptr ptr GError): ptr GFile
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_open_multiple*(dialog: ptr GtkFileDialog; parent: ptr GtkWindow;
+                                    cancellable: pointer; callback: GAsyncReadyCallback;
+                                    userData: pointer)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_open_multiple_finish*(dialog: ptr GtkFileDialog;
+                                           asyncResult: ptr GAsyncResult;
+                                           error: ptr ptr GError): ptr GListModel
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_save*(dialog: ptr GtkFileDialog; parent: ptr GtkWindow;
+                           cancellable: pointer; callback: GAsyncReadyCallback;
+                           userData: pointer)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_file_dialog_save_finish*(dialog: ptr GtkFileDialog; asyncResult: ptr GAsyncResult;
+                                  error: ptr ptr GError): ptr GFile
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_application_set_menubar*(application: ptr GtkApplication;
                                   menubar: ptr GMenuModel)
@@ -137,6 +175,12 @@ proc g_filename_to_uri*(filename, hostname: cstring; error: ptr ptr GError): cst
   {.cdecl, importc, dynlib: LibGlib.}
 proc g_error_free*(error: ptr GError)
   {.cdecl, importc, dynlib: LibGlib.}
+proc g_file_get_path*(file: ptr GFile): cstring
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_list_model_get_n_items*(model: ptr GListModel): uint32
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_list_model_get_item*(model: ptr GListModel; position: uint32): pointer
+  {.cdecl, importc, dynlib: LibGio.}
 proc g_signal_connect_data*(instance: pointer; detailedSignal: cstring;
                             callback: pointer; data: pointer;
                             destroyData: GClosureNotify; connectFlags: cint): culong

@@ -5,7 +5,7 @@ SERVICE ?= nimino-dev
 WSL_SMOKE_TIMEOUT ?= 120
 WSL_INTERACTIVE_TIMEOUT ?= 300
 
-.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-linux-test pack-windows-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-linux-test pack-windows-test pack-bundle-test pack-archive-test linux-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -40,6 +40,10 @@ verify-webview2-header: image ## WebView2 permission/download APIの公式ヘッ
 verify-windows-tray-abi: image ## MinGW Win32 SDKのNOTIFYICONDATAW ABIを検証する
 
 	$(COMPOSE) run --rm $(SERVICE) bash -lc "printf '#include <windows.h>\\n#include <shellapi.h>\\ntypedef char notify_icon_data_w_size[(sizeof(NOTIFYICONDATAW) == 976) ? 1 : -1];\\n' | x86_64-w64-mingw32-gcc -x c -c -o /tmp/nimino-notify-icon-layout.o -"
+
+verify-windows-dialog-abi: image ## MinGW Win32 SDKのOPENFILENAMEW ABIを検証する
+
+	$(COMPOSE) run --rm $(SERVICE) bash -lc "printf '#include <windows.h>\\n#include <commdlg.h>\\ntypedef char openfilenamew_size[(sizeof(OPENFILENAMEW) == 152) ? 1 : -1];\\n' | x86_64-w64-mingw32-gcc -x c -c -o /tmp/nimino-openfilename-layout.o -"
 
 verify-webview2-profile-header: image ## WebView2 Profile/CookieManager APIの公式ヘッダーを検証する
 
@@ -104,7 +108,7 @@ core-linux-rpc-async-smoke: image ## Xvfb上でLinux core RPCのasync/timeout sm
 
 	$(COMPOSE) run --rm -e WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 -e NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 $(SERVICE) nimble testCoreLinuxRpcAsyncSmoke
 
-windows-cross: image verify-windows-tray-abi ## MinGWを使いWindows x64向けnative smokeバイナリをクロスコンパイルする
+windows-cross: image verify-windows-tray-abi verify-windows-dialog-abi ## MinGWを使いWindows x64向けnative smokeバイナリをクロスコンパイルする
 
 	$(COMPOSE) run --rm $(SERVICE) nimble testWindowsCross
 

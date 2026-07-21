@@ -115,6 +115,12 @@ type
     title*: string
     body*: string
 
+  FileDialogOptions* = object
+    title*: string
+    save*: bool
+    multiple*: bool
+    suggestedName*: string
+
   CoreWindowOptions* = object
     title*: string
     width*: int
@@ -193,6 +199,10 @@ type
     requestId: uint64
     target: Future[CoreResult]
 
+  PendingWslFileDialog = object
+    requestId: uint64
+    target: Future[CoreResultOf[seq[string]]]
+
   App* = ref object
     state: CoreAppState
     backend: CoreBackend
@@ -209,6 +219,7 @@ type
     when defined(linux):
       wslClient: WslClient
       pendingWslProfileDataClears: seq[PendingWslProfileDataClear]
+      pendingWslFileDialogs: seq[PendingWslFileDialog]
     windows: seq[Window]
 
   Window* = ref object
@@ -1400,6 +1411,73 @@ proc clearProfileData*(window: Window): CoreResult =
   if cleared.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.clearProfileData", detail = cleared.error))
 
+proc openFileDialog*(window: Window; options: FileDialogOptions):
+                    Future[CoreResultOf[seq[string]]] =
+  ## Use the platform's own file chooser.  Cancellation is represented by a
+  ## successful empty sequence; OS/IPC failures remain structured errors.
+  let target = newFuture[CoreResultOf[seq[string]]]("nimino.core.openFileDialog")
+  result = target
+  if window.isNil or window.closed or window.app.isNil:
+    target.complete(coreFailureOf[seq[string]](coreError(invalidState,
+      "window.openFileDialog")))
+    return
+  if options.title.len == 0:
+    target.complete(coreFailureOf[seq[string]](coreError(invalidArgument,
+      "window.openFileDialog", detail = "title must not be empty")))
+    return
+  if options.save and options.multiple:
+    target.complete(coreFailureOf[seq[string]](coreError(invalidArgument,
+      "window.openFileDialog", detail = "save dialogs cannot select multiple files")))
+    return
+  for value in [options.title, options.suggestedName]:
+    for character in value:
+      if ord(character) < 0x20 or ord(character) == 0x7f:
+        target.complete(coreFailureOf[seq[string]](coreError(invalidArgument,
+          "window.openFileDialog", detail = "dialog text contains a control character")))
+        return
+  let nativeOptions = native.NativeFileDialogOptions(
+    title: options.title,
+    save: options.save,
+    multiple: options.multiple,
+    suggestedName: options.suggestedName
+  )
+  case window.app.backend
+  of nativeBackend:
+    let opened = native.openFileDialog(window.nativeWindow, nativeOptions)
+    opened.addCallback(proc(completed: Future[native.NativeResultOf[seq[string]]]) {.gcsafe.} =
+      if target.finished:
+        return
+      let value = completed.read()
+      if value.isOk:
+        target.complete(coreSuccessOf(value.value))
+      else:
+        target.complete(coreFailureOf[seq[string]](mapNativeError(value.failure)))
+    )
+  of wslBackend:
+    when defined(linux):
+      if window.app.state != coreRunning or not window.app.wslUiStarted:
+        target.complete(coreFailureOf[seq[string]](coreError(invalidState,
+          "window.openFileDialog", detail = "WSL file dialog requires an active UI session")))
+        return
+      let sent = window.app.wslClient.sendRequest("native.window.openFileDialog", $(%*{
+        "windowId": $window.windowId,
+        "title": options.title,
+        "save": options.save,
+        "multiple": options.multiple,
+        "suggestedName": options.suggestedName
+      }))
+      if not sent.isOk:
+        target.complete(coreFailureOf[seq[string]](mapProtocolError(
+          "window.openFileDialog", sent.failure)))
+        return
+      window.app.pendingWslFileDialogs.add(PendingWslFileDialog(
+        requestId: sent.value,
+        target: target
+      ))
+    else:
+      target.complete(coreFailureOf[seq[string]](coreError(platformUnavailable,
+        "window.openFileDialog")))
+
 proc clearWebViewProfileData*(window: Window;
                               kinds: set[WebViewProfileDataKind]): Future[CoreResult] =
   ## Clear data owned by the browser engine.  This deliberately does not fall
@@ -2479,6 +2557,59 @@ proc invokeReady(app: App) =
     except CatchableError: discard
 
 when defined(linux):
+  proc processWslFileDialogResponse(app: App;
+                                    response: ProtocolMessage): CoreResultOf[bool] =
+    var index = 0
+    while index < app.pendingWslFileDialogs.len:
+      let pending = app.pendingWslFileDialogs[index]
+      if pending.requestId != response.requestId:
+        inc index
+        continue
+      app.pendingWslFileDialogs.delete(index)
+      if response.error.len > 0:
+        pending.target.complete(coreFailureOf[seq[string]](coreError(nativeFailure,
+          "window.openFileDialog", detail = response.error)))
+        return coreSuccessOf(false)
+      try:
+        let payload = parseJson(response.payload)
+        if payload.kind != JObject or not payload.hasKey("ok") or
+            payload["ok"].kind != JBool:
+          pending.target.complete(coreFailureOf[seq[string]](coreError(nativeFailure,
+            "window.openFileDialog", detail = "WSL file dialog response is malformed")))
+          return coreSuccessOf(false)
+        if not payload["ok"].getBool():
+          let kind = if payload.hasKey("kind") and payload["kind"].kind == JString:
+            wslNativeErrorKind(payload["kind"].getStr())
+          else: nativeFailure
+          let detail = if payload.hasKey("detail") and payload["detail"].kind == JString:
+            payload["detail"].getStr()
+          else: "WSL file dialog failed"
+          let code = if payload.hasKey("platformCode") and payload["platformCode"].kind == JInt:
+            int32(payload["platformCode"].getInt())
+          else: 0'i32
+          pending.target.complete(coreFailureOf[seq[string]](coreError(kind,
+            "window.openFileDialog", platformCode = code, detail = detail)))
+          return coreSuccessOf(false)
+        if not payload.hasKey("paths") or payload["paths"].kind != JArray:
+          pending.target.complete(coreFailureOf[seq[string]](coreError(nativeFailure,
+            "window.openFileDialog", detail = "WSL file dialog paths are malformed")))
+          return coreSuccessOf(false)
+        var paths: seq[string]
+        for item in payload["paths"].items:
+          if item.kind != JString:
+            pending.target.complete(coreFailureOf[seq[string]](coreError(nativeFailure,
+              "window.openFileDialog", detail = "WSL file dialog path is not a string")))
+            return coreSuccessOf(false)
+          paths.add(item.getStr())
+        pending.target.complete(coreSuccessOf(paths))
+        return coreSuccessOf(false)
+      except CatchableError:
+        pending.target.complete(coreFailureOf[seq[string]](coreError(nativeFailure,
+          "window.openFileDialog", detail = "WSL file dialog response is malformed")))
+        return coreSuccessOf(false)
+    coreFailureOf[bool](coreError(nativeFailure, "wsl.response",
+      detail = "response does not match a pending file dialog"))
+
   proc processWslProfileDataClearResponse(app: App;
                                           response: ProtocolMessage): CoreResultOf[bool] =
     var index = 0
@@ -2528,6 +2659,9 @@ when defined(linux):
 
   proc processWslEvent(app: App; event: ProtocolMessage): CoreResultOf[bool] =
     if event.kind == ProtocolMessageKind.response:
+      for pending in app.pendingWslFileDialogs:
+        if pending.requestId == event.requestId:
+          return app.processWslFileDialogResponse(event)
       return app.processWslProfileDataClearResponse(event)
     if event.kind == ProtocolMessageKind.request and
         event.methodName == "native.webview.policyRequested":
@@ -2886,6 +3020,11 @@ proc dispose(app: App) =
   app.windows.setLen(0)
   app.nativeApp = nil
   when defined(linux):
+    for pending in app.pendingWslFileDialogs:
+      if not pending.target.finished:
+        pending.target.complete(coreFailureOf[seq[string]](coreError(invalidState,
+          "window.openFileDialog", detail = "WSL host session closed")))
+    app.pendingWslFileDialogs.setLen(0)
     for pending in app.pendingWslProfileDataClears:
       if not pending.target.finished:
         pending.target.complete(coreFailure(coreError(invalidState,

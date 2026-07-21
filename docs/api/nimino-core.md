@@ -50,6 +50,20 @@ proc run*(app: App): CoreResult
 
 `configureNativeMenu`と`configureSystemTray`は`run()`前に一度だけ呼び出し、明示したIDの項目だけをクリックイベントとして通知します。Windows/Linux nativeとWSL hostで同じ`DesktopMenuItem`型を使用し、WSLでは認証済みIPCイベントとしてCoreへ戻します。`sendNotification`は`run()`後にOS通知を要求し、表示がシェル側で抑制された場合も成功を表示保証とは解釈しません。未対応OSは`platformUnavailable`を返します。
 
+### OSファイルダイアログ
+
+`openFileDialog`はWindowsのCommon Dialog (`OPENFILENAMEW`) またはGTK 4.10
+`GtkFileDialog`を使用します。WSLではWindows hostへ遅延IPC要求として中継します。
+ユーザーがキャンセルした場合は成功した空配列を返し、OS/IPCエラーは構造化された失敗になります。
+
+```nim
+let selected = await window.openFileDialog(FileDialogOptions(
+  title: "Choose files", multiple: true))
+if selected.isOk:
+  for path in selected.value:
+    echo path
+```
+
 ```nim
 discard app.configureNativeMenu("File", @[
   DesktopMenuItem(id: 1, title: "Quit", enabled: true)
