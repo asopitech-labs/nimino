@@ -119,6 +119,32 @@ block messageFrameRoundTrip:
   doAssert decoded.value.authenticationToken == ValidToken
   doAssert decoded.value.payload == message.payload
 
+block structuredNativeErrorRoundTrip:
+  let message = ProtocolMessage(
+    version: ProtocolVersion,
+    kind: response,
+    sessionId: "session",
+    requestId: 42,
+    error: "native.window.setTitle failed",
+    errorKind: "osError",
+    errorOperation: "window.setTitle",
+    errorPlatformCode: 5,
+    errorDetail: "SetWindowTextW failed"
+  )
+  let decoded = message.toJson.fromJson()
+  doAssert decoded.isOk
+  doAssert decoded.value.error == message.error
+  doAssert decoded.value.errorKind == "osError"
+  doAssert decoded.value.errorOperation == "window.setTitle"
+  doAssert decoded.value.errorPlatformCode == 5
+  doAssert decoded.value.errorDetail == "SetWindowTextW failed"
+
+  let outOfRange = message.toJson.parseJson
+  outOfRange["errorPlatformCode"] = %2147483648'i64
+  let rejected = ($outOfRange).fromJson()
+  doAssert not rejected.isOk
+  doAssert rejected.failure.kind == invalidMessage
+
 block malformedAndOversizedFramesAreRejected:
   let incomplete = decodeFrame([byte(0), byte(0), byte(0), byte(4), byte(1)])
   doAssert not incomplete.isOk

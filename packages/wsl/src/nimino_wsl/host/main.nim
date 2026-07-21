@@ -52,6 +52,36 @@ proc responseFor(state: HostState; request: ProtocolMessage; payload = "";
     error: error
   )
 
+proc responseForFailure(state: HostState; request: ProtocolMessage;
+                        failure: ProtocolError): ProtocolMessage =
+  ## Keep a concise protocol summary for compatibility, while carrying the
+  ## native failure as typed metadata for the WSL client/core error mapper.
+  ProtocolMessage(
+    version: ProtocolVersion,
+    kind: ProtocolMessageKind.response,
+    sessionId: state.sessionId,
+    requestId: request.requestId,
+    error: failure.detail,
+    errorKind: failure.nativeKind,
+    errorOperation: failure.nativeOperation,
+    errorPlatformCode: failure.nativePlatformCode,
+    errorDetail: failure.nativeDetail
+  )
+
+proc responseForNativeFailure(state: HostState; request: ProtocolMessage;
+                              failure: NativeError): ProtocolMessage =
+  ProtocolMessage(
+    version: ProtocolVersion,
+    kind: ProtocolMessageKind.response,
+    sessionId: state.sessionId,
+    requestId: request.requestId,
+    error: failure.operation,
+    errorKind: $failure.kind,
+    errorOperation: failure.operation,
+    errorPlatformCode: failure.platformCode,
+    errorDetail: failure.detail
+  )
+
 proc writeMessage(state: HostState; message: ProtocolMessage): bool =
   state.output.writeMessageTo(message).isOk
 
@@ -95,15 +125,18 @@ proc flushEvaluations(state: HostState) =
 
     var payload = ""
     var error = ""
+    var response: ProtocolMessage
     if pending.future.failed:
       error = "native.webview.evalJavaScript failed"
+      response = state.responseFor(pending.request, error = error)
     else:
       let evaluation = pending.future.read()
       if evaluation.isOk:
         payload = $(%*{"result": evaluation.value})
+        response = state.responseFor(pending.request, payload = payload)
       else:
-        error = "native.webview.evalJavaScript failed: " & evaluation.failure.operation
-    if not state.writeMessage(state.responseFor(pending.request, payload, error)):
+        response = state.responseForNativeFailure(pending.request, evaluation.failure)
+    if not state.writeMessage(response):
       discard state.adapter.app.close()
       return
     state.pendingEvaluations.delete(index)
@@ -279,7 +312,7 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
   of request:
     let action = state.adapter.handleRequest(message)
     if not action.isOk:
-      if not state.writeMessage(state.responseFor(message, error = action.failure.detail)):
+      if not state.writeMessage(state.responseForFailure(message, action.failure)):
         discard state.adapter.app.close()
       return
     if action.value.kind == deferredResponse:
@@ -406,7 +439,7 @@ proc runHost(): int =
 
     let action = state.adapter.handleRequest(message)
     if not action.isOk:
-      discard state.writeMessage(state.responseFor(message, error = action.failure.detail))
+      discard state.writeMessage(state.responseForFailure(message, action.failure))
       continue
     if action.value.kind == deferredResponse:
       discard state.writeMessage(state.responseFor(message,

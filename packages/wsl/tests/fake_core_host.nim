@@ -35,6 +35,8 @@ let output = newFileStream(stdout)
 if input.isNil or output.isNil:
   quit(QuitFailure)
 
+let structuredError = getEnv("NIMINO_TEST_STRUCTURED_ERROR") == "1"
+
 let hello = input.readMessageFrom()
 if not hello.isOk or not hello.value.validateHello().isOk or
     not token.secureEquals(hello.value.authenticationToken):
@@ -66,6 +68,21 @@ while true:
       doAssert output.writeMessageTo(incomingMessage.response("{\"windowId\":\"1\"}")).isOk
     of "native.webview.create":
       doAssert output.writeMessageTo(incomingMessage.response("{\"webViewId\":\"1\"}")).isOk
+    of "native.window.setTitle":
+      if structuredError:
+        doAssert output.writeMessageTo(ProtocolMessage(
+          version: ProtocolVersion,
+          kind: ProtocolMessageKind.response,
+          sessionId: SessionId,
+          requestId: incomingMessage.requestId,
+          error: "native.window.setTitle failed",
+          errorKind: "osError",
+          errorOperation: "window.setTitle",
+          errorPlatformCode: 5,
+          errorDetail: "SetWindowTextW failed"
+        )).isOk
+      else:
+        doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
     of "native.webview.loadHtml", "native.webview.loadUrl":
       doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
       let payload = $(%*{"webViewId": "1", "url": "https://example.test/", "succeeded": true})

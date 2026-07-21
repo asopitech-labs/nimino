@@ -40,7 +40,7 @@ doAssert output.writeMessageTo(ProtocolMessage(
   payload: payload
 )).isOk
 
-if mode.len > 0 and mode != "timeout-request":
+if mode.len > 0 and mode notin ["timeout-request", "structured-error"]:
   quit(QuitSuccess)
 
 if mode == "timeout-request":
@@ -53,6 +53,23 @@ if mode == "timeout-request":
       cancellation.value.sessionId != SessionId or
       cancellation.value.requestId != request.value.requestId:
     quit(QuitFailure)
+
+if mode == "structured-error":
+  let request = input.readMessageFrom()
+  if not request.isOk or request.value.kind != ProtocolMessageKind.request or
+      request.value.sessionId != SessionId or request.value.requestId == 0:
+    quit(QuitFailure)
+  doAssert output.writeMessageTo(ProtocolMessage(
+    version: ProtocolVersion,
+    kind: ProtocolMessageKind.response,
+    sessionId: SessionId,
+    requestId: request.value.requestId,
+    error: "native.window.setTitle failed",
+    errorKind: "osError",
+    errorOperation: "window.setTitle",
+    errorPlatformCode: 5,
+    errorDetail: "SetWindowTextW failed"
+  )).isOk
 
 let shutdown = input.readMessageFrom()
 if not shutdown.isOk or shutdown.value.kind != ProtocolMessageKind.shutdown or

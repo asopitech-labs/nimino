@@ -41,3 +41,15 @@ if paramCount() == 1:
     doAssert not response.isOk
     doAssert response.failure.kind == timedOut
     doAssert launched.value.close().isOk
+
+  block structuredNativeErrorsSurviveLauncherMapping:
+    let host = paramStr(1)
+    let launched = launchHost(host, ["structured-error"])
+    doAssert launched.isOk
+    let response = launched.value.call("native.window.setTitle", "{}")
+    doAssert not response.isOk
+    doAssert response.failure.nativeKind == "osError"
+    doAssert response.failure.nativeOperation == "window.setTitle"
+    doAssert response.failure.nativePlatformCode == 5
+    doAssert response.failure.nativeDetail == "SetWindowTextW failed"
+    doAssert launched.value.close().isOk

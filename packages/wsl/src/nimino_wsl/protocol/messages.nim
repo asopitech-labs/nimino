@@ -15,6 +15,14 @@ type
   ProtocolError* = object
     kind*: ProtocolErrorKind
     detail*: string
+    ## Structured native failure fields are optional.  They are populated
+    ## only when the Windows host reports a native operation failure; keeping
+    ## the transport category and human-readable detail separate lets older
+    ## callers continue to consume `detail` while core maps the native kind.
+    nativeKind*: string
+    nativeOperation*: string
+    nativePlatformCode*: int32
+    nativeDetail*: string
 
   ProtocolResult* = object
     case isOk*: bool
@@ -50,6 +58,12 @@ type
     methodName*: string
     payload*: string
     error*: string
+    ## Structured host/native failure metadata.  `error` remains a concise
+    ## protocol-level summary for compatibility and diagnostics.
+    errorKind*: string
+    errorOperation*: string
+    errorPlatformCode*: int32
+    errorDetail*: string
     timeoutMs*: uint32
 
   ## Synchronous policy relay payloads.  These are embedded in a normal
@@ -92,6 +106,13 @@ proc policyResponseJson*(response: PolicyResponse): string =
 
 proc protocolError*(kind: ProtocolErrorKind; detail: string): ProtocolError =
   ProtocolError(kind: kind, detail: detail)
+
+proc protocolNativeError*(kind: ProtocolErrorKind; detail, nativeKind,
+                          nativeOperation, nativeDetail: string;
+                          nativePlatformCode: int32 = 0): ProtocolError =
+  ProtocolError(kind: kind, detail: detail, nativeKind: nativeKind,
+    nativeOperation: nativeOperation, nativePlatformCode: nativePlatformCode,
+    nativeDetail: nativeDetail)
 
 proc success*(): ProtocolResult {.inline.} =
   ProtocolResult(isOk: true)
@@ -259,6 +280,10 @@ proc toJson*(message: ProtocolMessage): string =
   node["method"] = %message.methodName
   node["payload"] = %message.payload
   node["error"] = %message.error
+  node["errorKind"] = %message.errorKind
+  node["errorOperation"] = %message.errorOperation
+  node["errorPlatformCode"] = %int(message.errorPlatformCode)
+  node["errorDetail"] = %message.errorDetail
   node["timeoutMs"] = %int(message.timeoutMs)
   $node
 
@@ -278,6 +303,23 @@ proc fromJson*(encoded: string): ProtocolResultOf[ProtocolMessage] =
     if not kind.isOk:
       return failureOf[ProtocolMessage](kind.failure)
 
+    let errorKind = if node.hasKey("errorKind") and node["errorKind"].kind == JString:
+      node["errorKind"].getStr()
+    else: ""
+    let errorOperation = if node.hasKey("errorOperation") and node["errorOperation"].kind == JString:
+      node["errorOperation"].getStr()
+    else: ""
+    let errorPlatformCode = if node.hasKey("errorPlatformCode") and
+        node["errorPlatformCode"].kind == JInt:
+      let value = node["errorPlatformCode"].getInt()
+      if value < int(low(int32)) or value > int(high(int32)):
+        return failureOf[ProtocolMessage](protocolError(invalidMessage,
+          "native error platform code is out of range"))
+      int32(value)
+    else: 0'i32
+    let errorDetail = if node.hasKey("errorDetail") and node["errorDetail"].kind == JString:
+      node["errorDetail"].getStr()
+    else: ""
     let message = ProtocolMessage(
       version: uint16(version),
       kind: kind.value,
@@ -288,6 +330,10 @@ proc fromJson*(encoded: string): ProtocolResultOf[ProtocolMessage] =
       methodName: node["method"].getStr(),
       payload: node["payload"].getStr(),
       error: node["error"].getStr(),
+      errorKind: errorKind,
+      errorOperation: errorOperation,
+      errorPlatformCode: errorPlatformCode,
+      errorDetail: errorDetail,
       timeoutMs: uint32(timeoutMs)
     )
 

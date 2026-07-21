@@ -303,6 +303,14 @@ proc receiveNextWithin*(client: WslClient; timeoutMs: int):
       return failureOf[Option[ProtocolMessage]](received.failure)
     successOf(some(received.value))
 
+proc hostResponseFailure(response: ProtocolMessage): ProtocolError =
+  let summary = if response.error.len > 0: response.error
+                elif response.errorDetail.len > 0: response.errorDetail
+                else: "host rejected request"
+  protocolNativeError(invalidMessage, summary, response.errorKind,
+    response.errorOperation, response.errorDetail,
+    response.errorPlatformCode)
+
 proc receiveResponse*(client: WslClient; requestId: uint64;
                       timeoutMs: uint32 = 5_000): ProtocolResultOf[ProtocolMessage] =
   if client.isNil or client.process.isNil:
@@ -317,9 +325,9 @@ proc receiveResponse*(client: WslClient; requestId: uint64;
         inc bufferedIndex
         continue
       client.responses.delete(bufferedIndex)
-      if buffered.error.len != 0:
-        return failureOf[ProtocolMessage](protocolError(invalidMessage,
-          "host rejected request: " & buffered.error))
+      if buffered.error.len != 0 or buffered.errorKind.len != 0 or
+          buffered.errorOperation.len != 0 or buffered.errorDetail.len != 0:
+        return failureOf[ProtocolMessage](buffered.hostResponseFailure())
       return successOf(buffered)
     let remaining = (deadline - getMonoTime()).inMilliseconds
     if remaining <= 0:
@@ -345,8 +353,9 @@ proc receiveResponse*(client: WslClient; requestId: uint64;
       ## turning valid concurrent completions into a protocol failure.
       client.responses.add(hostResponse)
       continue
-    if hostResponse.error.len != 0:
-      return failureOf[ProtocolMessage](protocolError(invalidMessage, "host rejected request: " & hostResponse.error))
+    if hostResponse.error.len != 0 or hostResponse.errorKind.len != 0 or
+        hostResponse.errorOperation.len != 0 or hostResponse.errorDetail.len != 0:
+      return failureOf[ProtocolMessage](hostResponse.hostResponseFailure())
     return successOf(hostResponse)
 
 proc takeEvents*(client: WslClient): seq[ProtocolMessage] =
