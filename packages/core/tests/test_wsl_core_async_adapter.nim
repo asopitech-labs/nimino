@@ -19,6 +19,7 @@ var resizeWidth = 0
 var resizeHeight = 0
 var closingAsync: Future[RpcResult]
 var desktopActionSeen = false
+var fileDialogResult: Future[CoreResultOf[seq[string]]]
 
 proc startAsync(params: JsonNode): Future[RpcResult] =
   asyncRequested = true
@@ -86,6 +87,9 @@ doAssert window.loadHtml("<main>WSL async adapter test</main>").isOk
 doAssert app.onReady(proc() =
   doAssert app.sendNotification(DesktopNotification(
     id: "async-test", title: "Async test", body: "ready")).isOk
+  fileDialogResult = window.openFileDialog(FileDialogOptions(
+    title: "Choose a file", save: false, multiple: false))
+  doAssert not fileDialogResult.finished
   profileDataClear = window.clearWebViewProfileData({webViewCookies, webViewCache})
   unsupportedProfileDataClear = window.clearWebViewProfileData({webViewLocalStorage})
   doAssert not profileDataClear.finished
@@ -112,3 +116,8 @@ doAssert unsupportedProfileDataClear.finished
 let unsupportedResult = unsupportedProfileDataClear.read()
 doAssert not unsupportedResult.isOk
 doAssert unsupportedResult.failure.kind == platformUnavailable
+doAssert fileDialogResult != nil
+doAssert fileDialogResult.finished
+let chosen = fileDialogResult.read()
+doAssert chosen.isOk
+doAssert chosen.value == @["C:\\tmp\\chosen.txt"]

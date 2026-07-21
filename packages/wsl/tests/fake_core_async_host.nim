@@ -82,6 +82,13 @@ while true:
       doAssert output.writeMessageTo(message.response($(%*{"webViewId": webViewId}))).isOk
     of "native.webview.close":
       doAssert output.writeMessageTo(message.response("{}")).isOk
+    of "native.window.openFileDialog":
+      let payload = parseJson(message.payload)
+      doAssert payload["title"].getStr() == "Choose a file"
+      doAssert not payload["save"].getBool()
+      doAssert output.writeMessageTo(message.response($(%*{
+        "ok": true, "paths": ["C:\\tmp\\chosen.txt"]
+      }))).isOk
     of "native.webview.setDevToolsEnabled":
       doAssert output.writeMessageTo(message.response("{}")).isOk
     of "native.webview.loadHtml":

@@ -125,6 +125,11 @@ block windowsOwnIndependentRpcAllowLists:
   let second = app.newWindow(title = "Second")
   doAssert first.isOk
   doAssert second.isOk
+  let invalidDialog = first.value.openFileDialog(FileDialogOptions(title: ""))
+  doAssert invalidDialog.finished
+  let invalidDialogResult = invalidDialog.read()
+  doAssert not invalidDialogResult.isOk
+  doAssert invalidDialogResult.failure.kind == invalidArgument
   doAssert first.value.onCloseRequested(proc(): bool = true).isOk
   doAssert first.value.onClosed(proc() = discard).isOk
   doAssert first.value.onResize(proc(width, height: int) = discard).isOk
