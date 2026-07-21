@@ -103,7 +103,7 @@ URLのRPC bridgeはViewが`pending`の間の最初の対象`loadUrl`前に登録
 
 ### 追加ゴール: 初心者向け配布導線
 
-PakeのPopular Packages／Online Buildingに相当する導線を`nimino-pack`へ追加します。検証済みartifactをchecksum・署名・生成元付きで示すPopular Packagesカタログと、GitHub Actionsの`workflow_dispatch`から固定Docker toolchainで実行するオンラインビルドを提供し、利用者のローカルへNim、Nimble、Dockerを要求しない設計です。仕様と受け入れ条件は[ADR 0018](docs/adr/0018-pack-online-build-and-popular-catalog.md)に記録しています。未実装形式をworkflowが成功扱いしないことも要件です。
+PakeのPopular Packages／Online Buildingに相当する導線を`nimino-pack`へ追加します。GitHub Actionsの`workflow_dispatch`から固定Docker toolchainで汎用`nimino-host`をビルドし、URLからbundleとDebian/RPM/NSIS artifact、checksum、SBOMを生成するオンラインビルドを実装済みです。利用者のローカルへNim、Nimble、Dockerを要求しません。checksum・署名・生成元付きPopular Packagesカタログは後続作業です。仕様と受け入れ条件は[ADR 0018](docs/adr/0018-pack-online-build-and-popular-catalog.md)に記録しています。未実装形式をworkflowが成功扱いしないことも要件です。
 
 ## 文書
 

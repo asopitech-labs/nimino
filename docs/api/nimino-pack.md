@@ -23,9 +23,9 @@ nimino pack discord.toml --out dist/discord --host nimino-host
 
 PakeのCLI包装フローを参考にしているが、生成物はNimino hostと`nimino-core`を使用し、Pake/Tauriを実行時依存にしません。
 
-## Online build and Popular Packages (planned goal)
+## Online build and Popular Packages
 
-Pakeの初心者向け導線に合わせ、検証済みartifactをchecksum・署名・生成元付きで示すPopular Packagesカタログと、GitHub Actions `workflow_dispatch`によるオンラインビルドを追加します。オンラインビルドは固定digestのDocker toolchain内で`nimino-pack`を実行し、利用者のローカルへNim/Nimble/Dockerを要求しません。未実装の形式や依存閉包は成功扱いにせず、対応条件が満たされるまでworkflowを失敗させます。詳細は[ADR 0018](../adr/0018-pack-online-build-and-popular-catalog.md)を参照してください。
+Pakeの初心者向け導線に合わせ、GitHub Actions `workflow_dispatch`によるオンラインビルドを`.github/workflows/nimino-pack-online.yml`へ追加しました。固定Docker toolchain内で汎用`nimino-host`をビルドし、URLからbundleとDebian/RPM/NSIS artifact、checksum、SBOMを生成します。利用者のローカルへNim/Nimble/Dockerを要求しません。Popular Packagesカタログはchecksum・署名・生成元付きartifactを登録する後続作業です。未実装の形式や依存閉包は成功扱いにせず、対応条件が満たされるまでworkflowを失敗させます。詳細は[ADR 0018](../adr/0018-pack-online-build-and-popular-catalog.md)を参照してください。
 
 ## 配布メタデータ
 
