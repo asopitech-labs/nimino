@@ -204,6 +204,9 @@ proc webkit_web_context_get_security_manager*(context: ptr WebKitWebContext): po
 proc webkit_security_manager_register_uri_scheme_as_secure*(manager: pointer;
                                                             scheme: cstring)
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_security_manager_register_uri_scheme_as_cors_enabled*(manager: pointer;
+                                                                  scheme: cstring)
+  {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_uri_scheme_request_get_uri*(request: ptr WebKitURISchemeRequest): cstring
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_uri_scheme_request_get_http_method*(request: ptr WebKitURISchemeRequest): cstring

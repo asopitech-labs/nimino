@@ -47,6 +47,8 @@ proc linuxRegisterCustomProtocol(app: NativeApp): NativeResult =
   if not security.isNil:
     webkit_security_manager_register_uri_scheme_as_secure(security,
       app.customProtocolScheme.cstring)
+    webkit_security_manager_register_uri_scheme_as_cors_enabled(security,
+      app.customProtocolScheme.cstring)
   success()
 
 proc linuxNativeMenuActionName(itemId: uint32): string {.inline.} =
