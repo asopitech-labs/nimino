@@ -222,6 +222,7 @@ type
     newWindowHandler*: proc(request: NewWindowRequest): bool
     closeRequestedHandler*: proc(): bool
     closedHandler*: proc()
+    resizeHandler*: proc(width, height: int)
     errorHandler*: proc(error: WindowError)
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
@@ -637,6 +638,14 @@ proc configureWindow(window: Window): CoreResult =
         except CatchableError: discard)
   if not closedConfigured.isOk:
     return coreFailure(closedConfigured.failure.mapNativeError())
+
+  let resizeConfigured = native.onResize(window.nativeWindow,
+    proc(width, height: int) =
+      if window != nil and not window.closed and not window.resizeHandler.isNil:
+        try: window.resizeHandler(width, height)
+        except CatchableError: discard)
+  if not resizeConfigured.isOk:
+    return coreFailure(resizeConfigured.failure.mapNativeError())
 
   let permissionConfigured = native.onPermissionRequested(window.nativeView,
     proc(kind, url: string): bool =
@@ -1503,6 +1512,12 @@ proc onClosed*(window: Window; handler: proc()): CoreResult =
   window.closedHandler = handler
   coreSuccess()
 
+proc onResize*(window: Window; handler: proc(width, height: int)): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onResize"))
+  window.resizeHandler = handler
+  coreSuccess()
+
 proc onError*(window: Window; handler: proc(error: WindowError)): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.onError"))
@@ -2208,6 +2223,31 @@ when defined(linux):
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "Window closed event is malformed"))
+    of "native.window.resized":
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("windowId") or
+            not payload.hasKey("width") or not payload.hasKey("height") or
+            payload["windowId"].kind != JString or
+            payload["width"].kind != JInt or
+            payload["height"].kind != JInt:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "Window resized event is malformed"))
+        let windowId = uint64(parseUInt(payload["windowId"].getStr()))
+        let width = payload["width"].getInt()
+        let height = payload["height"].getInt()
+        if width <= 0 or height <= 0:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "Window resized event has invalid dimensions"))
+        for window in app.windows:
+          if not window.closed and window.windowId == windowId:
+            if not window.resizeHandler.isNil:
+              try: window.resizeHandler(width, height)
+              except CatchableError: discard
+            break
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "Window resized event is malformed"))
     of "app.error":
       return coreFailureOf[bool](coreError(nativeFailure, "app.run",
         detail = "WSL host reported an application error"))

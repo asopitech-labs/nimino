@@ -128,6 +128,9 @@ while true:
         asyncReplySeen = true
       elif script.contains("timeout-one"):
         doAssert asyncReplySeen
+        doAssert output.writeMessageTo(event("native.window.resized",
+          "{\"windowId\":\"1\",\"width\":640,\"height\":480}", nextEventId)).isOk
+        inc nextEventId
         ## Model the Windows host's native close callback while a registered
         ## Nim handler still owns a delayed Future. The next `app.closed`
         ## event gives the client a deterministic shutdown without WebView2.

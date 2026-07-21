@@ -25,6 +25,11 @@ type
     url*: string
     succeeded*: bool
 
+  HostWindowResized* = object
+    windowId*: uint64
+    width*: int
+    height*: int
+
   HostNavigationStarting* = object
     webViewId*: uint64
     url*: string
@@ -69,6 +74,7 @@ type
     pendingNavigationStarts: seq[HostNavigationStarting]
     pendingNavigationCompletions: seq[HostNavigationCompleted]
     pendingDownloadEvents: seq[HostDownloadEvent]
+    pendingWindowResized: seq[HostWindowResized]
     pendingWindowClosed: seq[uint64]
     ## Optional synchronous decision hook owned by the transport layer.
     ## Returning false is the fail-closed default.
@@ -266,6 +272,13 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
       owner.pendingWindowClosed.add(windowId))
   if not closedConfigured.isOk:
     return nativeFailure("native.window.onClosed", closedConfigured)
+  let resizeConfigured = created.value.onResize(proc(width, height: int) =
+    let owner = cast[HostAdapter](adapterPointer)
+    if not owner.isNil:
+      owner.pendingWindowResized.add(HostWindowResized(
+        windowId: windowId, width: width, height: height)))
+  if not resizeConfigured.isOk:
+    return nativeFailure("native.window.onResize", resizeConfigured)
   adapter.windows[windowId] = created.value
   adapter.windowViewCounts[windowId] = 0
   successOf(HostAction(kind: noHostAction, payload: encodedId("windowId", windowId)))
@@ -642,6 +655,12 @@ proc takeWindowClosed*(adapter: HostAdapter): seq[uint64] =
   ## to the host event flush.
   for windowId in result:
     adapter.forgetWindow(windowId)
+
+proc takeWindowResized*(adapter: HostAdapter): seq[HostWindowResized] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingWindowResized
+  adapter.pendingWindowResized.setLen(0)
 
 
 proc handleLoadContent(adapter: HostAdapter; payload: JsonNode;

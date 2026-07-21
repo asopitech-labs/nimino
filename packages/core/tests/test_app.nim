@@ -118,6 +118,7 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert second.isOk
   doAssert first.value.onCloseRequested(proc(): bool = true).isOk
   doAssert first.value.onClosed(proc() = discard).isOk
+  doAssert first.value.onResize(proc(width, height: int) = discard).isOk
   let popup = first.value.openPopup(NewWindowRequest(url: "data:text/html,<p>popup</p>"),
     title = "Popup", profile = "popup")
   doAssert popup.isOk

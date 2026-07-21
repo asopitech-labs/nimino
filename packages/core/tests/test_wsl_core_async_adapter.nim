@@ -15,6 +15,8 @@ var asyncCompleted = false
 var neverRequested = false
 var closeRequested = false
 var closedHandlerRan = false
+var resizeWidth = 0
+var resizeHeight = 0
 var closingAsync: Future[RpcResult]
 
 proc startAsync(params: JsonNode): Future[RpcResult] =
@@ -62,6 +64,10 @@ doAssert window.onClosed(proc() =
   }""")
   closingAsync.complete(rpcSuccess(%"late completion"))
 ).isOk
+doAssert window.onResize(proc(width, height: int) =
+  resizeWidth = width
+  resizeHeight = height
+).isOk
 doAssert window.loadHtml("<main>WSL async adapter test</main>").isOk
 doAssert app.onReady(proc() =
   profileDataClear = window.clearWebViewProfileData({webViewCookies, webViewCache})
@@ -76,6 +82,8 @@ doAssert asyncCompleted
 doAssert neverRequested
 doAssert closeRequested
 doAssert closedHandlerRan
+doAssert resizeWidth == 640
+doAssert resizeHeight == 480
 doAssert closingAsync != nil
 doAssert closingAsync.finished
 doAssert closingAsync.read().isOk
