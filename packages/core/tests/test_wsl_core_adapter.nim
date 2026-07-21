@@ -17,7 +17,9 @@ let browserData = window.value.clearWebViewProfileData({webViewCookies})
 doAssert browserData.finished
 let browserDataResult = browserData.read()
 doAssert not browserDataResult.isOk
-doAssert browserDataResult.failure.kind == platformUnavailable
+## The host advertises the relay.  Calling before app.run is still invalid:
+## browser data must be cleared while the Windows host UI session is active.
+doAssert browserDataResult.failure.kind == invalidState
 doAssert window.value.rpc.registerSync("system.version", proc(params: JsonNode): RpcResult =
   invoked = true
   rpcSuccess(%"1.0.0")
