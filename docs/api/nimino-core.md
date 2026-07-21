@@ -1,6 +1,6 @@
 # `nimino-core` 最小公開API案
 
-**状態: M4部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrap、profile path、local asset root/entry境界を実装した。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録でき、`typescriptDeclarations`で登録済みメソッドの保守的な`unknown`宣言を生成できます。Linuxでは実WebViewのrequest/response/notification往復、URLの最初期scriptからのRPC、WebKitWebsiteDataManagerによるbrowser data clearを確認済みで、Windowsはx64クロスコンパイル済みです。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、Linux GUI FFIをリンクしません。Windows WebView2 Runtime上でWSL coreの読込、評価、async response、timeout、URL document-start RPCを確認済みです。permission/download/navigationはnative実装とWSL同期decision relay（timeout時deny）まで完了し、profile設定/Cookieの永続化API、Window単位の参照・削除APIも実装済みです。型抽出register macro、desktop統合は未実装です。**
+**状態: M4部分実装。Windows/Linux向けの`App`/`Window` facade、Window単位の明示許可リストJSON RPC、WebView bootstrap、profile path、local asset root/entry境界を実装した。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録でき、`typescriptDeclarations`で登録済みメソッドの保守的な宣言を生成できます。record object、入れ子object、`seq`/固定array、`Option`、基本型、enumはregister macroでinline TypeScript型へ抽出し、それ以外は安全に`unknown`へ後退します。Linuxでは実WebViewのrequest/response/notification往復、URLの最初期scriptからのRPC、WebKitWebsiteDataManagerによるbrowser data clearを確認済みで、Windowsはx64クロスコンパイル済みです。WSL build（`-d:niminoWsl`）は同じcore APIから認証済みWindows hostを選び、Linux GUI FFIをリンクしません。Windows WebView2 Runtime上でWSL coreの読込、評価、async response、timeout、URL document-start RPCを確認済みです。permission/download/navigationはnative実装とWSL同期decision relay（timeout時deny）まで完了し、profile設定/Cookieの永続化API、Window単位の参照・削除APIも実装済みです。desktop統合は未実装です。**
 
 `nimino-core`は通常の利用者向けの高水準APIです。`nimino-native`を内包してもFFI型を公開せず、`nimino-pack`へはこの公開面だけを提供します。
 
@@ -58,7 +58,7 @@ window.rpc.register("files.save") do (request: SaveRequest) -> Future[SaveResult
 
 登録APIは明示的なメソッド名を持つ許可リストです。任意のNim関数、OS API、または`ref object`を自動公開しません。各Windowは独立したRPC registryとrequest ID空間を持ち、request/response、notification、timeout、cancel、JSON errorを扱います。応答不要の通知は`registerNotification`で専用登録でき、requestとして呼び出されることはありません。
 
-`registerTyped`と`registerTypedAsync`は、引数なしまたは一つのJSON codec対応入力型を受け、戻り値（または`Future`の戻り値）をJSON化する。通知には`registerTypedNotification`（引数あり／なし）を使用できる。これらも明示メソッド名の許可リストであり、reflectionによる任意関数公開ではない。`Window.typescriptDeclarations`は登録済みメソッドだけを宣言生成し、primitive型（string、bool、数値）とそれらの`seq`配列を対応するTypeScript型へ変換し、複合型は安全に`unknown`として扱います。register macroによる複合型の自動抽出は未実装であり、native層へ追加しない。
+`registerTyped`と`registerTypedAsync`は、引数なしまたは一つのJSON codec対応入力型を受け、戻り値（または`Future`の戻り値）をJSON化する。通知には`registerTypedNotification`（引数あり／なし）を使用できる。複合型を登録するアプリケーション側モジュールではNim generic codecを展開できるよう`std/jsonutils`をimportする。これらも明示メソッド名の許可リストであり、reflectionによる任意関数公開ではない。`Window.typescriptDeclarations`は登録済みメソッドだけを宣言生成する。register macroはprimitive（string、bool、数値）、enum（JSON数値）、record object、入れ子record、`seq`/固定array、`Option[T]`（`T | null`）をinline TypeScript型へ変換する。variant record、継承record、table/ref/procなどJSON形状を一意に表せない型、深さ12を超える型は`unknown`へ後退する。これは宣言生成だけであり、native層には追加しない。
 複合型の宣言を手動で補完する場合は、実行時に登録済みのメソッドへ`registerTypeScriptSchema(method, paramsType, resultType)`を呼び出せます。これは宣言生成だけを変更し、RPC codecや許可リストを変更しません。改行・制御文字・`{}`・`;`を含む型文字列は拒否します。
 `window.rpc.unregister("method")`で登録済みの一つのメソッドを撤去できます。撤去後の新規呼び出しは拒否され、既に実行中のrequestは完了まで維持されます。
 
@@ -67,6 +67,8 @@ window.rpc.register("files.save") do (request: SaveRequest) -> Future[SaveResult
 メソッド名は制御文字・空白・引用符を含められず、256文字以内に制限されます。
 
 ```nim
+import std/jsonutils
+
 type Settings = object
   theme: string
 

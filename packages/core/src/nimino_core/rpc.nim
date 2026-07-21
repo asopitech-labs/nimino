@@ -4,7 +4,7 @@
 ## does not reflect Nim symbols, expose OS APIs, or infer a callable surface
 ## from arbitrary types.
 
-import std/[algorithm, asyncfutures, json, jsonutils, strutils, tables, times, typetraits]
+import std/[algorithm, asyncfutures, json, jsonutils, macros, strutils, tables, times, typetraits]
 
 const
   DefaultRpcTimeoutMs* = 30_000'i64
@@ -61,29 +61,85 @@ proc nowMilliseconds*(): int64 {.inline.} =
 proc newRpcRegistry*(sink: RpcReplySink = nil): RpcRegistry =
   RpcRegistry(sink: sink)
 
-proc typeScriptType[T](): string =
-  let name = name(T).toLowerAscii()
-  if name.startsWith("seq[") and name.endsWith("]"):
-    let element = name[4 ..< name.len - 1]
-    case element
-    of "string", "system.string", "cstring", "system.cstring": "string[]"
-    of "bool", "system.bool": "boolean[]"
-    of "int", "system.int", "int8", "system.int8", "int16", "system.int16",
-       "int32", "system.int32", "int64", "system.int64", "uint", "system.uint",
-       "uint8", "system.uint8", "uint16", "system.uint16", "uint32", "system.uint32",
-       "uint64", "system.uint64", "float", "system.float", "float32", "system.float32",
-       "float64", "system.float64": "number[]"
-    else: "unknown[]"
+const MaximumTypeScriptSchemaDepth = 12
+
+proc typeScriptPrimitive(typeName: string): string =
+  case typeName.toLowerAscii()
+  of "string", "system.string", "cstring", "system.cstring": "string"
+  of "bool", "system.bool": "boolean"
+  of "int", "system.int", "int8", "system.int8", "int16", "system.int16",
+     "int32", "system.int32", "int64", "system.int64", "uint", "system.uint",
+     "uint8", "system.uint8", "uint16", "system.uint16", "uint32", "system.uint32",
+     "uint64", "system.uint64", "float", "system.float", "float32", "system.float32",
+     "float64", "system.float64": "number"
+  else: ""
+
+proc typeScriptPropertyName(field: NimNode): string =
+  "'" & field.strVal.replace("\\", "\\\\").replace("'", "\\'") & "'"
+
+proc typeScriptArrayElement(element: string): string =
+  if " | " in element:
+    "(" & element & ")"
   else:
-    case name
-    of "string", "system.string", "cstring", "system.cstring": "string"
-    of "bool", "system.bool": "boolean"
-    of "int", "system.int", "int8", "system.int8", "int16", "system.int16",
-       "int32", "system.int32", "int64", "system.int64", "uint", "system.uint",
-       "uint8", "system.uint8", "uint16", "system.uint16", "uint32", "system.uint32",
-       "uint64", "system.uint64", "float", "system.float", "float32", "system.float32",
-       "float64", "system.float64": "number"
-    else: "unknown"
+    element
+
+proc typeScriptObjectType(implementation: NimNode; depth: int): string
+
+proc typeScriptTypeNode(node: NimNode; depth = 0): string =
+  ## This is compile-time-only and intentionally recognizes only JSON codec
+  ## shapes whose TypeScript representation is unambiguous. Unsupported
+  ## fields remain `unknown`, preserving declaration soundness.
+  if node.isNil or depth >= MaximumTypeScriptSchemaDepth:
+    return "unknown"
+  let primitive = node.repr.typeScriptPrimitive()
+  if primitive.len > 0:
+    return primitive
+  if node.kind == nnkBracketExpr and node.len >= 2:
+    let constructor = node[0].repr.toLowerAscii()
+    if constructor in ["seq", "system.seq"]:
+      return typeScriptArrayElement(typeScriptTypeNode(node[1], depth + 1)) & "[]"
+    if constructor in ["array", "system.array"] and node.len >= 3:
+      return typeScriptArrayElement(typeScriptTypeNode(node[^1], depth + 1)) & "[]"
+    if constructor in ["option", "options.option"]:
+      return typeScriptTypeNode(node[1], depth + 1) & " | null"
+    return "unknown"
+  let implementation = node.getTypeImpl
+  case implementation.kind
+  of nnkObjectTy:
+    typeScriptObjectType(implementation, depth + 1)
+  of nnkEnumTy, nnkRange:
+    ## `jsonutils.toJson` encodes Nim enums numerically and ranges as numbers.
+    "number"
+  of nnkDistinctTy:
+    if implementation.len > 0:
+      typeScriptTypeNode(implementation[0], depth + 1)
+    else:
+      "unknown"
+  else:
+    "unknown"
+
+proc typeScriptObjectType(implementation: NimNode; depth: int): string =
+  if implementation.len < 3 or implementation[2].kind != nnkRecList:
+    return "unknown"
+  var fields: seq[string]
+  for definition in implementation[2]:
+    ## Variant records and inheritance are left conservative in this first
+    ## extractor because their JSON shape can vary with a discriminator.
+    if definition.kind != nnkIdentDefs or definition.len < 3:
+      return "unknown"
+    let fieldType = definition[^2]
+    let rendered = typeScriptTypeNode(fieldType, depth + 1)
+    for index in 0 ..< definition.len - 2:
+      fields.add(typeScriptPropertyName(definition[index]) & ": " & rendered)
+  "{ " & fields.join("; ") & " }"
+
+macro typeScriptType(T: typedesc): untyped =
+  ## Extract a conservative inline TypeScript type from a concrete Nim type.
+  ## This macro is used only after an explicit RPC handler is registered.
+  let descriptor = T.getTypeImpl
+  if descriptor.kind != nnkBracketExpr or descriptor.len != 2:
+    return newLit("unknown")
+  newLit(typeScriptTypeNode(descriptor[1]))
 
 proc setTypeScriptSchema(registry: RpcRegistry; methodName, paramsType, resultType: string) =
   if registry != nil:
@@ -199,7 +255,7 @@ proc registerTypedNotification*[T](registry: RpcRegistry; methodName: string;
     except CatchableError:
       discard)
   if result:
-    registry.setTypeScriptSchema(methodName, typeScriptType[T](), "void")
+    registry.setTypeScriptSchema(methodName, typeScriptType(T), "void")
 
 proc registerTypedNotification*(registry: RpcRegistry; methodName: string;
                                handler: proc() {.closure.}): bool =
@@ -273,7 +329,7 @@ proc registerTyped*[R](registry: RpcRegistry; methodName: string;
       typedFailure()
   )
   if result:
-    registry.setTypeScriptSchema(methodName, "void", typeScriptType[R]())
+    registry.setTypeScriptSchema(methodName, "void", typeScriptType(R))
 
 proc registerTyped*[T, R](registry: RpcRegistry; methodName: string;
                           handler: proc(params: T): R {.closure.}): bool =
@@ -286,7 +342,7 @@ proc registerTyped*[T, R](registry: RpcRegistry; methodName: string;
       typedFailure()
   )
   if result:
-    registry.setTypeScriptSchema(methodName, typeScriptType[T](), typeScriptType[R]())
+    registry.setTypeScriptSchema(methodName, typeScriptType(T), typeScriptType(R))
 
 proc registerTypedAsync*[R](registry: RpcRegistry; methodName: string;
                             handler: proc(): Future[R] {.closure.}): bool =
@@ -301,7 +357,7 @@ proc registerTypedAsync*[R](registry: RpcRegistry; methodName: string;
       failed
   )
   if result:
-    registry.setTypeScriptSchema(methodName, "void", typeScriptType[R]())
+    registry.setTypeScriptSchema(methodName, "void", typeScriptType(R))
 
 proc registerTypedAsync*[T, R](registry: RpcRegistry; methodName: string;
                                handler: proc(params: T): Future[R] {.closure.}): bool =
@@ -317,7 +373,7 @@ proc registerTypedAsync*[T, R](registry: RpcRegistry; methodName: string;
       failed
   )
   if result:
-    registry.setTypeScriptSchema(methodName, typeScriptType[T](), typeScriptType[R]())
+    registry.setTypeScriptSchema(methodName, typeScriptType(T), typeScriptType(R))
 
 proc errorCodeName(code: RpcErrorCode): string =
   case code

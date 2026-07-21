@@ -1,4 +1,4 @@
-import std/[asyncfutures, json, strutils]
+import std/[asyncfutures, json, jsonutils, options, strutils]
 
 import nimino_core
 
@@ -18,6 +18,30 @@ proc response(messages: seq[string]; index = 0): JsonNode =
 
 type Settings = object
   theme: string
+
+type
+  SyncMode = enum
+    manual, automatic
+  ThemeSettings = object
+    name: string
+    enabled: bool
+  SaveSettingsRequest = object
+    mode: SyncMode
+    theme: ThemeSettings
+    recentThemes: seq[ThemeSettings]
+    retryAfter: Option[int]
+    palette: array[2, ThemeSettings]
+  SaveSettingsResult = object
+    accepted: bool
+    activeTheme: ThemeSettings
+  VariantPayload = object
+    case enabled: bool
+    of true:
+      path: string
+    of false:
+      retryCount: int
+  VariantContainer = object
+    payload: VariantPayload
 
 block explicitAllowListAndSyncResponse:
   var messages: seq[string]
@@ -132,6 +156,54 @@ block typedDeclarationsCarryPrimitiveTypes:
   doAssert declarations.find("method: 'files.exists', params?: string") >= 0
   doAssert declarations.find("Promise<boolean>") >= 0
   doAssert declarations.find("Promise<string[]>") >= 0
+
+block typedDeclarationsExtractSupportedCompositeJsonShapes:
+  var messages: seq[string]
+  let registry = newRpcRegistry(proc(message: string) = messages.add(message))
+  doAssert registry.registerTyped("settings.save", proc(request: SaveSettingsRequest): SaveSettingsResult =
+    SaveSettingsResult(accepted: request.mode == automatic,
+      activeTheme: request.theme)
+  )
+  doAssert registry.registerTypedAsync("settings.saveAsync",
+    proc(request: SaveSettingsRequest): Future[SaveSettingsResult] =
+      let completed = newFuture[SaveSettingsResult]("nimino.rpc.test.complex")
+      completed.complete(SaveSettingsResult(accepted: request.mode == automatic,
+        activeTheme: request.theme))
+      completed
+  )
+  doAssert registry.registerTypedNotification("settings.changed",
+    proc(request: SaveSettingsRequest) = discard)
+  doAssert registry.registerTyped("settings.variant",
+    proc(request: VariantContainer): VariantContainer = request)
+  doAssert registry.registeredMethods() == @[
+    "settings.changed", "settings.save", "settings.saveAsync", "settings.variant"
+  ]
+  let declarations = registry.typescriptDeclarations()
+  let requestType = "{ 'mode': number; 'theme': { 'name': string; 'enabled': boolean }; " &
+    "'recentThemes': { 'name': string; 'enabled': boolean }[]; 'retryAfter': number | null; " &
+    "'palette': { 'name': string; 'enabled': boolean }[] }"
+  let resultType = "{ 'accepted': boolean; 'activeTheme': { 'name': string; 'enabled': boolean } }"
+  doAssert declarations.find("method: 'settings.save', params?: " & requestType) >= 0
+  doAssert declarations.find("Promise<" & resultType & ">") >= 0
+  doAssert declarations.find("method: 'settings.saveAsync', params?: " & requestType) >= 0
+  doAssert declarations.find("notify(method: 'settings.changed', params?: " & requestType & ")") >= 0
+  ## Variant records remain conservative because their field set depends on a
+  ## discriminator. The macro must never add a method outside this allow-list.
+  doAssert declarations.find("method: 'settings.variant', params?: { 'payload': unknown }") >= 0
+  doAssert declarations.find("method: 'unregistered'") < 0
+  let settingsParams = parseJson("""{
+    "mode": 1,
+    "theme": {"name": "night", "enabled": true},
+    "recentThemes": [],
+    "retryAfter": null,
+    "palette": [
+      {"name": "night", "enabled": true},
+      {"name": "day", "enabled": false}
+    ]
+  }""")
+  doAssert registry.handleMessage(request("complex", "settings.save", settingsParams), 1_000)
+  doAssert messages.response()["result"]["accepted"].getBool()
+  doAssert messages.response()["result"]["activeTheme"]["name"].getStr() == "night"
 
 block fireAndForgetNotificationRegistration:
   let registry = newRpcRegistry()
