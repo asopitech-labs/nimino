@@ -169,7 +169,8 @@ proc validateEntry(entry: PopularPackageEntry; policy: PopularCatalogPolicy):
       "popular package signature algorithm or keyId is invalid")
   try:
     let decoded = decode(entry.signature.value)
-    if decoded.len == 0 or decoded.len > 4096:
+    if decoded.len == 0 or decoded.len > 4096 or
+        encode(decoded) != entry.signature.value:
       return failure[PopularPackageEntry](invalidManifest,
         "popular package signature is invalid")
   except ValueError:
