@@ -2,7 +2,7 @@
 
 Nimをホスト言語に、OS公式APIの薄いFFIでネイティブWindowとWebViewを扱う、軽量なクロスプラットフォームWeb UIデスクトップアプリケーション基盤です。
 
-> M0〜M3とM4のprofile、local asset境界、navigation policy、明示的なpermission/download policyを実装済みです。Linux GTK 4/WebKitGTK 6.0ではpermission要求をdenyし、download responseをignoreします。Windows WebView2ではpermission要求をdenyし、download開始をcancelします。`nimino-core`はWindows/Linux向けApp/Window facade、明示許可リストJSON RPC、型付き`registerTyped`/`registerTypedAsync`、profile path、local asset root/entry境界を提供します。WSL向けcore build（`-d:niminoWsl`）はLinux GUI FFIをリンクせず、通常の`newApp`からWindows hostを起動します。`nimino-pack`はTOMLマニフェスト解析・検証、host同梱、Linux tar.gz／Windows zip形式のbundle生成を実装しました。`make wsl-host-popup-smoke` は Windows WebView2 Runtime 上で新規Window要求を発火し、host が暗黙の popup を作らず `Handled` として終了できることを確認します。通常Windows GUI CI、正式インストーラ、OSデスクトップ統合は未整備です。
+> M0〜M4のprofile、local asset境界、navigation/permission/download policy、Windows tray、Linux GTK menubar/notificationを実装済みです。通常Windows GUI CI、正式インストーラ、macOS、toast activationなど配布統合は未整備です。
 
 
 ## 目標
