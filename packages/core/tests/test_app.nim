@@ -108,6 +108,15 @@ block windowsOwnIndependentRpcAllowLists:
   let multipleViews = app.supports(multipleWebViews)
   doAssert multipleViews.isOk
 
+  let desktopItem = DesktopMenuItem(id: 1, title: "Quit", enabled: true)
+  when defined(linux) and not defined(niminoWsl):
+    doAssert app.configureNativeMenu("File", @[desktopItem],
+      proc(itemId: uint32) = doAssert itemId == 1).isOk
+    doAssert not app.configureSystemTray(@[desktopItem],
+      proc(itemId: uint32) = discard).isOk
+  doAssert not app.sendNotification(DesktopNotification(
+    id: "before-run", title: "Not ready", body: "")).isOk
+
   let invalidSize = app.newWindow(width = 0)
   doAssert not invalidSize.isOk
   doAssert invalidSize.failure.kind == invalidArgument
