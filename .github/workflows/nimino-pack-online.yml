@@ -9,11 +9,13 @@ on:
         type: string
       name:
         description: "Application display name"
-        required: true
+        required: false
+        default: ""
         type: string
       id:
         description: "Stable application ID"
-        required: true
+        required: false
+        default: ""
         type: string
       target:
         description: "Package target"
@@ -71,9 +73,12 @@ jobs:
             esac
             rm -rf /workspace/.tmp/online-bundle /workspace/.tmp/online-out
             mkdir -p /workspace/.tmp/online-bundle /workspace/.tmp/online-out
+            identity_args=()
+            if [ -n "$NIMINO_NAME" ]; then identity_args+=(--name "$NIMINO_NAME"); fi
+            if [ -n "$NIMINO_ID" ]; then identity_args+=(--id "$NIMINO_ID"); fi
             icon_args=()
             if [ -n "$NIMINO_ICON" ]; then icon_args=(--icon "$NIMINO_ICON"); fi
-            /tmp/nimino pack "$NIMINO_URL" --name "$NIMINO_NAME" --id "$NIMINO_ID" \
+            /tmp/nimino pack "$NIMINO_URL" "${identity_args[@]}" \
               --out /workspace/.tmp/online-bundle --host "$host" "${icon_args[@]}"
             case "$NIMINO_TARGET" in
               linux-deb)
@@ -97,7 +102,7 @@ jobs:
       - name: Upload bundle, package, checksum, and SBOM
         uses: actions/upload-artifact@v4
         with:
-          name: nimino-${{ inputs.id }}-${{ inputs.target }}
+          name: nimino-online-${{ github.run_id }}-${{ inputs.target }}
           path: |
             .tmp/online-out/*
             .tmp/online-bundle/nimino-sbom.cdx.json

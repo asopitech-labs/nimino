@@ -24,20 +24,20 @@ No Nim, Docker, or local GUI SDK installation is required for the online path.
 
 1. Fork this repository.
 2. Open **Actions → Nimino Pack Online Build → Run workflow**.
-3. Enter the website URL, application name, stable ID, and target package.
+3. Enter the website URL and target package. Application name and stable ID are optional; Nimino derives them from the URL when omitted.
 4. Download the generated artifact from the completed workflow.
 
 The workflow is defined in [`nimino-pack-online.yml`](.github/workflows/nimino-pack-online.yml). It uses the pinned Docker toolchain and produces a bundle, package, checksum file, and SBOM. Supported targets are Linux `.deb`, Linux `.rpm`, and Windows NSIS.
 
 ### Prepack Gallery
 
-Prepacks are reviewed application definitions: URL, window defaults, profile name, package metadata, and an explicit navigation allow-list. They do not contain user credentials and they do not bypass the service's normal login flow.
+Prepacks are reviewed URL aliases. Nimino derives the application ID, display name, profile, window defaults, package metadata, and navigation behavior from the URL. No site-specific navigation allow-list or credentials are embedded; the normal sign-in page and profile cookie store are used.
 
 | App | Open in browser | Default window | Profile | Generate |
 | --- | --- | ---: | --- | --- |
-| **YouTube** | [youtube.com](https://www.youtube.com/) | 1280 × 800 | `default` | `nimino pack prepack youtube` |
-| **Gmail** | [mail.google.com](https://mail.google.com/mail/u/0/) | 1280 × 900 | `default` | `nimino pack prepack gmail` |
-| **Google Analytics** | [analytics.google.com](https://analytics.google.com/analytics/web/) | 1440 × 900 | `default` | `nimino pack prepack google-analytics` |
+| **YouTube** | [youtube.com](https://www.youtube.com/) | URL-derived defaults | `default` | `nimino pack prepack youtube` |
+| **Gmail** | [mail.google.com](https://mail.google.com/mail/u/0/) | URL-derived defaults | `default` | `nimino pack prepack gmail` |
+| **Google Analytics** | [analytics.google.com](https://analytics.google.com/analytics/web/) | URL-derived defaults | `default` | `nimino pack prepack google-analytics` |
 
 #### Download ready-made installers
 
@@ -63,7 +63,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 & $p
 ```
 
-The definitions live in [`catalog/prepacks/`](catalog/prepacks/) and are covered by `make pack-prepack-test`. To create a runnable bundle, provide a compiled Nimino host:
+The aliases are covered by `make pack-prepack-test`. To create a runnable bundle, provide a compiled Nimino host:
 
 ```bash
 nimino pack prepack youtube --out dist/youtube --host nimino-host
@@ -152,7 +152,10 @@ app.run()
 URL packaging:
 
 ```bash
-nimino pack https://example.com --name Example --id tech.example.app
+nimino pack https://example.com --out dist/example --host nimino-host
+
+# Optional overrides; URL-only generation remains the default.
+nimino pack https://example.com --name Example --id tech.example.app --out dist/example --host nimino-host
 ```
 
 See [`docs/api/nimino-pack.md`](docs/api/nimino-pack.md) for manifests, navigation rules, injection, and package formats.

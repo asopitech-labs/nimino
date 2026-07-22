@@ -354,6 +354,68 @@ proc matchesNavigationPattern*(pattern, url: string): bool =
   ## Pure URL-rule matcher for policy tests and manifest tooling.
   navigationPatternMatches(pattern, url)
 
+proc navigationHost(url: string): string =
+  try:
+    let parsed = parseUri(url)
+    if parsed.scheme.toLowerAscii() notin ["http", "https"]:
+      return ""
+    parsed.hostname.toLowerAscii().strip(chars = {'.'})
+  except CatchableError:
+    ""
+
+proc navigationSiteKey(host: string): string =
+  let labels = host.split('.')
+  if labels.len <= 2:
+    return host
+  ## Keep localhost/IP-like hosts exact.  For ordinary DNS names this is the
+  ## same two-label site boundary used by browser wrappers for a fallback
+  ## when the public suffix list is unavailable.
+  var numeric = true
+  for character in host:
+    if character notin {'0'..'9', '.'}:
+      numeric = false
+      break
+  if numeric:
+    return host
+  labels[^2] & "." & labels[^1]
+
+proc isAuthenticationNavigation*(url: string): bool =
+  ## Provider-agnostic auth detection.  It covers OAuth/SSO redirects and
+  ## common hosted identity providers without requiring each application to
+  ## enumerate accounts.google.com, googleusercontent.com, Okta, etc.
+  let host = navigationHost(url)
+  if host.len == 0:
+    return false
+  if host == "accounts.google.com" or host.endsWith(".accounts.google.com") or
+      host == "login.microsoftonline.com" or host.endsWith(".microsoftonline.com") or
+      host == "login.live.com" or host.endsWith(".okta.com") or
+      host.endsWith(".auth0.com") or host.endsWith(".onelogin.com"):
+    return true
+  try:
+    let path = parseUri(url).path.toLowerAscii()
+    for marker in ["/oauth", "/auth", "/authorize", "/signin", "/sign-in",
+                   "/login", "/sso", "/saml"]:
+      if path.contains(marker):
+        return true
+  except CatchableError:
+    discard
+  false
+
+proc defaultNavigationDecision*(entryUrl, requestUrl: string): NavigationDecision =
+  ## Runtime default for URL-only bundles.  The app's own site and an
+  ## authentication transition remain in the WebView; unrelated top-level
+  ## destinations are sent to the external browser.  Explicit manifest rules
+  ## still override this policy when an app genuinely needs custom routing.
+  let entryHost = navigationHost(entryUrl)
+  let requestHost = navigationHost(requestUrl)
+  if entryHost.len == 0 or requestHost.len == 0:
+    return navigationDeny
+  if navigationSiteKey(entryHost) == navigationSiteKey(requestHost) or
+      isAuthenticationNavigation(requestUrl):
+    navigationAllow
+  else:
+    navigationExternal
+
 proc navigationAllowed(window: Window; url: string): bool =
   if window.isNil or not window.navigationRulesConfigured:
     return true

@@ -14,9 +14,8 @@ for slug in youtube gmail google-analytics; do
   test -s "$out/nimino-sbom.cdx.json"
   grep -q '"name":' "$out/nimino-manifest.json"
   grep -q '"navigation":' "$out/nimino-manifest.json"
-  snapshot="$root/$slug-snapshot"
-  "$cli" pack "catalog/prepacks/$slug.toml" --out "$snapshot" >/dev/null
-  cmp "$out/nimino-manifest.json" "$snapshot/nimino-manifest.json"
+  grep -q '"allow": \[\]' "$out/nimino-manifest.json"
+  grep -q '"external": \[\]' "$out/nimino-manifest.json"
 done
 
 if "$cli" pack prepack unknown --out "$root/unknown" >/dev/null 2>&1; then

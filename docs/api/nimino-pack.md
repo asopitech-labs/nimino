@@ -6,13 +6,13 @@ URLを直接指定して包装できます。
 
 ```bash
 nimino pack https://discord.com/app \
-  --name Discord \
-  --id app.nimino.discord \
   --deep-link discord \
   --icon https://discord.com/icon.png \
   --out dist/discord \
   --host nimino-host
 ```
+
+`--name`、`--id`、`--profile`は任意です。省略するとURLから安定した名前・IDを生成し、Window設定、既定プロファイル、パッケージメタデータも同じ生成器で補います。
 
 既存のTOMLマニフェストも利用できます。
 
@@ -20,7 +20,7 @@ nimino pack https://discord.com/app \
 nimino pack discord.toml --out dist/discord --host nimino-host
 ```
 
-レビュー済みの組み込みprepackは、URLや許可リストを手入力せずに生成できます。
+レビュー済みの組み込みprepackは、URLや許可リストを手入力せずに生成できます。prepack自身もURLエイリアスだけを持ち、通常のURL包装と同じ生成器を通ります。
 
 ```bash
 nimino pack prepack youtube --out dist/youtube --host nimino-host
@@ -28,10 +28,9 @@ nimino pack prepack gmail --out dist/gmail --host nimino-host
 nimino pack prepack google-analytics --out dist/google-analytics --host nimino-host
 ```
 
-prepackは`YouTube`、`Gmail`、`Google Analytics`の3つで、各サービスのログイン用
-Google originとアプリoriginだけをnavigation allow-listへ含めます。未知の名前は
-失敗し、定義は`catalog/prepacks/*.toml`とテストで追跡できます。これは署名済み
-Popular Packages release catalogとは別の、ソースに同梱した安全な初期設定です。
+prepackは`YouTube`、`Gmail`、`Google Analytics`の3つです。認証はコアの汎用OAuth/SSO
+遷移判定と同一サイト判定で処理し、サービス固有の`googleusercontent.com`などを
+マニフェストへ列挙しません。未知の名前は失敗します。
 
 利用者向けのprepackは、`v*`タグで起動する
 [`Nimino Prepack Release`](../../.github/workflows/nimino-prepack-release.yml)が
@@ -51,7 +50,7 @@ $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.1/Nimino-Web
 ```
 
 
-`--out`を省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`が必須です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定・ナビゲーション・権限・注入設定はマニフェスト形式で指定します。
+`--out`を省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`は不要です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定やパッケージ情報はURLから生成され、ナビゲーションの既定値はコアの同一サイト＋認証遷移ポリシーです。サイト固有のルールが必要な場合だけTOMLマニフェストで上書きします。
 
 PakeのCLI包装フローを参考にしているが、生成物はNimino hostと`nimino-core`を使用し、Pake/Tauriを実行時依存にしません。
 

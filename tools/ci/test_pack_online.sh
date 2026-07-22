@@ -17,6 +17,14 @@ test -x "$bundle/nimino-host"
 grep -F '"url": "https://example.com"' "$bundle/nimino-manifest.json"
 grep -F '"id": "app.nimino.online"' "$bundle/nimino-manifest.json"
 
+auto_bundle="$root/auto-bundle"
+"$nimino" pack https://example.com --out "$auto_bundle" --host "$host"
+test -s "$auto_bundle/nimino-manifest.json"
+grep -F '"name": "Example"' "$auto_bundle/nimino-manifest.json"
+grep -F '"id": "com.nimino.example-com"' "$auto_bundle/nimino-manifest.json"
+grep -F '"allow": []' "$auto_bundle/nimino-manifest.json"
+grep -F '"external": []' "$auto_bundle/nimino-manifest.json"
+
 "$nimino" package-linux "$bundle" --format deb --out "$out" --arch amd64 \
   --maintainer "Nimino Online Build <noreply@nimino.invalid>"
 package=$(find "$out" -maxdepth 1 -type f -name '*.deb' -print -quit)

@@ -370,6 +370,15 @@ block localAssetRootRejectsTraversal:
   removeDir(assetRoot)
 
 block navigationRulesAreExplicit:
+  doAssert isAuthenticationNavigation("https://accounts.google.com/o/oauth2/auth")
+  doAssert isAuthenticationNavigation("https://tenant.okta.com/login/login.htm")
+  doAssert isAuthenticationNavigation("https://example.invalid/oauth/callback")
+  doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",
+    "https://accounts.google.com/signin/v2/identifier") == navigationAllow
+  doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",
+    "https://mail.google.com/mail/u/0/#inbox") == navigationAllow
+  doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",
+    "https://support.example.invalid/help") == navigationExternal
   doAssert matchesNavigationPattern("https://*.discord.com/**", "https://canary.discord.com/channels")
   doAssert not matchesNavigationPattern("https://*.discord.com/**", "https://discord.net/channels")
   let created = newApp(id = "tech.asopi.navigation-test", name = "Navigation test")

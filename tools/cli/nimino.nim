@@ -4,7 +4,7 @@ import nimino_pack
 
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino pack <url> --name <name> --id <id> [--deep-link <scheme>]... [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack <url> [--name <name>] [--id <id>] [--profile <name>] [--icon <path-or-url>] [--deep-link <scheme>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino pack prepack <youtube|gmail|google-analytics> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
@@ -497,16 +497,8 @@ elif sourceIsUrl:
     of "--out", "--host": discard
     else: usage()
     index += 2
-  if name.len == 0 or id.len == 0:
-    usage()
-  loaded = validate(PackManifest(
-    name: name,
-    id: id,
-    url: source,
-    icon: icon,
-    profile: profile,
-    window: PackWindowOptions(width: 1200, height: 800, resizable: true),
-    deepLink: PackDeepLinkOptions(schemes: deepLinkSchemes)))
+  loaded = generateManifest(source, name = name, id = id, profile = profile,
+    icon = icon, deepLinkSchemes = deepLinkSchemes)
 else:
   loaded = loadManifest(source)
 if not loaded.isOk:

@@ -143,21 +143,48 @@ proc main() =
   let window = windowCreated.value
   let allowPatterns = navigation.stringArray("allow")
   let externalPatterns = navigation.stringArray("external")
-  ## An omitted navigation section means the packaged URL keeps core's
-  ## default policy (the initial URL is allowed).  Once either list is
-  ## present, every navigation must match one of the explicit rules; this
-  ## avoids silently turning a simple `nimino pack URL` invocation into a
-  ## blank window while retaining fail-closed behavior for configured apps.
-  if allowPatterns.len > 0 or externalPatterns.len > 0:
-    let policyConfigured = window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
+  ## URL-only bundles do not carry a site-specific allow-list.  Use the core
+  ## runtime policy instead: same-site navigation and generic OAuth/SSO
+  ## redirects stay in the WebView, while unrelated top-level destinations
+  ## open externally.  An explicit manifest list remains an override.
+  if url.len > 0:
+    let policyConfigured = if allowPatterns.len > 0 or externalPatterns.len > 0:
+      window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
+        if externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+          navigationExternal
+        elif allowPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+          navigationAllow
+        else:
+          navigationDeny)
+    else:
+      window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
+        defaultNavigationDecision(url, request.url))
+    if not policyConfigured.isOk:
+      fail(policyConfigured.failure.detail)
+  let popupConfigured = window.onNewWindow(proc(request: NewWindowRequest): bool =
+    let decision = if allowPatterns.len > 0 or externalPatterns.len > 0:
       if externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
         navigationExternal
       elif allowPatterns.anyIt(matchesNavigationPattern(it, request.url)):
         navigationAllow
       else:
-        navigationDeny)
-    if not policyConfigured.isOk:
-      fail(policyConfigured.failure.detail)
+        navigationDeny
+    else:
+      defaultNavigationDecision(url, request.url)
+    case decision
+    of navigationAllow:
+      ## The request came from the WebView's user gesture.  Consume it by
+      ## creating the popup explicitly; native backends never create one
+      ## implicitly.
+      discard window.openPopup(NewWindowRequest(url: request.url), profile = profile)
+      true
+    of navigationExternal:
+      discard window.openExternally(request.url)
+      true
+    of navigationDeny:
+      true)
+  if not popupConfigured.isOk:
+    fail(popupConfigured.failure.detail)
   let permissionConfigured = window.onPermission(proc(request: PermissionRequest): PermissionDecision =
     let requested = case request.kind
       of microphone: "microphone"
