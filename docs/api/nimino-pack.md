@@ -14,21 +14,36 @@ nimino pack https://discord.com/app \
 
 `--name`、`--id`、`--profile`は任意です。省略するとURLから安定した名前・IDを生成し、Window設定、既定プロファイル、パッケージメタデータも同じ生成器で補います。
 
+ローカルの静的サイトも入力にできます。ディレクトリ指定ではルートの
+`index.html`をエントリとしてツリー全体を`assets/`へ同梱します。単一HTML
+ファイルは既定ではそのファイルだけを同梱し、Pake互換の`--use-local-file`
+を付けると同じディレクトリのサブツリーを再帰的に同梱します。
+
+```bash
+nimino pack ./dist --name LocalApp --out build/local-bundle --host nimino-host
+nimino pack ./site/index.html --use-local-file --out build/site-bundle --host nimino-host
+```
+
 URL指定でも`--width`、`--height`、`--resizable`、`--fullscreen`、`--maximize`、
 `--always-on-top`、`--hide-window-decorations`、`--user-agent`、`--allow-permission`、
-`--inject-css`、`--inject-js`、`--allow-url`、`--external-url`を指定できます。複雑な設定はTOMLへ移せます。
+`--enable-drag-drop`、`--inject-css`、`--inject-js`、`--allow-url`、`--external-url`を指定できます。複雑な設定はTOMLへ移せます。
 
 `--user-agent`はWindows WebView2の`ICoreWebView2Settings2`とLinux WebKitGTKの
-`WebKitSettings`へ適用します。Linux native hostでは`--proxy-url`（WebKitNetworkSession）と
-`--incognito`（ephemeral NetworkSession）も使用できます。Windows/WSL hostでは同じ設定を
-まだ提供できないため、指定するとhostが明示的に失敗します。`--multi-instance`も同様に、
-全ターゲットで同じ単一インスタンス制御を提供するまで明示エラーです。
+`WebKitSettings`へ適用します。`--proxy-url`はLinuxのWebKitNetworkSessionとWindows WebView2の
+`ICoreWebView2EnvironmentOptions`へ、`--incognito`はLinuxのephemeral NetworkSessionとWindows
+WebView2の`ICoreWebView2ControllerOptions`へ適用します。WSL hostもWindows側へ設定を中継します。
+`--multi-instance`を指定しない場合はアプリID単位で単一インスタンスを取得し、指定した場合だけ
+複数プロセスを許可します。Windows/Linux/WSLで同じ制御を行い、ロック取得失敗は明示エラーです。
+ドラッグ＆ドロップは`--enable-drag-drop`で明示的に有効化し、`window.onFileDrop`へ絶対パスの配列を
+通知します。未指定時はWebViewの標準ドロップ処理を維持します。
 未知のオプションもエラー終了し、設定を黙って捨てることはありません。
 
 既存のTOMLマニフェストも利用できます。
 
 ```bash
 nimino pack discord.toml --out dist/discord --host nimino-host
+# Pake互換の明示的な設定ファイル表記
+nimino pack --config discord.toml --out dist/discord --host nimino-host
 ```
 
 YouTube、Gmail、Google Analyticsのready-made installerは、`v*`タグで起動する
@@ -49,7 +64,7 @@ $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.1/Nimino-Web
 
 
 `--out`を使う場合は、実行可能hostを同梱して独立bundleにするため`--host <nimino-host>`が必須です。
-省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`は不要です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定やパッケージ情報はURLから生成され、ナビゲーションの既定値はコアの同一サイト＋認証遷移ポリシーです。サイト固有のルールが必要な場合だけTOMLマニフェストで上書きします。
+省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`は不要です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。HTTP(S)または`data:`アイコンはpack時に最大8 MiBまで取得し、bundle直下へステージングします。取得できないURLや空・過大なpayloadは成功扱いにしません。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定やパッケージ情報はURLから生成され、ナビゲーションの既定値はコアの同一サイト＋認証遷移ポリシーです。サイト固有のルールが必要な場合だけTOMLマニフェストで上書きします。生成物の機械処理が必要な場合は`--json`を付けるとmanifest path・bundle directory・local entryをJSONで標準出力へ返します。
 
 PakeのCLI包装フローを参考にしているが、生成物はNimino hostと`nimino-core`を使用し、Pake/Tauriを実行時依存にしません。
 
@@ -105,6 +120,7 @@ fullscreen = true
 maximized = false
 always-on-top = true
 hide-window-decorations = false
+enable-drag-drop = false
 
 [webview]
 user-agent = "Example/1.0"
@@ -119,9 +135,11 @@ multi-window = true
 multi-instance = false
 ```
 
-`proxy-url`と`incognito`はLinux native hostで実装済みです。Windows/WSL hostで指定した場合は
-起動時に明示エラーとなり、設定を無視して通常セッションへフォールバックしません。`multi-instance`
-も同様に、全ターゲット対応まで明示エラーです。
+`proxy-url`と`incognito`はLinux native hostおよびWindows WebView2 hostで実装済みです。Windows
+ではWebView2の環境・コントローラー生成時に適用され、起動後に変更できません。WSL hostは
+認証済みIPCで同じ設定をWindows側へ転送します。設定を無視して通常セッションへフォールバックしません。
+`enable-drag-drop`を有効にした場合、Windowsは`WM_DROPFILES`、LinuxはGTK4 `GtkDropTarget`を使い、
+WSLは認証済みイベントとしてパスを中継します。
 
 `version`は`major.minor.patch`形式（任意のSemVer prerelease/build suffix付き）、`homepage`はHTTP(S) URL、`categories`はDesktop Entry category registryの許可値に検証します。省略時は`version = "0.1.0"`、`description = name`、`categories = ["Network"]`になります。
 

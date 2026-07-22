@@ -428,6 +428,16 @@ proc flushWindowResized(state: HostState) =
       discard state.adapter.app.close()
       return
 
+proc flushFileDrops(state: HostState) =
+  for dropped in state.adapter.takeFileDrops():
+    let payload = $(%*{
+      "windowId": $dropped.windowId,
+      "paths": dropped.paths
+    })
+    if not state.writeEvent("native.window.fileDrop", payload, ""):
+      discard state.adapter.app.close()
+      return
+
 proc flushDesktopActions(state: HostState) =
   for action in state.adapter.takeDesktopActions():
     let methodName = if action.kind == "notification":
@@ -566,6 +576,7 @@ proc pollHost(state: HostState) =
   state.flushNavigationCompletions()
   state.flushDownloadEvents()
   state.flushWindowResized()
+  state.flushFileDrops()
   state.flushWindowClosed()
   state.flushDesktopActions()
 
@@ -713,6 +724,7 @@ proc runHost(): int =
       state.flushNavigationCompletions()
       state.flushDownloadEvents()
       state.flushWindowResized()
+      state.flushFileDrops()
       state.flushWindowClosed()
       state.flushDesktopActions()
       if not finished.isOk:

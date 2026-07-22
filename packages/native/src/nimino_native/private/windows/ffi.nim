@@ -208,6 +208,7 @@ const
   WmDestroy* = 0x0002'u32
   WmClose* = 0x0010'u32
   WmNcCreate* = 0x0081'u32
+  WmDropFiles* = 0x0233'u32
   WmNcDestroy* = 0x0082'u32
   WmTimer* = 0x0113'u32
   WmContextMenu* = 0x007B'u32
@@ -293,6 +294,21 @@ const
   IidCoreWebView2Settings2* = WinGuid(
     data1: 0xee9a0f68'u32, data2: 0xf46c'u16, data3: 0x4e32'u16,
     data4: [0xac'u8, 0x23'u8, 0xef'u8, 0x8c'u8, 0xac'u8, 0x22'u8, 0x4d'u8, 0x2a'u8]
+  )
+  ## ICoreWebView2Environment13 and ICoreWebView2ControllerOptions are
+  ## declared in WebView2.h 1.0.3967.48.  They provide the supported
+  ## controller-options path for WebView2 InPrivate sessions.
+  IidCoreWebView2Environment13* = WinGuid(
+    data1: 0xaf641f58'u32, data2: 0x72b2'u16, data3: 0x11ee'u16,
+    data4: [0xb9'u8, 0x62'u8, 0x02'u8, 0x42'u8, 0xac'u8, 0x12'u8, 0x00'u8, 0x02'u8]
+  )
+  IidCoreWebView2EnvironmentOptions* = WinGuid(
+    data1: 0x2fde08a8'u32, data2: 0x1e9a'u16, data3: 0x4766'u16,
+    data4: [0x8c'u8, 0x05'u8, 0x95'u8, 0xa9'u8, 0xce'u8, 0xb9'u8, 0xd1'u8, 0xc5'u8]
+  )
+  IidCoreWebView2ControllerOptions* = WinGuid(
+    data1: 0x12aae616'u32, data2: 0x8ccb'u16, data3: 0x44ec'u16,
+    data4: [0xbc'u8, 0xb3'u8, 0xeb'u8, 0x18'u8, 0x31'u8, 0x88'u8, 0x16'u8, 0x35'u8]
   )
   ## These interfaces are retained for the M4 WebView2 profile-data spike.
   ## Every IID and vtable slot below was checked against the SDK version
@@ -389,6 +405,8 @@ proc coInitializeEx*(reserved: pointer; coInit: uint32): HResult
 proc coUninitialize*() {.stdcall, importc: "CoUninitialize", dynlib: "ole32.dll".}
 proc coTaskMemFree*(memory: pointer)
   {.stdcall, importc: "CoTaskMemFree", dynlib: "ole32.dll".}
+proc coTaskMemAlloc*(bytes: csize_t): pointer
+  {.stdcall, importc: "CoTaskMemAlloc", dynlib: "ole32.dll".}
 proc windowsCreateString*(source: WideCString; length: uint32; value: ptr HString): HResult
   {.stdcall, importc: "WindowsCreateString", dynlib: "combase.dll".}
 proc windowsDeleteString*(value: HString): HResult
@@ -546,6 +564,13 @@ proc killTimer*(window: HWND; identifier: uint): WinBool
   {.stdcall, importc: "KillTimer", dynlib: "user32.dll".}
 proc shellNotifyIconW*(message: uint32; data: ptr NotifyIconDataW): WinBool
   {.stdcall, importc: "Shell_NotifyIconW", dynlib: "shell32.dll".}
+proc dragAcceptFiles*(window: HWND; accept: WinBool)
+  {.stdcall, importc: "DragAcceptFiles", dynlib: "shell32.dll".}
+proc dragQueryFileW*(drop: pointer; index: uint32; file: WideCString;
+                     length: uint32): uint32
+  {.stdcall, importc: "DragQueryFileW", dynlib: "shell32.dll".}
+proc dragFinish*(drop: pointer)
+  {.stdcall, importc: "DragFinish", dynlib: "shell32.dll".}
 proc getOpenFileNameW*(fileName: ptr OpenFileNameW): WinBool
   {.stdcall, importc: "GetOpenFileNameW", dynlib: "comdlg32.dll".}
 proc getSaveFileNameW*(fileName: ptr OpenFileNameW): WinBool
@@ -760,6 +785,55 @@ proc environmentCreateController*(environment: pointer; parent: HWND;
     cast[ptr ComInterface](environment).vtable[3]
   )
   dispatch(environment, parent, handler)
+
+const
+  ## ICoreWebView2Environment13 (WebView2.h 1.0.3967.48) extends the base
+  ## environment with controller-options creation at vtable slot 20 and
+  ## controller creation with options at slot 21.
+  Environment13CreateControllerOptionsSlot* = 20
+  Environment13CreateControllerWithOptionsSlot* = 21
+  ControllerOptionsGetInPrivateSlot* = 5
+  ControllerOptionsPutInPrivateSlot* = 6
+
+proc environmentCreateControllerOptions*(environment: pointer;
+    options: ptr pointer): HResult {.inline.} =
+  if environment.isNil or options.isNil:
+    return E_POINTER
+  var environment13: pointer
+  let queried = comQueryInterface(environment, addr IidCoreWebView2Environment13,
+    addr environment13)
+  if not succeeded(queried) or environment13.isNil:
+    return queried
+  let dispatch = cast[proc(self: pointer; options: ptr pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](environment13).vtable[Environment13CreateControllerOptionsSlot]
+  )
+  let status = dispatch(environment13, options)
+  discard comRelease(environment13)
+  status
+
+proc environmentCreateControllerWithOptions*(environment: pointer; parent: HWND;
+    options, handler: pointer): HResult {.inline.} =
+  if environment.isNil or options.isNil or handler.isNil:
+    return E_POINTER
+  var environment13: pointer
+  let queried = comQueryInterface(environment, addr IidCoreWebView2Environment13,
+    addr environment13)
+  if not succeeded(queried) or environment13.isNil:
+    return queried
+  let dispatch = cast[proc(self: pointer; parent: HWND; options, handler: pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](environment13).vtable[Environment13CreateControllerWithOptionsSlot]
+  )
+  let status = dispatch(environment13, parent, options, handler)
+  discard comRelease(environment13)
+  status
+
+proc controllerOptionsPutInPrivate*(options: pointer; enabled: WinBool): HResult {.inline.} =
+  if options.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer; enabled: WinBool): HResult {.stdcall.}](
+    cast[ptr ComInterface](options).vtable[ControllerOptionsPutInPrivateSlot]
+  )
+  dispatch(options, enabled)
 
 proc controllerSetBounds*(controller: pointer; bounds: WinRect): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; bounds: WinRect): HResult {.stdcall.}](

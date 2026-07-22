@@ -24,6 +24,7 @@ RUN apt-get update \
       patchelf \
       pax-utils \
       pkg-config \
+      python3 \
       rpm \
       desktop-file-utils \
       squashfs-tools \

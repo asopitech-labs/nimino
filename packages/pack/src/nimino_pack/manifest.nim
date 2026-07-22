@@ -26,6 +26,7 @@ type
     maximized*: bool
     alwaysOnTop*: bool
     hideWindowDecorations*: bool
+    enableDragDrop*: bool
 
   PackWebViewOptions* = object
     userAgent*: string
@@ -58,6 +59,10 @@ type
     name*: string
     id*: string
     url*: string
+    ## Relative entry inside the generated bundle for local web assets.
+    ## Remote URL manifests leave this empty.  Keeping the entry separate
+    ## from `url` avoids embedding a machine-local absolute path in a bundle.
+    localEntry*: string
     icon*: string
     profile*: string
     window*: PackWindowOptions
@@ -217,6 +222,21 @@ proc validHomepage(value: string): bool =
   except CatchableError:
     false
 
+proc validLocalEntry(value: string): bool =
+  ## Local entries are resolved relative to the bundle root by nimino-host.
+  ## Reject absolute paths, parent traversal and platform separators before
+  ## they reach the generated manifest.
+  if value.len == 0 or value.isAbsolute or value[0] in {'/', '\\'}:
+    return false
+  if value.contains('\\'):
+    return false
+  for component in value.split('/'):
+    if component.len == 0 or component in [".", ".."]:
+      return false
+    if not validPathComponent(component):
+      return false
+  true
+
 const ReservedDeepLinkSchemes = [
   "http", "https", "ws", "wss", "file", "data", "javascript", "about",
   "blob", "mailto", "tel", "sms", "urn"
@@ -262,8 +282,16 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
   for component in [normalized.id, normalized.profile]:
     if not validPathComponent(component):
       return failure[PackManifest](invalidManifest, "id and profile must be safe path components")
-  if normalized.url.len == 0 or not validateUrl(normalized.url):
-    return failure[PackManifest](invalidManifest, "url must use http, https, file, or data")
+  if normalized.localEntry.len > 0:
+    if normalized.url.len > 0:
+      return failure[PackManifest](invalidManifest,
+        "localEntry manifests must not also define url")
+    if not validLocalEntry(normalized.localEntry):
+      return failure[PackManifest](invalidManifest,
+        "localEntry must be a safe relative bundle path")
+  elif normalized.url.len == 0 or not validateUrl(normalized.url):
+    return failure[PackManifest](invalidManifest,
+      "url must use http, https, file, or data")
   for pattern in normalized.navigationAllow & normalized.navigationExternal:
     if pattern.len == 0 or pattern.find("://") <= 0:
       return failure[PackManifest](invalidManifest,
@@ -349,6 +377,7 @@ proc parse*(text: string): PackResult[PackManifest] =
       of "name": manifest.name = unquote(value)
       of "id": manifest.id = unquote(value)
       of "url": manifest.url = unquote(value)
+      of "local-entry", "localentry": manifest.localEntry = unquote(value)
       of "icon": manifest.icon = unquote(value)
       of "profile": manifest.profile = unquote(value)
       else: return failure[PackManifest](invalidManifest, "unknown root key: " & key)
@@ -382,6 +411,10 @@ proc parse*(text: string): PackResult[PackManifest] =
         let parsed = parseBool(value)
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
         manifest.window.hideWindowDecorations = parsed.value
+      of "enable-drag-drop", "enabledragdrop":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.window.enableDragDrop = parsed.value
       else: return failure[PackManifest](invalidManifest, "unknown window key: " & key)
     of "webview":
       case key

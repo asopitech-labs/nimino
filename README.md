@@ -153,9 +153,22 @@ nimino pack https://example.com --out dist/example --host nimino-host
 
 # Optional overrides; URL-only generation remains the default.
 nimino pack https://example.com --name Example --id tech.example.app --out dist/example --host nimino-host
+
+# Declarative TOML (also accepted as `nimino pack <manifest.toml>`)
+nimino pack --config app.toml --out build/app --host nimino-host
+
+# Local static site (directory must contain index.html)
+nimino pack ./dist --name ExampleLocal --out build/example-local --host nimino-host
+
+# Single HTML plus sibling assets (Pake-compatible opt-in)
+nimino pack ./site/index.html --use-local-file --out build/site --host nimino-host
+
+# Optional native file-drop events (Core window.onFileDrop)
+nimino pack https://example.com --enable-drag-drop --out build/example-drop --host nimino-host
 ```
 
-URL包装では、利用者がURL以外の内部定義を書く必要はありません。Niminoがホスト名からアプリ名と安定IDを生成し、既定のWindow設定、プロファイル、パッケージ情報を補います。生成マニフェストにサイト固有の認証ドメインやnavigation allow-listは埋め込みません。`nimino-core`が同一サイトとOAuth/SSO遷移を汎用判定し、認証ポップアップはユーザー操作時に明示的なWindowとして生成します。`--name`、`--id`、`--profile`は必要な場合だけ上書き指定します。
+URL包装では、利用者がURL以外の内部定義を書く必要はありません。Niminoがホスト名からアプリ名と安定IDを生成し、既定のWindow設定、プロファイル、パッケージ情報を補います。生成マニフェストにサイト固有の認証ドメインやnavigation allow-listは埋め込みません。`nimino-core`が同一サイトとOAuth/SSO遷移を汎用判定し、認証ポップアップはユーザー操作時に明示的なWindowとして生成します。`--name`、`--id`、`--profile`は必要な場合だけ上書き指定します。ローカル入力はbundleの`assets/`へ配置し、`index.html`を`localEntry`としてhostが`loadAssets`/`loadEntry`経由で開きます。HTTP(S)または`data:`の`--icon`はpack時にbundleへ取得・ステージングします。
+`--enable-drag-drop`は、WebViewの既定ドロップ処理を置き換えてネイティブWindowへのファイルドロップを`window.onFileDrop`へ渡す明示オプションです。Windows/Linux/WSLで同じAPIを使えます。単一インスタンスは既定で有効で、並列起動が必要な場合だけ`--multi-instance`を指定します。
 
 そのため、認証が必要なサイトでも、サービスごとに`accounts.google.com`や`googleusercontent.com`を事前列挙する作業は不要です。認証情報とCookieは通常のログイン画面を通じてプロファイルへ保存されます。
 

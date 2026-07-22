@@ -100,6 +100,18 @@ proc main() =
   let appId = requiredString(manifest, "id")
   let appName = requiredString(manifest, "name")
   let url = optionalString(manifest, "url", "")
+  let localEntry = optionalString(manifest, "localEntry", "")
+  if url.len == 0 and localEntry.len == 0:
+    fail("manifest must define url or localEntry")
+  if localEntry.len > 0:
+    if localEntry.isAbsolute or localEntry[0] in {'/', '\\'} or
+        localEntry.contains('\\'):
+      fail("manifest localEntry must be a relative path")
+    for part in localEntry.split('/'):
+      if part.len == 0 or part in [".", ".."]:
+        fail("manifest localEntry escapes the package root")
+    if not fileExists(root / localEntry):
+      fail("manifest localEntry is missing: " & localEntry)
   let profile = optionalString(manifest, "profile", "default")
   let windowNode = if manifest.hasKey("window") and manifest["window"].kind == JObject:
       manifest["window"] else: newJObject()
@@ -125,21 +137,12 @@ proc main() =
   let userAgent = optionalString(webview, "userAgent", "")
   let proxyUrl = optionalString(webview, "proxyUrl", "")
   let incognito = webview.boolean("incognito", false)
-  if multiInstance:
-    ## The generic host does not yet own a cross-platform single-instance
-    ## broker. Reject this option instead of claiming a policy we cannot
-    ## enforce on Windows, Linux, and WSL alike.
-    fail("runtime.multiInstance is not supported by this host")
-  when defined(windows):
-    if proxyUrl.len > 0:
-      fail("webview.proxyUrl is not supported by this Windows host")
-    if incognito:
-      fail("webview.incognito is not supported by this Windows host")
   for permission in allowedPermissions:
     if permission notin ["microphone", "camera", "notifications", "geolocation",
                          "clipboard", "screenCapture"]:
       fail("manifest contains an unknown permission: " & permission)
-  let created = newApp(id = appId, name = appName)
+  let created = newApp(AppOptions(id: appId, name: appName,
+    multiInstance: multiInstance))
   if not created.isOk:
     fail(created.failure.detail)
   let app = created.value
@@ -162,6 +165,7 @@ proc main() =
     maximized: windowNode.boolean("maximized", false),
     alwaysOnTop: windowNode.boolean("alwaysOnTop", false),
     hideWindowDecorations: windowNode.boolean("hideWindowDecorations", false),
+    enableDragDrop: windowNode.boolean("enableDragDrop", false),
     userAgent: userAgent,
     proxyUrl: proxyUrl,
     incognito: incognito,
@@ -265,7 +269,16 @@ proc main() =
     let delivered = app.deliverDeepLink(activation)
     if not delivered.isOk:
       fail(delivered.failure.detail)
-  let loaded = if url.len > 0: window.loadUrl(url) else: CoreResult(isOk: true)
+  let loaded = if localEntry.len > 0:
+      let assets = window.loadAssets(root)
+      if not assets.isOk:
+        assets
+      else:
+        window.loadEntry(localEntry)
+    elif url.len > 0:
+      window.loadUrl(url)
+    else:
+      CoreResult(isOk: true)
   if not loaded.isOk:
     fail(loaded.failure.detail)
   let running = app.run()

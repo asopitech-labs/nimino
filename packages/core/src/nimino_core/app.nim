@@ -9,7 +9,7 @@ when defined(linux):
 
 import nimino_native as native
 
-import ./[errors, logging, profile, rpc]
+import ./[errors, instance, logging, profile, rpc]
 
 const RpcBootstrapSource = """
 (() => {
@@ -103,6 +103,9 @@ type
   AppOptions* = object
     id*: string
     name*: string
+    ## When false (the default), only one live process may own this app ID.
+    ## The lock is acquired before any native or WSL host UI is started.
+    multiInstance*: bool
 
   CustomProtocolRequest* = object
     methodName*: string
@@ -148,6 +151,9 @@ type
     userAgent*: string
     proxyUrl*: string
     incognito*: bool
+    ## Opt in to native file-drop events. Disabled by default so WebView
+    ## content retains the platform drag/drop behavior unless requested.
+    enableDragDrop*: bool
     multiWindow*: bool
     hideOnClose*: bool
     inlineRemoteAssets*: bool
@@ -253,6 +259,7 @@ type
     ## URLs until `onDeepLink` installs the consumer instead of dropping them.
     pendingDeepLinks: seq[string]
     appLogger: Logger
+    instanceLock: InstanceLock
     customProtocolHandler: CustomProtocolHandler
     when defined(linux):
       wslClient: WslClient
@@ -270,6 +277,7 @@ type
     profilePath*: string
     profileName: string
     multiWindow*: bool
+    enableDragDrop: bool
     hideOnClose*: bool
     lastUrl: string
     rpc*: RpcRegistry
@@ -289,6 +297,7 @@ type
     closedHandler*: proc()
     resizeHandler*: proc(width, height: int)
     errorHandler*: proc(error: WindowError)
+    fileDropHandler*: proc(paths: seq[string])
     permissionHandler*: proc(request: PermissionRequest): PermissionDecision
     downloadHandler*: proc(request: DownloadRequest): DownloadDecision
     downloadEventHandler*: proc(event: DownloadEvent)
@@ -959,14 +968,28 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
   if options.name.len == 0:
     return coreFailureOf[App](coreError(invalidArgument, "app.create",
       detail = "application name must not be empty"))
+  var instanceLock: InstanceLock
+  if not options.multiInstance:
+    let acquired = acquireInstanceLock(options.id)
+    case acquired.status
+    of instanceAcquired:
+      instanceLock = acquired.lock
+    of instanceAlreadyHeld:
+      return coreFailureOf[App](coreError(invalidState, "app.create",
+        detail = acquired.detail))
+    of instanceUnavailable:
+      return coreFailureOf[App](coreError(osError, "app.create",
+        detail = acquired.detail))
   if isWslEnvironment():
     when defined(linux):
       let hostExecutable = wslHostExecutable()
       if hostExecutable.len == 0:
+        releaseInstanceLock(instanceLock)
         return coreFailureOf[App](coreError(platformUnavailable, "app.create",
           detail = "nimino-wsl-host.exe was not found"))
       let launched = launchHost(hostExecutable, @[options.id])
       if not launched.isOk:
+        releaseInstanceLock(instanceLock)
         return coreFailureOf[App](mapProtocolError("app.create", launched.failure))
       return coreSuccessOf(App(
         state: coreCreated,
@@ -974,14 +997,17 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
         id: options.id,
         name: options.name,
         wslClient: launched.value,
+        instanceLock: instanceLock,
         appLogger: newLogger()
       ))
     else:
+      releaseInstanceLock(instanceLock)
       return coreFailureOf[App](coreError(platformUnavailable, "app.create",
         detail = "WSL requires the nimino-wsl adapter"))
 
   let app = App(state: coreCreated, backend: nativeBackend, id: options.id, name: options.name,
                 nativeApp: native.newNativeApp(native.NativeAppOptions(appId: options.id)),
+                instanceLock: instanceLock,
                 appLogger: newLogger())
   let idleConfigured = native.setIdleHandler(app.nativeApp, proc() =
     if app != nil and app.state == coreRunning:
@@ -990,6 +1016,7 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
           window.rpc.tick()
   )
   if not idleConfigured.isOk:
+    releaseInstanceLock(instanceLock)
     return coreFailureOf[App](idleConfigured.failure.mapNativeError())
   coreSuccessOf(app)
 
@@ -1282,14 +1309,6 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if options.width <= 0 or options.height <= 0:
     return coreFailureOf[Window](coreError(invalidArgument, "window.create",
       detail = "size must be positive"))
-  when defined(linux):
-    if app.backend == wslBackend and (options.proxyUrl.len > 0 or options.incognito):
-      return coreFailureOf[Window](coreError(platformUnavailable, "window.create",
-        detail = "proxyUrl/incognito are not available through the Windows WSL host"))
-  else:
-    if options.proxyUrl.len > 0 or options.incognito:
-      return coreFailureOf[Window](coreError(platformUnavailable, "window.create",
-        detail = "proxyUrl/incognito are not implemented by this native backend"))
   let profileName = if options.profile.len == 0: "default" else: options.profile
   let profile = ensureProfileLayout(app.id, profileName)
   if not profile.isOk:
@@ -1310,6 +1329,9 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         "alwaysOnTop": options.alwaysOnTop,
         "hideWindowDecorations": options.hideWindowDecorations,
         "userAgent": options.userAgent,
+        "proxyUrl": options.proxyUrl,
+        "incognito": options.incognito,
+        "enableDragDrop": options.enableDragDrop,
         "multiWindow": options.multiWindow,
         "hideOnClose": options.hideOnClose
       }))
@@ -1329,6 +1351,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
       let window = Window(app: app, windowId: windowId.value, webViewId: webViewId.value,
                           profilePath: profile.value, profileName: profileName,
                           multiWindow: options.multiWindow,
+                          enableDragDrop: options.enableDragDrop,
                           hideOnClose: options.hideOnClose,
                           inlineRemoteAssets: options.inlineRemoteAssets,
                           injectionCss: options.injectionCss,
@@ -1365,6 +1388,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                       nativeView: nativeView.value, profilePath: profile.value,
                       profileName: profileName,
                       multiWindow: options.multiWindow,
+                      enableDragDrop: options.enableDragDrop,
                       hideOnClose: options.hideOnClose,
                       inlineRemoteAssets: options.inlineRemoteAssets,
                       injectionCss: options.injectionCss,
@@ -2596,6 +2620,7 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
   let popup = window.app.newWindow(CoreWindowOptions(
     title: title, width: width, height: height, profile: profile,
     multiWindow: window.multiWindow,
+    enableDragDrop: window.enableDragDrop,
     hideOnClose: window.hideOnClose,
     injectionCss: window.injectionCss,
     injectionJavaScript: window.injectionJavaScript,
@@ -2636,6 +2661,26 @@ proc onResize*(window: Window; handler: proc(width, height: int)): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.onResize"))
   window.resizeHandler = handler
+  coreSuccess()
+
+proc onFileDrop*(window: Window; handler: proc(paths: seq[string])): CoreResult =
+  ## Deliver paths dropped on the native window. This is explicit opt-in;
+  ## without `enableDragDrop` the WebView keeps its normal drag/drop handling.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.onFileDrop"))
+  if not handler.isNil and not window.enableDragDrop:
+    return coreFailure(coreError(invalidArgument, "window.onFileDrop",
+      detail = "enableDragDrop must be true when creating the window"))
+  window.fileDropHandler = handler
+  when defined(linux):
+    if window.app.backend == wslBackend:
+      return coreSuccess()
+  let configured = native.onFileDrop(window.nativeWindow,
+    if handler.isNil: nil else: native.NativeFileDropHandler(proc(paths: seq[string]) =
+      try: handler(paths)
+      except CatchableError: discard))
+  if not configured.isOk:
+    return coreFailure(configured.failure.mapNativeError())
   coreSuccess()
 
 proc onError*(window: Window; handler: proc(error: WindowError)): CoreResult =
@@ -3439,6 +3484,31 @@ when defined(linux):
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "Window resized event is malformed"))
+    of "native.window.fileDrop":
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("windowId") or
+            not payload.hasKey("paths") or payload["windowId"].kind != JString or
+            payload["paths"].kind != JArray:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "file-drop event is malformed"))
+        let windowId = uint64(parseUInt(payload["windowId"].getStr()))
+        var paths: seq[string]
+        for item in payload["paths"].items:
+          if item.kind != JString:
+            return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+              detail = "file-drop paths must be strings"))
+          paths.add(item.getStr())
+        for window in app.windows:
+          if not window.closed and window.windowId == windowId and
+              not window.fileDropHandler.isNil:
+            if paths.len > 0:
+              try: window.fileDropHandler(paths)
+              except CatchableError: discard
+            break
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "file-drop event is malformed"))
     of "native.app.desktopAction":
       try:
         let payload = parseJson(event.payload)
@@ -3687,7 +3757,10 @@ proc quit*(app: App): CoreResult =
   of nativeBackend:
     if app.nativeApp.isNil:
       return coreFailure(coreError(invalidState, "app.quit"))
-    native.quit(app.nativeApp).fromNative()
+    let stopped = native.quit(app.nativeApp).fromNative()
+    if stopped.isOk and app.state == coreCreated:
+      app.dispose()
+    stopped
   of wslBackend:
     when defined(linux):
       let stopped = app.wslCall("app.shutdown", "{}")
@@ -3737,6 +3810,8 @@ proc dispose(app: App) =
     if app.wslClient != nil:
       discard app.wslClient.close()
       app.wslClient = nil
+  releaseInstanceLock(app.instanceLock)
+  app.instanceLock = nil
   app.state = coreFinished
 
 proc run*(app: App): CoreResult =

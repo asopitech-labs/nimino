@@ -1,10 +1,11 @@
-import std/[json, os, sequtils, strutils]
+import std/[base64, httpclient, json, os, sequtils, strutils, uri]
 
 import nimino_pack
 
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino pack <url> [--name <name>] [--id <id>] [--profile <name>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack --config <manifest.toml> [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
   quit(2)
@@ -83,6 +84,7 @@ proc manifestJson(manifest: PackManifest): JsonNode =
     "name": manifest.name,
     "id": manifest.id,
     "url": manifest.url,
+    "localEntry": manifest.localEntry,
     "icon": manifest.icon,
     "profile": manifest.profile,
     "package": {
@@ -100,7 +102,8 @@ proc manifestJson(manifest: PackManifest): JsonNode =
       "fullscreen": manifest.window.fullscreen,
       "maximized": manifest.window.maximized,
       "alwaysOnTop": manifest.window.alwaysOnTop,
-      "hideWindowDecorations": manifest.window.hideWindowDecorations
+      "hideWindowDecorations": manifest.window.hideWindowDecorations,
+      "enableDragDrop": manifest.window.enableDragDrop
     },
     "webview": {
       "userAgent": manifest.webview.userAgent,
@@ -476,6 +479,108 @@ proc copyGenerated(source, destination: string): bool =
     stderr.writeLine("nimino pack: unable to copy " & source)
     false
 
+proc stageLocalTree(source, destination: string): bool =
+  ## Copy a static web tree while preserving its relative layout.  Symlinks
+  ## are rejected so a bundle cannot accidentally capture files outside the
+  ## requested source tree.
+  let sourceRoot = absolutePath(source).normalizedPath()
+  try:
+    for kind, path in walkDir(sourceRoot, relative = false):
+      let relative = relativePath(path, sourceRoot).replace('\\', '/')
+      if relative == ".." or relative.startsWith("../") or relative.isAbsolute:
+        stderr.writeLine("nimino pack: local asset escapes source root: " & path)
+        return false
+      let target = destination / relative
+      case kind
+      of pcDir:
+        createDir(target)
+        if not stageLocalTree(path, target):
+          return false
+      of pcFile:
+        createDir(parentDir(target))
+        if not copyGenerated(path, target):
+          return false
+      of pcLinkToFile, pcLinkToDir:
+        stderr.writeLine("nimino pack: symbolic links are not allowed in local assets: " & path)
+        return false
+      else:
+        stderr.writeLine("nimino pack: unsupported local asset: " & path)
+        return false
+    true
+  except OSError:
+    stderr.writeLine("nimino pack: unable to stage local assets from " & source)
+    false
+
+proc iconExtension(contentType, sourceName: string): string =
+  let mime = contentType.toLowerAscii().split(';')[0].strip()
+  case mime
+  of "image/png": ".png"
+  of "image/jpeg", "image/jpg": ".jpg"
+  of "image/gif": ".gif"
+  of "image/svg+xml": ".svg"
+  of "image/x-icon", "image/vnd.microsoft.icon": ".ico"
+  else:
+    let extension = splitFile(sourceName).ext.toLowerAscii()
+    if extension in [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp"]:
+      extension
+    else: ".png"
+
+proc safeIconName(candidate, extension: string): string =
+  var stem = splitFile(candidate).name
+  if stem.len == 0:
+    stem = "icon"
+  result = ""
+  for character in stem:
+    if character.isAlphaNumeric or character in {'-', '_'}:
+      result.add(character)
+    elif result.len == 0 or result[^1] != '-':
+      result.add('-')
+  result = result.strip(chars = {'-'})
+  if result.len == 0:
+    result = "icon"
+  result &= extension
+
+proc fetchRemoteIcon(url, destination: string): bool =
+  ## Fetch only bounded image payloads.  The pack command is synchronous, so
+  ## a bounded timeout prevents a dead icon host from hanging packaging.
+  let lower = url.toLowerAscii()
+  if lower.startsWith("data:"):
+    let comma = url.find(',')
+    if comma <= 5:
+      stderr.writeLine("nimino pack: malformed data icon URL")
+      return false
+    let header = url[5 ..< comma]
+    let body = url[comma + 1 .. ^1]
+    try:
+      let bytes = if header.toLowerAscii().contains(";base64"):
+          decode(body)
+        else:
+          decodeUrl(body)
+      if bytes.len == 0 or bytes.len > 8 * 1024 * 1024:
+        stderr.writeLine("nimino pack: icon payload is empty or too large")
+        return false
+      writeFile(destination, bytes)
+      return true
+    except CatchableError:
+      stderr.writeLine("nimino pack: unable to decode data icon URL")
+      return false
+  if not (lower.startsWith("http://") or lower.startsWith("https://")):
+    return false
+  try:
+    var client = newHttpClient(timeout = 15_000)
+    let response = client.get(url)
+    if response.code.int < 200 or response.code.int >= 300:
+      stderr.writeLine("nimino pack: remote icon returned HTTP " & $response.code.int)
+      return false
+    if response.body.len == 0 or response.body.len > 8 * 1024 * 1024:
+      stderr.writeLine("nimino pack: remote icon payload is empty or too large")
+      return false
+    writeFile(destination, response.body)
+    true
+  except CatchableError:
+    stderr.writeLine("nimino pack: unable to download remote icon")
+    false
+
 proc parseCliBool(value: string): bool =
   case value.toLowerAscii()
   of "true", "1", "yes": result = true
@@ -485,8 +590,9 @@ proc parseCliBool(value: string): bool =
 proc packBooleanFlag(flag: string): bool =
   flag in ["--resizable", "--fullscreen", "--maximize", "--always-on-top",
            "--hide-window-decorations", "--incognito", "--show-system-tray",
+           "--enable-drag-drop",
            "--start-to-tray", "--hide-on-close", "--multi-window",
-           "--multi-instance"]
+           "--multi-instance", "--use-local-file", "--json"]
 
 if paramCount() >= 1 and paramStr(1) == "package-linux":
   runPackageLinux()
@@ -495,10 +601,21 @@ if paramCount() >= 1 and paramStr(1) == "package-windows":
 if paramCount() < 2 or paramStr(1) != "pack":
   usage()
 var loaded: PackResult[PackManifest]
-let source = paramStr(2)
+var optionStart = 3
+var source = paramStr(2)
+if source == "--config":
+  if paramCount() < 3:
+    usage()
+  source = paramStr(3)
+  optionStart = 4
 let sourceIsUrl = source.toLowerAscii().startsWith("http://") or
   source.toLowerAscii().startsWith("https://")
-if sourceIsUrl:
+let sourceIsManifest = fileExists(source) and
+  source.toLowerAscii().endsWith(".toml")
+let sourceIsLocal = (fileExists(source) or dirExists(source)) and not sourceIsManifest
+var localSourcePath = ""
+var localUseLocalFile = false
+if sourceIsUrl or sourceIsLocal:
   var name = ""
   var id = ""
   var profile = "default"
@@ -510,6 +627,7 @@ if sourceIsUrl:
   var maximized = false
   var alwaysOnTop = false
   var hideWindowDecorations = false
+  var enableDragDrop = false
   var userAgent = ""
   var proxyUrl = ""
   var incognito = false
@@ -518,13 +636,14 @@ if sourceIsUrl:
   var hideOnClose = false
   var multiWindow = true
   var multiInstance = false
+  var useLocalFile = false
   var permissionsAllow: seq[string]
   var css: seq[string]
   var javascript: seq[string]
   var navigationAllow: seq[string]
   var navigationExternal: seq[string]
   var deepLinkSchemes: seq[string]
-  var index = 3
+  var index = optionStart
   while index <= paramCount():
     let flag = paramStr(index)
     let hasValue = index < paramCount() and not paramStr(index + 1).startsWith("--")
@@ -546,6 +665,7 @@ if sourceIsUrl:
     of "--maximize": maximized = parseCliBool(value)
     of "--always-on-top": alwaysOnTop = parseCliBool(value)
     of "--hide-window-decorations": hideWindowDecorations = parseCliBool(value)
+    of "--enable-drag-drop": enableDragDrop = parseCliBool(value)
     of "--user-agent": userAgent = value
     of "--proxy-url": proxyUrl = value
     of "--incognito": incognito = parseCliBool(value)
@@ -554,6 +674,7 @@ if sourceIsUrl:
     of "--hide-on-close": hideOnClose = parseCliBool(value)
     of "--multi-window": multiWindow = parseCliBool(value)
     of "--multi-instance": multiInstance = parseCliBool(value)
+    of "--use-local-file": useLocalFile = parseCliBool(value)
     of "--icon": icon = value
     of "--deep-link": deepLinkSchemes.add(value)
     of "--allow-permission": permissionsAllow.add(value)
@@ -561,20 +682,38 @@ if sourceIsUrl:
     of "--inject-js": javascript.add(value)
     of "--allow-url": navigationAllow.add(value)
     of "--external-url": navigationExternal.add(value)
+    of "--json": discard
     of "--out", "--host": discard
     else: usage()
     if hasValue: index += 2 else: inc index
-  loaded = generateManifest(source, name = name, id = id, profile = profile,
-    icon = icon, deepLinkSchemes = deepLinkSchemes, width = width,
-    height = height, resizable = resizable, fullscreen = fullscreen,
-    maximized = maximized, alwaysOnTop = alwaysOnTop,
-    hideWindowDecorations = hideWindowDecorations, userAgent = userAgent,
-    proxyUrl = proxyUrl, incognito = incognito,
-    showSystemTray = showSystemTray, startToTray = startToTray,
-    hideOnClose = hideOnClose, multiWindow = multiWindow,
-    multiInstance = multiInstance, permissionsAllow = permissionsAllow,
-    css = css, javascript = javascript, navigationAllow = navigationAllow,
-    navigationExternal = navigationExternal)
+  if sourceIsLocal:
+    localSourcePath = source
+    localUseLocalFile = useLocalFile
+    loaded = generateLocalManifest(source, name = name, id = id, profile = profile,
+      icon = icon, width = width,
+      height = height, resizable = resizable, fullscreen = fullscreen,
+      maximized = maximized, alwaysOnTop = alwaysOnTop,
+      hideWindowDecorations = hideWindowDecorations, userAgent = userAgent,
+      enableDragDrop = enableDragDrop,
+      proxyUrl = proxyUrl, incognito = incognito,
+      showSystemTray = showSystemTray, startToTray = startToTray,
+      hideOnClose = hideOnClose, multiWindow = multiWindow,
+      multiInstance = multiInstance, permissionsAllow = permissionsAllow,
+      css = css, javascript = javascript, navigationAllow = navigationAllow,
+      navigationExternal = navigationExternal)
+  else:
+    loaded = generateManifest(source, name = name, id = id, profile = profile,
+      icon = icon, deepLinkSchemes = deepLinkSchemes, width = width,
+      height = height, resizable = resizable, fullscreen = fullscreen,
+      maximized = maximized, alwaysOnTop = alwaysOnTop,
+      hideWindowDecorations = hideWindowDecorations, userAgent = userAgent,
+      enableDragDrop = enableDragDrop,
+      proxyUrl = proxyUrl, incognito = incognito,
+      showSystemTray = showSystemTray, startToTray = startToTray,
+      hideOnClose = hideOnClose, multiWindow = multiWindow,
+      multiInstance = multiInstance, permissionsAllow = permissionsAllow,
+      css = css, javascript = javascript, navigationAllow = navigationAllow,
+      navigationExternal = navigationExternal)
 else:
   loaded = loadManifest(source)
 if not loaded.isOk:
@@ -583,7 +722,8 @@ if not loaded.isOk:
 var output = manifestJson(loaded.value).pretty()
 var outputDirectory = ""
 var hostPath = ""
-var index = 3
+var jsonOutput = false
+var index = optionStart
 while index <= paramCount():
   let flag = paramStr(index)
   let hasValue = index < paramCount() and not paramStr(index + 1).startsWith("--")
@@ -595,12 +735,16 @@ while index <= paramCount():
   of "--host":
     if not hasValue: usage()
     hostPath = paramStr(index + 1)
-  of "--name", "--id", "--profile", "--width", "--height", "--resizable",
+  of "--config", "--name", "--id", "--profile", "--width", "--height", "--resizable",
      "--fullscreen", "--maximize", "--always-on-top", "--hide-window-decorations",
+     "--enable-drag-drop",
      "--user-agent", "--proxy-url", "--incognito", "--show-system-tray",
      "--start-to-tray", "--hide-on-close", "--multi-window", "--multi-instance",
-     "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--external-url":
-    if not sourceIsUrl: usage()
+     "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--external-url",
+     "--use-local-file":
+    if not sourceIsUrl and not sourceIsLocal: usage()
+  of "--json":
+    jsonOutput = true
   else: usage()
   if hasValue: index += 2 else: inc index
 if hostPath.len > 0 and not fileExists(hostPath):
@@ -616,15 +760,26 @@ else:
   if directory.len == 0:
     usage()
   let sourceManifest = loaded.value
-  let iconIsRemote = sourceManifest.icon.toLowerAscii().startsWith("http://") or
+  let sourceIconIsRemote = sourceManifest.icon.toLowerAscii().startsWith("http://") or
     sourceManifest.icon.toLowerAscii().startsWith("https://") or
     sourceManifest.icon.toLowerAscii().startsWith("data:")
-  if sourceManifest.icon.len > 0 and not iconIsRemote and not fileExists(sourceManifest.icon):
+  if sourceManifest.icon.len > 0 and not sourceIconIsRemote and not fileExists(sourceManifest.icon):
     stderr.writeLine("nimino pack: local icon does not exist")
     quit(1)
   for injected in sourceManifest.css & sourceManifest.javascript:
     if not fileExists(injected):
       stderr.writeLine("nimino pack: injected file does not exist: " & injected)
+      quit(1)
+  if localSourcePath.len > 0:
+    let sourceAbsolute = absolutePath(localSourcePath).normalizedPath()
+    let stageRoot = if dirExists(sourceAbsolute): sourceAbsolute
+      elif localUseLocalFile: parentDir(sourceAbsolute)
+      else: sourceAbsolute
+    let outputAbsolute = absolutePath(directory).normalizedPath()
+    let relativeOutput = relativePath(outputAbsolute, stageRoot).replace('\\', '/')
+    if relativeOutput == "." or
+        (relativeOutput != ".." and not relativeOutput.startsWith("../")):
+      stderr.writeLine("nimino pack: output directory must not be inside local source assets")
       quit(1)
   try:
     createDir(directory)
@@ -632,6 +787,23 @@ else:
     stderr.writeLine("nimino pack: unable to create output directory")
     quit(1)
   var packaged = sourceManifest
+  if localSourcePath.len > 0:
+    let sourceRoot = absolutePath(localSourcePath).normalizedPath()
+    let assetsRoot = directory / "assets"
+    try:
+      createDir(assetsRoot)
+    except OSError:
+      stderr.writeLine("nimino pack: unable to create local assets directory")
+      quit(1)
+    if dirExists(sourceRoot):
+      if not stageLocalTree(sourceRoot, assetsRoot):
+        quit(1)
+    elif localUseLocalFile:
+      if not stageLocalTree(parentDir(sourceRoot), assetsRoot):
+        quit(1)
+    elif not copyGenerated(sourceRoot, assetsRoot / extractFilename(sourceRoot)):
+      quit(1)
+    packaged.localEntry = "assets/" & packaged.localEntry
   proc packageFiles(paths: var seq[string]) =
     var packagedNames: seq[string]
     for index in 0 ..< paths.len:
@@ -653,7 +825,24 @@ else:
         quit(1)
       paths[index] = fileName
   var localIconName = ""
-  if packaged.icon.len > 0 and fileExists(packaged.icon):
+  let iconIsRemote = packaged.icon.toLowerAscii().startsWith("http://") or
+    packaged.icon.toLowerAscii().startsWith("https://") or
+    packaged.icon.toLowerAscii().startsWith("data:")
+  if iconIsRemote:
+    let parsed = if packaged.icon.toLowerAscii().startsWith("data:"):
+        parseUri("https://nimino.invalid/icon.png")
+      else:
+        parseUri(packaged.icon)
+    let candidate = if parsed.path.len > 0: extractFilename(parsed.path) else: "icon"
+    let iconName = safeIconName(candidate, iconExtension("", candidate))
+    if fileExists(directory / iconName):
+      stderr.writeLine("nimino pack: icon filename collides with generated assets: " & iconName)
+      quit(1)
+    if not fetchRemoteIcon(packaged.icon, directory / iconName):
+      quit(1)
+    packaged.icon = iconName
+    localIconName = iconName
+  elif packaged.icon.len > 0 and fileExists(packaged.icon):
     let iconName = extractFilename(packaged.icon)
     if iconName.len == 0 or iconName in [".", ".."]:
       stderr.writeLine("nimino pack: icon path has no usable filename")
@@ -709,4 +898,8 @@ else:
   let uninstallScriptPath = directory / "uninstall-windows.ps1"
   if not writeGenerated(uninstallScriptPath, windowsUninstallScript(packaged, windowsHostName)):
     quit(1)
-  echo manifestPath
+  if jsonOutput:
+    echo (%*{"manifest": manifestPath, "directory": directory,
+      "localEntry": packaged.localEntry}).pretty()
+  else:
+    echo manifestPath

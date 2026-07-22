@@ -11,6 +11,25 @@ block appOptionsAreValidated:
   doAssert not missingName.isOk
   doAssert missingName.failure.kind == invalidArgument
 
+block singleInstanceLockLifecycleIsExplicit:
+  let first = newApp(AppOptions(id: "tech.asopi.single-instance-test",
+    name: "Single instance", multiInstance: false))
+  doAssert first.isOk
+  let duplicate = newApp(AppOptions(id: "tech.asopi.single-instance-test",
+    name: "Single instance", multiInstance: false))
+  doAssert not duplicate.isOk
+  doAssert duplicate.failure.kind == invalidState
+  doAssert duplicate.failure.detail.contains("already")
+  let parallel = newApp(AppOptions(id: "tech.asopi.single-instance-test",
+    name: "Single instance", multiInstance: true))
+  doAssert parallel.isOk
+  doAssert first.value.quit().isOk
+  let reopened = newApp(AppOptions(id: "tech.asopi.single-instance-test",
+    name: "Single instance", multiInstance: false))
+  doAssert reopened.isOk
+  doAssert reopened.value.quit().isOk
+  doAssert parallel.value.quit().isOk
+
 block deepLinkDeliveryIsExplicit:
   let created = newApp(id = "tech.asopi.deep-link-test", name = "Deep link test")
   doAssert created.isOk

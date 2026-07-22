@@ -23,6 +23,7 @@ type
     height*: int
     profile*: string
     inlineRemoteAssets*: bool
+    enableDragDrop*: bool
 
 proc newApp*(options: AppOptions): CoreResultOf[App]
 proc newApp*(id = "tech.asopi.nimino"; name = "Nimino"): CoreResultOf[App]
@@ -42,6 +43,7 @@ proc setNavigationRules*(window: Window, rules: NavigationRules): CoreResult
 proc evalJavaScript*(window: Window, script: string): Future[CoreResultOf[string]]
 proc quit*(app: App): CoreResult
 proc run*(app: App): CoreResult
+proc onFileDrop*(window: Window; handler: proc(paths: seq[string])): CoreResult
 ```
 
 `CoreError`はnative FFI型を公開せず、`invalidArgument`、`invalidState`、`platformUnavailable`、`permissionDenied`、`osError`、`webViewError`、`nativeFailure`を返す。Windows/Linux facadeはnative App/Window/WebViewを内部所有する。WSL buildではcoreが`nimino-wsl`の公開client APIだけを使い、Windows hostがnative App/Window/WebViewを所有する。hostは配布物で隣接またはPATHへ置く。`NIMINO_WSL_HOST_EXE`は開発・CIの明示上書きであり、通常利用者にplatform指定を要求するものではない。
@@ -197,6 +199,9 @@ WSLでは認証済みIPCでWindows hostへ中継します。close後の操作と
 `window.onClosed`はOSまたはアプリによる破棄完了後に一度だけ呼ばれます。
 `window.onResize`はWindowのクライアント領域サイズ（ピクセル）をUIスレッド上で通知します。
 WSLではWindows hostのネイティブresize callbackを認証済みIPC eventとして中継します。
+`CoreWindowOptions.enableDragDrop`を有効にしたWindowでは、`window.onFileDrop`が
+ネイティブWindowへドロップされたファイルの絶対パス配列を通知します。未指定時はWebViewの
+標準ドロップ処理を維持します。Windows/Linux/WSLで同じAPIを利用できます。
 
 複数WebView対応バックエンドでは`window.newWebView()`で同じWindowに追加Viewを生成できます。
 追加Viewは`WebView.loadUrl`/`loadHtml`/`evalJavaScript`/`onMessage`を持ち、

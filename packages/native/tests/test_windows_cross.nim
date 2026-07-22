@@ -41,6 +41,13 @@ doAssert window.isOk
 
 let view = window.value.newWebView()
 doAssert view.isOk
+let configuredView = window.value.newWebView(
+  proxyUrl = "http://127.0.0.1:8080", incognito = true)
+doAssert configuredView.isOk
+## Environment/controller options are construct-time settings; before app.run
+## both setters remain valid and are consumed by the Windows startup path.
+doAssert configuredView.value.setProxy("http://127.0.0.1:8081").isOk
+doAssert configuredView.value.setIncognito(true).isOk
 doAssert view.value.onMessage(proc(message: string) = discard).isOk
 doAssert view.value.onError(proc(error: NativeError) = discard).isOk
 doAssert view.value.onNewWindowRequested(proc(url: string): bool = true).isOk

@@ -37,6 +37,8 @@ type
     of false:
       error*: NativeError
 
+  NativeFileDropHandler* = proc(paths: seq[string]) {.closure.}
+
   WindowOptions* = object
     title*: string
     width*: int
@@ -87,6 +89,7 @@ proc minimize*(window: NativeWindow): NativeResult
 proc maximize*(window: NativeWindow): NativeResult
 proc state*(window: NativeWindow): NativeState
 proc onResize*(window: NativeWindow, callback: NativeResizeHandler): NativeResult
+proc onFileDrop*(window: NativeWindow, callback: NativeFileDropHandler): NativeResult
 proc onCloseRequest*(window: NativeWindow, callback: proc(): bool {.gcsafe.})
 
 proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView]
@@ -200,6 +203,10 @@ discard app.sendNativeNotification(NativeNotification(
 `NativeCookie`はname、value、domain、path、Secure、HttpOnly、UNIX秒のexpiryを、ネイティブオブジェクトからコピーしたNim値として保持します。`getCookies` / `setCookie` / `deleteCookie`はreadyなWebViewだけで使えるFuture APIです。Windowsは公式WebView2 SDKの`ICoreWebView2CookieManager` / `ICoreWebView2CookieList`を直接呼び、LinuxはWebKitGTK 6.0の`WebKitCookieManager`とlibsoup 3の`SoupCookie`を直接呼びます。COM interface/callbackの参照数、WebKitのtransfer-full list、SoupCookieの寿命はNim GCへ委ねず各完了経路で明示管理します。WSL buildのnative型自身はIPCを内包せず、`nimino-wsl` host adapterが同じ操作を認証済みrequestとして中継します。
 
 `onMessage` は文字列だけを受け入れます。Windows の Web コンテンツは `window.chrome.webview.postMessage("…")`、Linux の Web コンテンツは `window.webkit.messageHandlers.nimino.postMessage("…")` を使用します。非文字列メッセージは native 層で破棄します。Linux の実 WebView スモークは handler の登録、文字列受信、signal 切断まで確認しています。WSL host は `native.webview.message` event として中継し、client は response を待つ間に受けた event を `takeEvents()` で取得できます。Windows Runtime と WSL host経由の実行確認済みです。
+
+`onFileDrop`は明示的に登録した場合だけ、Windowsの`WM_DROPFILES`またはLinux GTK4
+`GtkDropTarget`からコピー済みの絶対パス配列を通知します。未登録時はWebViewの標準ドロップ処理を
+変更しません。WSLではhostから認証済み`native.window.fileDrop`イベントとして中継されます。
 
 `onNavigationStarting` はWindowsで `NavigationStartingEventArgs::put_Cancel`、Linuxで `decide-policy` の`use/ignore`を使い、callbackが`false`または例外を返したときに中止します。handler未登録時は許可します。Linux実WebViewでは許可経路を確認済みです。WSL hostは`native.webview.navigationStarting` eventをclientへ中継しますが、eventはnative callbackが戻った後に送信されるため、現時点では既定許可でありclientが中止を決めることはできません。この差をcore APIへ漏らさないための候補は[ADR-0005提案](../adr/0005-wsl-navigation-policy.md)で管理します。
 

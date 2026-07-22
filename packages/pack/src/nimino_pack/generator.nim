@@ -4,7 +4,7 @@
 ## metadata, profile and window defaults are derived here; callers do not need
 ## to author a second manifest just to wrap a site.
 
-import std/[strutils, uri]
+import std/[os, strutils, uri]
 
 import ./manifest
 
@@ -44,6 +44,7 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
                       width = 1200; height = 800; resizable = true;
                       fullscreen = false; maximized = false;
                       alwaysOnTop = false; hideWindowDecorations = false;
+                      enableDragDrop = false;
                       userAgent = ""; proxyUrl = ""; incognito = false;
                       showSystemTray = false; startToTray = false;
                       hideOnClose = false; multiWindow = true;
@@ -80,7 +81,7 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
       profile: if profile.strip().len > 0: profile.strip() else: "default",
       window: PackWindowOptions(width: width, height: height, resizable: resizable,
         fullscreen: fullscreen, maximized: maximized, alwaysOnTop: alwaysOnTop,
-        hideWindowDecorations: hideWindowDecorations),
+        hideWindowDecorations: hideWindowDecorations, enableDragDrop: enableDragDrop),
       webview: PackWebViewOptions(userAgent: userAgent, proxyUrl: proxyUrl,
         incognito: incognito),
       runtime: PackRuntimeOptions(showSystemTray: showSystemTray,
@@ -95,3 +96,61 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
       javascript: javascript))
   except CatchableError:
     failure[PackManifest](invalidManifest, "URL-only generation received an invalid URL")
+
+proc generateLocalManifest*(source: string; name = ""; id = "";
+                            profile = "default";
+                            icon = ""; width = 1200; height = 800;
+                            resizable = true; fullscreen = false;
+                            maximized = false; alwaysOnTop = false;
+                            hideWindowDecorations = false; userAgent = "";
+                            enableDragDrop = false;
+                            proxyUrl = ""; incognito = false;
+                            showSystemTray = false; startToTray = false;
+                            hideOnClose = false; multiWindow = true;
+                            multiInstance = false;
+                            permissionsAllow: seq[string] = @[];
+                            css: seq[string] = @[]; javascript: seq[string] = @[];
+                            navigationAllow: seq[string] = @[];
+                            navigationExternal: seq[string] = @[]):
+                            PackResult[PackManifest] =
+  ## Build a manifest for a local HTML file or static directory.  The source
+  ## itself is staged by the CLI; only the relative entry is persisted here.
+  let absolute = absolutePath(source).normalizedPath()
+  let isDirectory = dirExists(absolute)
+  if not isDirectory and not fileExists(absolute):
+    return failure[PackManifest](ioFailure, "local source does not exist")
+  let entry = if isDirectory: "index.html" else: extractFilename(absolute)
+  if isDirectory and not fileExists(absolute / entry):
+    return failure[PackManifest](invalidManifest,
+      "local directory must contain an index.html entry")
+  let base = if isDirectory: extractFilename(absolute) else: splitFile(absolute).name
+  let appName = if name.strip().len > 0: name.strip() else:
+    titleWord(base.replace('-', ' ').replace('_', ' '))
+  let appId = if id.strip().len > 0: id.strip() else:
+    "com.nimino." & hostToken(base)
+  let metadata = PackPackageMetadata(
+    version: "0.1.0",
+    description: appName & " local web application",
+    publisher: "Nimino",
+    homepage: "",
+    categories: @["Network"])
+  validate(PackManifest(
+    name: appName,
+    id: appId,
+    localEntry: entry,
+    icon: icon,
+    profile: if profile.strip().len > 0: profile.strip() else: "default",
+    window: PackWindowOptions(width: width, height: height, resizable: resizable,
+      fullscreen: fullscreen, maximized: maximized, alwaysOnTop: alwaysOnTop,
+      hideWindowDecorations: hideWindowDecorations, enableDragDrop: enableDragDrop),
+    webview: PackWebViewOptions(userAgent: userAgent, proxyUrl: proxyUrl,
+      incognito: incognito),
+    runtime: PackRuntimeOptions(showSystemTray: showSystemTray,
+      startToTray: startToTray, hideOnClose: hideOnClose,
+      multiWindow: multiWindow, multiInstance: multiInstance),
+    package: metadata,
+    navigationAllow: navigationAllow,
+    navigationExternal: navigationExternal,
+    permissionsAllow: permissionsAllow,
+    css: css,
+    javascript: javascript))

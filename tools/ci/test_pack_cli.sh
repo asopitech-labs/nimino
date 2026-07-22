@@ -54,6 +54,9 @@ grep -q '"deepLink": {' "$root/out/nimino-manifest.json"
 grep -q '"deepLinkSchemes": \[' "$root/out/nimino-linux-package.json"
 grep -q '"deepLinkSchemes": \[' "$root/out/nimino-windows-installer.json"
 grep -q '"nimino"' "$root/out/nimino-manifest.json"
+
+"$nimino" pack --config "$root/input.toml" --out "$root/config-out" --host "$root/host"
+grep -q 'Demo' "$root/config-out/nimino-manifest.json"
 grep -q '"installScope": "perUser"' "$root/out/nimino-windows-installer.json"
 grep -Eq '"toastActivatorClsid": "[0-9A-Fa-f-]{36}"' "$root/out/nimino-windows-installer.json"
 grep -q 'System.AppUserModel.ToastActivatorCLSID' "$root/out/register-windows-shortcut.ps1"
@@ -72,12 +75,27 @@ grep -q 'host^&name' "$root/cmd-escape-out/run-nimino.cmd"
 test ! -e "$root/missing-host-no-flag-out"
 
 "$nimino" pack https://example.com --name DemoUrl --id app.nimino.demo-url \
-  --icon https://example.com/icon.png --out "$root/url-out" --host "$root/host"
+  --icon 'data:image/png;base64,aWNvbg==' --out "$root/url-out" --host "$root/host"
 grep -q 'DemoUrl' "$root/url-out/nimino-manifest.json"
 grep -q 'https://example.com' "$root/url-out/nimino-manifest.json"
-grep -q 'icon.png' "$root/url-out/nimino-manifest.json"
+grep -q '"icon": "icon.png"' "$root/url-out/nimino-manifest.json"
+test -s "$root/url-out/icon.png"
 test -s "$root/url-out/app.nimino.demo-url.desktop"
-! grep -q '^Icon=' "$root/url-out/app.nimino.demo-url.desktop"
+grep -Fx 'Icon=/opt/nimino/app.nimino.demo-url/icon.png' "$root/url-out/app.nimino.demo-url.desktop"
+
+mkdir -p "$root/icon-server"
+printf 'remote-icon' > "$root/icon-server/remote.png"
+python3 -m http.server 18765 --bind 0.0.0.0 --directory "$root/icon-server" > "$root/icon-server.log" 2>&1 &
+icon_server=$!
+trap 'kill "$icon_server" 2>/dev/null || true' EXIT
+sleep 1
+"$nimino" pack https://example.com --name DemoRemoteIcon --id app.nimino.demo-remote-icon \
+  --icon http://127.0.0.1:18765/remote.png --out "$root/remote-icon-out" --host "$root/host"
+test -s "$root/remote-icon-out/remote.png"
+grep -q '"icon": "remote.png"' "$root/remote-icon-out/nimino-manifest.json"
+kill "$icon_server" 2>/dev/null || true
+wait "$icon_server" 2>/dev/null || true
+trap - EXIT
 
 "$nimino" pack https://example.com --name DemoUrlDeep --id app.nimino.demo-url-deep \
   --deep-link "DEMO" --out "$root/url-deep-out" --host "$root/host"
@@ -101,6 +119,37 @@ grep -q '"icon": "icon.png"' "$root/local-icon-out/nimino-manifest.json"
 ! "$nimino" pack https://example.com --name MissingIcon --id app.nimino.missing-icon \
   --icon "$root/no-such-icon.png" --out "$root/missing-icon-out"
 test ! -e "$root/missing-icon-out"
+
+mkdir -p "$root/local-app/subdir"
+printf '<!doctype html><script src="subdir/app.js"></script>\n' > "$root/local-app/index.html"
+printf 'console.log("local");\n' > "$root/local-app/subdir/app.js"
+printf 'sibling\n' > "$root/local-app/sibling.txt"
+"$nimino" pack "$root/local-app/index.html" --name DemoLocalFile \
+  --id app.nimino.demo-local-file --use-local-file --out "$root/local-file-out" --host "$root/host"
+test -s "$root/local-file-out/assets/index.html"
+test -s "$root/local-file-out/assets/subdir/app.js"
+test -s "$root/local-file-out/assets/sibling.txt"
+grep -q '"localEntry": "assets/index.html"' "$root/local-file-out/nimino-manifest.json"
+
+"$nimino" pack "$root/local-app/index.html" --name DemoSingleFile \
+  --id app.nimino.demo-single-file --out "$root/single-file-out" --host "$root/host"
+test -s "$root/single-file-out/assets/index.html"
+test ! -e "$root/single-file-out/assets/subdir/app.js"
+grep -q '"localEntry": "assets/index.html"' "$root/single-file-out/nimino-manifest.json"
+
+"$nimino" pack "$root/local-app" --name DemoLocalDir \
+  --id app.nimino.demo-local-dir --out "$root/local-dir-out" --host "$root/host"
+test -s "$root/local-dir-out/assets/index.html"
+test -s "$root/local-dir-out/assets/subdir/app.js"
+grep -q '"localEntry": "assets/index.html"' "$root/local-dir-out/nimino-manifest.json"
+! "$nimino" pack "$root/local-app" --name NestedOutput --id app.nimino.nested-output \
+  --out "$root/local-app/bundle" --host "$root/host"
+test ! -e "$root/local-app/bundle"
+
+json_result=$("$nimino" pack https://example.com --name DemoJson --id app.nimino.demo-json \
+  --json --out "$root/json-out" --host "$root/host")
+printf '%s\n' "$json_result" | grep -q '"manifest"'
+printf '%s\n' "$json_result" | grep -q 'nimino-manifest.json'
 
 printf '%s\n' \
   'name = "DemoInject"' \
@@ -130,7 +179,7 @@ test ! -e "$root/missing-inject-out"
 
 "$nimino" pack https://example.com --name DemoOptions --id app.nimino.demo-options \
   --width 1440 --height 900 --resizable false --fullscreen --maximize \
-  --hide-window-decorations --incognito false --multi-window \
+  --hide-window-decorations --enable-drag-drop --incognito false --multi-window \
   --allow-permission notifications --inject-css "$root/custom.css" \
   --inject-js "$root/custom.js" --allow-url 'https://example.com/**' \
   --external-url 'https://support.example.com/**' --out "$root/options-out" --host "$root/host"
@@ -143,3 +192,4 @@ grep -q 'custom.js' "$root/options-out/nimino-manifest.json"
 grep -q 'support.example.com' "$root/options-out/nimino-manifest.json"
 grep -q '"fullscreen": true' "$root/options-out/nimino-manifest.json"
 grep -q '"maximized": true' "$root/options-out/nimino-manifest.json"
+grep -q '"enableDragDrop": true' "$root/options-out/nimino-manifest.json"

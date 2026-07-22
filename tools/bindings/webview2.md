@@ -134,6 +134,28 @@ the UDF remains outside this live-clear path.  `ICoreWebView2CookieManager`
 is used only for the cookies-only operation; broader clear requests use
 Profile2 so the result accurately represents the browser operation.
 
+## Windows proxy and InPrivate options
+
+The Windows backend also uses the pinned SDK's official creation options:
+
+| Purpose | Interface / method | IID / slot |
+| --- | --- | --- |
+| Pass Chromium proxy switch | `ICoreWebView2EnvironmentOptions::put_AdditionalBrowserArguments` | `2fde08a8-1e9a-4766-8c05-95a9ceb9d1c5` / 4 |
+| Create controller options | `ICoreWebView2Environment13::CreateCoreWebView2ControllerOptions` | `af641f58-72b2-11ee-b962-0242ac120002` / 20 |
+| Enable InPrivate mode | `ICoreWebView2ControllerOptions::put_IsInPrivateModeEnabled` | `12aae616-8ccb-44ec-bcb3-eb1831881635` / 6 |
+| Create controller with options | `ICoreWebView2Environment13::CreateCoreWebView2ControllerWithOptions` | slot 21 |
+
+WebView2 exposes no loader factory for `ICoreWebView2EnvironmentOptions`, so
+Nimino supplies a narrow Classic COM implementation of that official
+interface. Its string getters use `CoTaskMemAlloc` as required by the SDK; the
+object is reference-counted explicitly and retained until asynchronous
+environment creation completes. Proxy configuration is therefore a
+construct-time option on Windows, matching WebView2's environment lifetime;
+`setProxy` reports `invalidState` once startup has begun. InPrivate creation is
+likewise performed through the controller-options API and fails explicitly
+when the installed Evergreen Runtime does not expose Environment13. The
+header verification script checks all listed IIDs and slots.
+
 Run the reproducible spike through Docker only:
 
 ```sh

@@ -79,6 +79,10 @@ while true:
   of request:
     case incomingMessage.methodName
     of "native.window.create":
+      let payload = parseJson(incomingMessage.payload)
+      doAssert payload["proxyUrl"].getStr() == "http://127.0.0.1:8080"
+      doAssert payload["incognito"].getBool()
+      doAssert payload["enableDragDrop"].getBool()
       doAssert output.writeMessageTo(incomingMessage.response("{\"windowId\":\"1\"}")).isOk
     of "native.webview.create":
       doAssert output.writeMessageTo(incomingMessage.response("{\"webViewId\":\"1\"}")).isOk
@@ -106,6 +110,10 @@ while true:
         doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
     of "native.webview.loadHtml", "native.webview.loadUrl":
       doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
+      let dropped = $(%*{"windowId": "1", "paths": ["/tmp/dropped.txt"]})
+      doAssert output.writeMessageTo(event("native.window.fileDrop", dropped,
+        nextEventId)).isOk
+      inc nextEventId
       let payload = $(%*{"webViewId": "1", "url": "https://example.test/", "succeeded": true})
       doAssert output.writeMessageTo(event("native.webview.navigationCompleted", payload, nextEventId)).isOk
       inc nextEventId

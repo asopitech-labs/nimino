@@ -130,6 +130,19 @@ proc gtk_window_set_resizable*(window: ptr GtkWindow; resizable: cint)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_set_child*(window: ptr GtkWindow; child: pointer)
   {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_drop_target_new*(typeName: GType; actions: uint32): pointer
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_drop_target_set_gtypes*(target: pointer; types: ptr GType;
+                                 count: csize_t)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_widget_add_controller*(widget, controller: pointer)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gdk_file_list_get_type*(): GType
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gdk_file_list_get_files*(fileList: pointer): ptr GList
+  {.cdecl, importc, dynlib: LibGtk.}
+proc g_value_get_boxed*(value: pointer): pointer
+  {.cdecl, importc, dynlib: LibGObject.}
 proc gtk_box_new*(orientation: cint; spacing: cint): pointer
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_box_append*(box: pointer; child: pointer)

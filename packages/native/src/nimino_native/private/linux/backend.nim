@@ -1430,6 +1430,61 @@ proc linuxDisposeView(view: NativeWebView) =
     view.platformView = nil
   view.state = closed
 
+proc linuxFileDrop(target, value: pointer; x, y: cdouble; userData: pointer): cint {.cdecl.} =
+  ## GtkDropTarget's `drop` signal delivers a boxed GdkFileList in `value`.
+  ## Copy every path while the GValue is owned by GTK; never retain GFile or
+  ## gchar pointers beyond this callback.
+  let window = cast[NativeWindow](userData)
+  if window.isNil or value.isNil:
+    return 0
+  let fileList = g_value_get_boxed(value)
+  if fileList.isNil:
+    return 0
+  var paths: seq[string] = @[]
+  var node = gdk_file_list_get_files(fileList)
+  while node != nil:
+    if node.data != nil:
+      let path = g_file_get_path(cast[ptr GFile](node.data))
+      if path != nil:
+        paths.add($path)
+        g_free(cast[pointer](path))
+    node = node.next
+  if paths.len == 0:
+    return 0
+  window.dispatchFileDrop(paths)
+  1
+
+proc linuxInstallFileDrop(window: NativeWindow): NativeResult =
+  if window.isNil or window.platformWindow.isNil:
+    return failure(nativeError(invalidState, "window.onFileDrop"))
+  if window.fileDropController != nil:
+    return success()
+  let target = gtk_drop_target_new(gdk_file_list_get_type(), 1'u32)
+  if target.isNil:
+    return failure(nativeError(osError, "window.onFileDrop",
+      detail = "GTK drop target creation failed"))
+  let signal = g_signal_connect_data(target, "drop",
+    cast[pointer](linuxFileDrop), cast[pointer](window), nil, 0)
+  if signal == 0:
+    g_object_unref(target)
+    return failure(nativeError(osError, "window.onFileDrop",
+      detail = "GTK drop signal connection failed"))
+  gtk_widget_add_controller(window.platformWindow, target)
+  window.fileDropController = target
+  window.fileDropSignalHandler = signal
+  success()
+
+proc linuxDisposeFileDrop(window: NativeWindow) =
+  if window.isNil:
+    return
+  if window.fileDropController != nil and window.fileDropSignalHandler != 0:
+    g_signal_handler_disconnect(window.fileDropController,
+      window.fileDropSignalHandler)
+  window.fileDropSignalHandler = 0
+  ## gtk_widget_add_controller transfers ownership to the window. The
+  ## controller is released when the window is destroyed; do not unref here.
+  window.fileDropController = nil
+
 proc linuxDisposeWindow(window: NativeWindow) =
   if window.state == closed:
     return
@@ -1440,6 +1495,7 @@ proc linuxDisposeWindow(window: NativeWindow) =
     view.linuxDisposeView()
 
   if window.platformWindow != nil:
+    window.linuxDisposeFileDrop()
     if window.closeSignalHandler != 0:
       g_signal_handler_disconnect(window.platformWindow, window.closeSignalHandler)
       window.closeSignalHandler = 0
@@ -1540,6 +1596,10 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
     if resizeSignal == 0:
       return failure(nativeError(webViewError, "window.onResize"))
     window.resizeSignalHandler = resizeSignal
+  if window.fileDropHandler != nil:
+    let dropResult = window.linuxInstallFileDrop()
+    if not dropResult.isOk:
+      return dropResult
   if window.app.nativeMenuInstalled:
     ## GtkApplicationWindow only displays the model in-window when the shell
     ## does not export it. This makes the configured menu visible in ordinary

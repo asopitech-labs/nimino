@@ -246,10 +246,44 @@ type
     references: Atomic[int]
     app: pointer
 
+  ## ICoreWebView2EnvironmentOptions is an official WebView2 SDK COM
+  ## interface.  The SDK ships its C++ implementation helper, but not a
+  ## factory in the C loader API, so the native backend supplies this small
+  ## Classic COM implementation for AdditionalBrowserArguments.  The IID,
+  ## method order, and allocator contract are from WebView2.h 1.0.3967.48.
+  EnvironmentOptionsVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid;
+                         outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    getAdditionalBrowserArguments: proc(self: pointer;
+      value: ptr WideCString): HResult {.stdcall.}
+    putAdditionalBrowserArguments: proc(self: pointer;
+      value: WideCString): HResult {.stdcall.}
+    getLanguage: proc(self: pointer; value: ptr WideCString): HResult {.stdcall.}
+    putLanguage: proc(self: pointer; value: WideCString): HResult {.stdcall.}
+    getTargetCompatibleBrowserVersion: proc(self: pointer;
+      value: ptr WideCString): HResult {.stdcall.}
+    putTargetCompatibleBrowserVersion: proc(self: pointer;
+      value: WideCString): HResult {.stdcall.}
+    getAllowSingleSignOnUsingOSPrimaryAccount: proc(self: pointer;
+      value: ptr WinBool): HResult {.stdcall.}
+    putAllowSingleSignOnUsingOSPrimaryAccount: proc(self: pointer;
+      value: WinBool): HResult {.stdcall.}
+
+  EnvironmentOptions = object
+    vtable: ptr EnvironmentOptionsVTable
+    references: Atomic[int]
+    additionalBrowserArguments: WideCString
+    language: WideCString
+    targetCompatibleBrowserVersion: WideCString
+    allowSingleSignOnUsingOSPrimaryAccount: WinBool
+
 var downloadOperationVTable: DownloadOperationVTable
 var toastActivatedVTable: ToastActivatedVTable
 var toastActivatorCallbackVTable: ToastActivatorCallbackVTable
 var toastActivatorFactoryVTable: ToastActivatorClassFactoryVTable
+var environmentOptionsVTable: EnvironmentOptionsVTable
 
 proc windowsDisposeWindow(window: NativeWindow)
 proc windowsRemoveNotificationIcon(app: NativeApp)
@@ -267,6 +301,27 @@ proc downloadOperationQueryInterface(self: pointer; iid: ptr WinGuid;
                                      outInstance: ptr pointer): HResult {.stdcall.}
 proc downloadOperationInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
 proc webResourceRequestedInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
+
+proc environmentOptionsQueryInterface(self: pointer; iid: ptr WinGuid;
+                                      outInstance: ptr pointer): HResult {.stdcall.}
+proc environmentOptionsAddRef(self: pointer): uint32 {.stdcall.}
+proc environmentOptionsRelease(self: pointer): uint32 {.stdcall.}
+proc environmentOptionsGetAdditionalBrowserArguments(self: pointer;
+    value: ptr WideCString): HResult {.stdcall.}
+proc environmentOptionsPutAdditionalBrowserArguments(self: pointer;
+    value: WideCString): HResult {.stdcall.}
+proc environmentOptionsGetLanguage(self: pointer;
+    value: ptr WideCString): HResult {.stdcall.}
+proc environmentOptionsPutLanguage(self: pointer;
+    value: WideCString): HResult {.stdcall.}
+proc environmentOptionsGetTargetCompatibleBrowserVersion(self: pointer;
+    value: ptr WideCString): HResult {.stdcall.}
+proc environmentOptionsPutTargetCompatibleBrowserVersion(self: pointer;
+    value: WideCString): HResult {.stdcall.}
+proc environmentOptionsGetAllowSingleSignOn(self: pointer;
+    value: ptr WinBool): HResult {.stdcall.}
+proc environmentOptionsPutAllowSingleSignOn(self: pointer;
+    value: WinBool): HResult {.stdcall.}
 
 proc hresultError(operation: string; status: HResult): NativeError {.inline.} =
   nativeError(webViewError, operation, platformCode = status)
@@ -289,6 +344,118 @@ proc queryCallback(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer;
   outInstance[] = self
   discard addReference(self)
   S_OK
+
+proc releaseEnvironmentOptionString(value: var WideCString) {.inline.} =
+  if value != nil:
+    dealloc(cast[pointer](value))
+    value = nil
+
+proc setEnvironmentOptionString(destination: var WideCString;
+                                 value: WideCString): HResult {.inline.} =
+  releaseEnvironmentOptionString(destination)
+  if value != nil:
+    destination = newWideCString($value)
+    if destination == nil:
+      return cast[HResult](-2147024882'i32) # E_OUTOFMEMORY
+  S_OK
+
+proc copyEnvironmentOptionString(value: WideCString;
+                                  destination: ptr WideCString): HResult {.inline.} =
+  if destination == nil:
+    return E_POINTER
+  destination[] = nil
+  if value == nil:
+    return S_OK
+  var chars = 0
+  while uint16(value[chars]) != 0'u16:
+    inc chars
+  let bytes = (chars + 1) * sizeof(uint16)
+  let copy = cast[WideCString](coTaskMemAlloc(bytes.csize_t))
+  if copy == nil:
+    return cast[HResult](-2147024882'i32) # E_OUTOFMEMORY
+  copyMem(copy, value, bytes)
+  destination[] = copy
+  S_OK
+
+proc environmentOptionsQueryInterface(self: pointer; iid: ptr WinGuid;
+                                      outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidCoreWebView2EnvironmentOptions,
+    environmentOptionsAddRef)
+
+proc environmentOptionsAddRef(self: pointer): uint32 {.stdcall.} =
+  let options = cast[ptr EnvironmentOptions](self)
+  uint32(options.references.fetchAdd(1, moRelaxed) + 1)
+
+proc environmentOptionsRelease(self: pointer): uint32 {.stdcall.} =
+  let options = cast[ptr EnvironmentOptions](self)
+  let remaining = options.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    releaseEnvironmentOptionString(options.additionalBrowserArguments)
+    releaseEnvironmentOptionString(options.language)
+    releaseEnvironmentOptionString(options.targetCompatibleBrowserVersion)
+    dealloc(options)
+  uint32(remaining)
+
+proc environmentOptionsGetAdditionalBrowserArguments(self: pointer;
+    value: ptr WideCString): HResult {.stdcall.} =
+  copyEnvironmentOptionString(
+    cast[ptr EnvironmentOptions](self).additionalBrowserArguments, value)
+
+proc environmentOptionsPutAdditionalBrowserArguments(self: pointer;
+    value: WideCString): HResult {.stdcall.} =
+  setEnvironmentOptionString(
+    cast[ptr EnvironmentOptions](self).additionalBrowserArguments, value)
+
+proc environmentOptionsGetLanguage(self: pointer;
+    value: ptr WideCString): HResult {.stdcall.} =
+  copyEnvironmentOptionString(cast[ptr EnvironmentOptions](self).language, value)
+
+proc environmentOptionsPutLanguage(self: pointer;
+    value: WideCString): HResult {.stdcall.} =
+  setEnvironmentOptionString(cast[ptr EnvironmentOptions](self).language, value)
+
+proc environmentOptionsGetTargetCompatibleBrowserVersion(self: pointer;
+    value: ptr WideCString): HResult {.stdcall.} =
+  copyEnvironmentOptionString(
+    cast[ptr EnvironmentOptions](self).targetCompatibleBrowserVersion, value)
+
+proc environmentOptionsPutTargetCompatibleBrowserVersion(self: pointer;
+    value: WideCString): HResult {.stdcall.} =
+  setEnvironmentOptionString(
+    cast[ptr EnvironmentOptions](self).targetCompatibleBrowserVersion, value)
+
+proc environmentOptionsGetAllowSingleSignOn(self: pointer;
+    value: ptr WinBool): HResult {.stdcall.} =
+  if value == nil:
+    return E_POINTER
+  value[] = cast[ptr EnvironmentOptions](self).allowSingleSignOnUsingOSPrimaryAccount
+  S_OK
+
+proc environmentOptionsPutAllowSingleSignOn(self: pointer;
+    value: WinBool): HResult {.stdcall.} =
+  cast[ptr EnvironmentOptions](self).allowSingleSignOnUsingOSPrimaryAccount = value
+  S_OK
+
+proc newEnvironmentOptions(proxyUrl: string): pointer =
+  let options = cast[ptr EnvironmentOptions](alloc0(sizeof(EnvironmentOptions)))
+  if options == nil:
+    return nil
+  options.vtable = addr environmentOptionsVTable
+  options.references.store(1, moRelaxed)
+  options.allowSingleSignOnUsingOSPrimaryAccount = 0
+  if proxyUrl.len > 0:
+    ## Chromium's --proxy-server switch is passed through the documented
+    ## ICoreWebView2EnvironmentOptions::AdditionalBrowserArguments property.
+    ## The URL is validated by the public Nim API before this point.
+    let arguments = "--proxy-server=" & proxyUrl
+    let argumentValue: WideCString = newWideCString(arguments)
+    if setEnvironmentOptionString(options.additionalBrowserArguments,
+        argumentValue) < 0:
+      dealloc(cast[pointer](argumentValue))
+      discard environmentOptionsRelease(cast[pointer](options))
+      return nil
+    dealloc(cast[pointer](argumentValue))
+  cast[pointer](options)
 
 proc environmentAddRef(self: pointer): uint32 {.stdcall.} =
   let handler = cast[ptr EnvironmentCompletedHandler](self)
@@ -704,6 +871,20 @@ var environmentCompletedVTable = EnvironmentCompletedVTable(
   invoke: environmentInvoke
 )
 
+environmentOptionsVTable = EnvironmentOptionsVTable(
+  queryInterface: environmentOptionsQueryInterface,
+  addRef: environmentOptionsAddRef,
+  release: environmentOptionsRelease,
+  getAdditionalBrowserArguments: environmentOptionsGetAdditionalBrowserArguments,
+  putAdditionalBrowserArguments: environmentOptionsPutAdditionalBrowserArguments,
+  getLanguage: environmentOptionsGetLanguage,
+  putLanguage: environmentOptionsPutLanguage,
+  getTargetCompatibleBrowserVersion: environmentOptionsGetTargetCompatibleBrowserVersion,
+  putTargetCompatibleBrowserVersion: environmentOptionsPutTargetCompatibleBrowserVersion,
+  getAllowSingleSignOnUsingOSPrimaryAccount: environmentOptionsGetAllowSingleSignOn,
+  putAllowSingleSignOnUsingOSPrimaryAccount: environmentOptionsPutAllowSingleSignOn
+)
+
 var controllerCompletedVTable = ControllerCompletedVTable(
   queryInterface: controllerQueryInterface,
   addRef: controllerAddRef,
@@ -976,6 +1157,9 @@ proc windowsDisposeView(view: NativeWebView) =
   if view.platformEnvironment != nil:
     discard comRelease(view.platformEnvironment)
     view.platformEnvironment = nil
+  if view.platformEnvironmentOptions != nil:
+    discard environmentOptionsRelease(view.platformEnvironmentOptions)
+    view.platformEnvironmentOptions = nil
   view.releaseCallbackReferences()
   view.state = closed
 
@@ -992,6 +1176,7 @@ proc windowsDisposeWindow(window: NativeWindow) =
     window.app.windowsRemoveNotificationIcon()
   if window.app.idleTimerWindow == window.platformWindow:
     window.app.windowsStopIdleTimer()
+  window.windowsDisposeFileDrop()
   for view in window.views:
     view.windowsDisposeView()
   window.platformWindow = nil
@@ -1175,6 +1360,34 @@ proc windowsSetPosition(window: NativeWindow; x, y: int): NativeResult =
       SwpNoSize or SwpNoZOrder) == 0:
     return failure(windowsError("window.setPosition", getLastError()))
   success()
+
+proc windowsInstallFileDrop(window: NativeWindow): NativeResult =
+  if window.isNil or window.platformWindow.isNil or window.state != ready:
+    return failure(nativeError(invalidState, "window.onFileDrop"))
+  dragAcceptFiles(window.platformWindow, 1)
+  success()
+
+proc windowsDisposeFileDrop(window: NativeWindow) =
+  if window.isNil or window.platformWindow.isNil:
+    return
+  dragAcceptFiles(window.platformWindow, 0)
+
+proc windowsDispatchFileDrop(window: NativeWindow; drop: pointer) =
+  if window.isNil or drop.isNil:
+    return
+  var paths: seq[string]
+  let count = dragQueryFileW(drop, high(uint32), nil, 0)
+  for index in 0'u32 ..< count:
+    let required = dragQueryFileW(drop, index, nil, 0)
+    if required == 0:
+      continue
+    var buffer = newSeq[uint16](int(required) + 1)
+    let copied = dragQueryFileW(drop, index,
+      cast[WideCString](addr buffer[0]), uint32(buffer.len))
+    if copied > 0:
+      paths.add($cast[WideCString](addr buffer[0]))
+  dragFinish(drop)
+  window.dispatchFileDrop(paths)
 
 proc windowsDialogBufferStrings(buffer: openArray[uint16]): seq[string] =
   var start = 0
@@ -2136,9 +2349,18 @@ proc windowsStartWebView(view: NativeWebView): NativeResult =
     view.window.app.webView2CreateEnvironment
   )
   let folder = newWideCString(view.window.app.webView2UserDataFolder)
-  let status = createEnvironment(nil, folder, nil, cast[pointer](handler))
+  let options = if view.proxyUrl.len > 0: newEnvironmentOptions(view.proxyUrl) else: nil
+  if view.proxyUrl.len > 0 and options.isNil:
+    discard environmentRelease(handler)
+    return failure(nativeError(osError, "webview.proxy",
+      detail = "cannot allocate WebView2 environment options"))
+  view.platformEnvironmentOptions = options
+  let status = createEnvironment(nil, folder, options, cast[pointer](handler))
   discard environmentRelease(handler)
   if not succeeded(status):
+    if view.platformEnvironmentOptions != nil:
+      discard environmentOptionsRelease(view.platformEnvironmentOptions)
+      view.platformEnvironmentOptions = nil
     return failure(hresultError("webview.environment", status))
   success()
 
@@ -2263,6 +2485,11 @@ proc windowsCreateWindow(window: NativeWindow): NativeResult =
 
   window.platformWindow = hwnd
   window.state = ready
+  if not window.fileDropHandler.isNil:
+    let dropConfigured = window.windowsInstallFileDrop()
+    if not dropConfigured.isOk:
+      discard destroyWindow(hwnd)
+      return dropConfigured
   discard showWindow(hwnd, SwShow)
   discard updateWindow(hwnd)
   if window.views.len == 0:
@@ -2285,6 +2512,9 @@ proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
   let window = cast[NativeWindow](cast[pointer](getWindowLongPtrW(hwnd, GwlpUserData)))
   if window != nil:
     case message
+    of WmDropFiles:
+      window.windowsDispatchFileDrop(cast[pointer](wParam))
+      return 0
     of WmSize:
       let resized = window.windowsResize()
       if not resized.isOk:
@@ -2361,6 +2591,9 @@ proc windowsUnregisterWindowClass(app: NativeApp) =
 proc environmentInvoke(self: pointer; errorCode: HResult;
                        environment: pointer): HResult {.stdcall.} =
   let view = cast[NativeWebView](cast[ptr EnvironmentCompletedHandler](self).view)
+  if not view.isNil and view.platformEnvironmentOptions != nil:
+    discard environmentOptionsRelease(view.platformEnvironmentOptions)
+    view.platformEnvironmentOptions = nil
   if view.isNil or view.window.app.state != running or view.state in {closing, closed}:
     return S_OK
   if not succeeded(errorCode) or environment.isNil:
@@ -2370,10 +2603,31 @@ proc environmentInvoke(self: pointer; errorCode: HResult;
   discard comAddRef(environment)
   view.platformEnvironment = environment
   let handler = newControllerCompletedHandler(view)
-  let status = environmentCreateController(environment, view.window.platformWindow, cast[pointer](handler))
+  let status = if view.incognito:
+    var options: pointer
+    let createOptions = environmentCreateControllerOptions(environment, addr options)
+    if not succeeded(createOptions) or options.isNil:
+      createOptions
+    else:
+      let privateStatus = controllerOptionsPutInPrivate(options, 1)
+      if not succeeded(privateStatus):
+        discard comRelease(options)
+        privateStatus
+      else:
+        let createStatus = environmentCreateControllerWithOptions(
+          environment, view.window.platformWindow, options, cast[pointer](handler))
+        discard comRelease(options)
+        createStatus
+  else:
+    environmentCreateController(environment, view.window.platformWindow, cast[pointer](handler))
   discard controllerRelease(handler)
   if not succeeded(status):
-    view.window.app.windowsFail(hresultError("webview.controller", status))
+    if view.incognito and status == E_NOINTERFACE:
+      view.window.app.windowsFail(nativeError(unsupported, "webview.controller",
+        platformCode = status,
+        detail = "installed WebView2 Runtime does not expose InPrivate controller options"))
+    else:
+      view.window.app.windowsFail(hresultError("webview.controller", status))
   S_OK
 
 proc controllerInvoke(self: pointer; errorCode: HResult;

@@ -42,6 +42,10 @@ type
   NativeCloseRequestedHandler* = proc(): bool {.closure.}
   NativeClosedHandler* = proc() {.closure.}
   NativeResizeHandler* = proc(width, height: int) {.closure.}
+  ## Called for files dropped onto the native window. Paths are copied before
+  ## the callback crosses the platform boundary and are never borrowed from
+  ## Win32 HDROP or GTK/GDK objects.
+  NativeFileDropHandler* = proc(paths: seq[string]) {.closure.}
   NativeMenuHandler* = proc(itemId: uint32) {.closure.}
   ## Called when the desktop shell activates the most recently delivered
   ## notification.  The callback is best-effort: platforms that do not
@@ -230,6 +234,9 @@ type
     closedHandler: NativeClosedHandler
     resizeHandler: NativeResizeHandler
     resizeSignalHandler: culong
+    fileDropHandler: NativeFileDropHandler
+    fileDropSignalHandler: culong
+    fileDropController: pointer
     closedNotified: bool
 
   NativeWebView* = ref object
@@ -248,6 +255,9 @@ type
     documentStartScriptUpdatePending: bool
     platformView: pointer
     platformEnvironment: pointer
+    ## COM environment options retained until WebView2 has accepted the
+    ## asynchronous environment-creation request.
+    platformEnvironmentOptions: pointer
     platformController: pointer
     platformMessageManager: pointer
     messageSignalHandler: culong
@@ -307,6 +317,8 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxSetFullscreen(window: NativeWindow; enabled: bool): NativeResult
   proc linuxSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult
   proc linuxSetDecorated(window: NativeWindow; enabled: bool): NativeResult
+  proc linuxInstallFileDrop(window: NativeWindow): NativeResult
+  proc linuxDisposeFileDrop(window: NativeWindow)
   proc linuxDisposeView(view: NativeWebView)
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc linuxClearBrowsingData(view: NativeWebView;
@@ -339,6 +351,8 @@ elif defined(windows):
   proc windowsSetFullscreen(window: NativeWindow; enabled: bool): NativeResult
   proc windowsSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult
   proc windowsSetDecorated(window: NativeWindow; enabled: bool): NativeResult
+  proc windowsInstallFileDrop(window: NativeWindow): NativeResult
+  proc windowsDisposeFileDrop(window: NativeWindow)
   proc windowsReplaceDocumentStartScript(view: NativeWebView;
                                           script: string): NativeResult
   proc windowsDisposeView(view: NativeWebView)
@@ -534,6 +548,16 @@ proc dispatchResized(window: NativeWindow; width, height: int) =
     window.resizeHandler(width, height)
   except CatchableError:
     ## A resize observer must not break the native event callback boundary.
+    discard
+
+proc dispatchFileDrop(window: NativeWindow; paths: seq[string]) =
+  if window.isNil or window.state in {closing, closed} or
+      window.fileDropHandler.isNil or paths.len == 0:
+    return
+  try:
+    window.fileDropHandler(paths)
+  except CatchableError:
+    ## User code must not unwind through a Win32/GTK drop callback.
     discard
 
 proc dispatchTrayMenu(app: NativeApp; itemId: uint32) =
@@ -988,11 +1012,20 @@ proc setProxy*(view: NativeWebView; value: string): NativeResult =
   if value.contains('\x00') or value.contains('\r') or value.contains('\n'):
     return failure(nativeError(invalidArgument, "webview.setProxy",
       detail = "proxy URL must not contain NUL or line breaks"))
-  view.proxyUrl = value
   if view.state == pending:
+    when defined(windows):
+      if not view.window.isNil and not view.window.app.isNil and
+          view.window.app.state == running:
+        return failure(nativeError(invalidState, "webview.setProxy",
+          detail = "proxy is a construct-only WebView environment option on Windows"))
+    view.proxyUrl = value
     return success()
   when defined(linux) and not defined(niminoWsl):
+    view.proxyUrl = value
     view.linuxSetProxy(value)
+  elif defined(windows):
+    failure(nativeError(invalidState, "webview.setProxy",
+      detail = "proxy is a construct-only WebView environment option on Windows"))
   else:
     failure(nativeError(unsupported, "webview.setProxy"))
 
@@ -1104,6 +1137,23 @@ proc onResize*(window: NativeWindow; handler: NativeResizeHandler): NativeResult
       if signal == 0:
         return failure(nativeError(webViewError, "window.onResize"))
       window.resizeSignalHandler = signal
+  success()
+
+proc onFileDrop*(window: NativeWindow;
+                 handler: NativeFileDropHandler): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.onFileDrop"))
+  window.fileDropHandler = handler
+  when defined(linux) and not defined(niminoWsl):
+    if handler.isNil:
+      window.linuxDisposeFileDrop()
+    elif window.platformWindow != nil:
+      return window.linuxInstallFileDrop()
+  elif defined(windows):
+    if handler.isNil:
+      window.windowsDisposeFileDrop()
+    elif window.platformWindow != nil:
+      return window.windowsInstallFileDrop()
   success()
 
 proc show*(window: NativeWindow): NativeResult =

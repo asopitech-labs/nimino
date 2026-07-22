@@ -30,6 +30,10 @@ type
     width*: int
     height*: int
 
+  HostFileDrop* = object
+    windowId*: uint64
+    paths*: seq[string]
+
   HostDesktopAction* = object
     kind*: string
     itemId*: uint32
@@ -79,6 +83,8 @@ type
     webViewWindowIds: Table[uint64, uint64]
     windowViewCounts: Table[uint64, int]
     windowUserAgents: Table[uint64, string]
+    windowProxyUrls: Table[uint64, string]
+    windowIncognito: Table[uint64, bool]
     uiStartRequested: bool
     pendingMessages: seq[HostWebMessage]
     pendingErrors: seq[HostNativeError]
@@ -87,6 +93,7 @@ type
     pendingNavigationCompletions: seq[HostNavigationCompleted]
     pendingDownloadEvents: seq[HostDownloadEvent]
     pendingWindowResized: seq[HostWindowResized]
+    pendingFileDrops: seq[HostFileDrop]
     pendingWindowClosed: seq[uint64]
     pendingDesktopActions: seq[HostDesktopAction]
     ## Optional synchronous decision hook owned by the transport layer.
@@ -134,6 +141,8 @@ proc forgetWindow(adapter: HostAdapter; windowId: uint64) =
   adapter.windows.del(windowId)
   adapter.windowViewCounts.del(windowId)
   adapter.windowUserAgents.del(windowId)
+  adapter.windowProxyUrls.del(windowId)
+  adapter.windowIncognito.del(windowId)
 
 proc errorAction(detail: string): ProtocolResultOf[HostAction] {.inline.} =
   failureOf[HostAction](protocolError(invalidMessage, detail))
@@ -303,8 +312,16 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
       successOf(payload["userAgent"].getStr())
     else:
       successOf("")
+  let proxyUrl = if payload.hasKey("proxyUrl") and payload["proxyUrl"].kind == JString:
+      successOf(payload["proxyUrl"].getStr())
+    elif payload.hasKey("proxyUrl"):
+      failureOf[string](protocolError(invalidMessage, "proxyUrl must be a string"))
+    else:
+      successOf("")
+  let incognito = payload.optionalBool("incognito", false)
   let multiWindow = payload.optionalBool("multiWindow", true)
   let hideOnClose = payload.optionalBool("hideOnClose", false)
+  let enableDragDrop = payload.optionalBool("enableDragDrop", false)
   if not title.isOk:
     return failureOf[HostAction](title.failure)
   if not width.isOk:
@@ -325,10 +342,16 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
     return failureOf[HostAction](hideWindowDecorations.failure)
   if not userAgent.isOk:
     return failureOf[HostAction](userAgent.failure)
+  if not proxyUrl.isOk:
+    return failureOf[HostAction](proxyUrl.failure)
+  if not incognito.isOk:
+    return failureOf[HostAction](incognito.failure)
   if not multiWindow.isOk:
     return failureOf[HostAction](multiWindow.failure)
   if not hideOnClose.isOk:
     return failureOf[HostAction](hideOnClose.failure)
+  if not enableDragDrop.isOk:
+    return failureOf[HostAction](enableDragDrop.failure)
   if not safeWindowsPathComponent(appId.value) or not safeWindowsPathComponent(profile.value):
     return errorAction("appId/profile contains an unsafe path component")
 
@@ -364,6 +387,14 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
   let windowId = adapter.nextWindowId
   inc adapter.nextWindowId
   let adapterPointer = cast[pointer](adapter)
+  if enableDragDrop.value:
+    let dropConfigured = created.value.onFileDrop(proc(paths: seq[string]) =
+      let owner = cast[HostAdapter](adapterPointer)
+      if owner != nil:
+        owner.pendingFileDrops.add(HostFileDrop(windowId: windowId, paths: paths)))
+    if not dropConfigured.isOk:
+      discard created.value.close()
+      return nativeFailure("native.window.onFileDrop", dropConfigured)
   let closeConfigured = created.value.onCloseRequested(proc(): bool =
     let owner = cast[HostAdapter](adapterPointer)
     if hideOnClose.value:
@@ -390,6 +421,8 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
   adapter.windows[windowId] = created.value
   adapter.windowViewCounts[windowId] = 0
   adapter.windowUserAgents[windowId] = userAgent.value
+  adapter.windowProxyUrls[windowId] = proxyUrl.value
+  adapter.windowIncognito[windowId] = incognito.value
   successOf(HostAction(kind: noHostAction, payload: encodedId("windowId", windowId)))
 
 proc handleWindowSetTitle(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
@@ -628,7 +661,9 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
     return errorAction("unknown windowId")
 
   let created = adapter.windows[windowId.value].newWebView(
-    userAgent = adapter.windowUserAgents.getOrDefault(windowId.value, ""))
+    userAgent = adapter.windowUserAgents.getOrDefault(windowId.value, ""),
+    proxyUrl = adapter.windowProxyUrls.getOrDefault(windowId.value, ""),
+    incognito = adapter.windowIncognito.getOrDefault(windowId.value, false))
   if not created.isOk:
     return nativeFailure("native.webview.create", created)
 
@@ -859,6 +894,12 @@ proc takeWindowResized*(adapter: HostAdapter): seq[HostWindowResized] =
     return @[]
   result = adapter.pendingWindowResized
   adapter.pendingWindowResized.setLen(0)
+
+proc takeFileDrops*(adapter: HostAdapter): seq[HostFileDrop] =
+  if adapter.isNil:
+    return @[]
+  result = adapter.pendingFileDrops
+  adapter.pendingFileDrops.setLen(0)
 
 proc takeDesktopActions*(adapter: HostAdapter): seq[HostDesktopAction] =
   if adapter.isNil:

@@ -20,6 +20,9 @@ grep -q 'MIDL_INTERFACE("177CD9E7-B6F5-451A-94A0-5D7A3A4C4141")' "${header_path}
 grep -q 'MIDL_INTERFACE("fa740d4b-5eae-4344-a8ad-74be31925397")' "${header_path}"
 grep -q 'MIDL_INTERFACE("e9710a06-1d1d-49b2-8234-226f35846ae5")' "${header_path}"
 grep -q 'MIDL_INTERFACE("5a4f5069-5c15-47c3-8646-f4de1c116670")' "${header_path}"
+grep -q 'MIDL_INTERFACE("af641f58-72b2-11ee-b962-0242ac120002")' "${header_path}"
+grep -q 'MIDL_INTERFACE("2fde08a8-1e9a-4766-8c05-95a9ceb9d1c5")' "${header_path}"
+grep -q 'MIDL_INTERFACE("12aae616-8ccb-44ec-bcb3-eb1831881635")' "${header_path}"
 
 slot_for() {
   local vtable="$1"
@@ -65,3 +68,7 @@ test "$(slot_for ICoreWebView2CookieVtbl put_IsHttpOnly)" = "11"
 test "$(slot_for ICoreWebView2CookieVtbl get_IsSecure)" = "14"
 test "$(slot_for ICoreWebView2CookieVtbl put_IsSecure)" = "15"
 test "$(slot_for ICoreWebView2CookieVtbl get_IsSession)" = "16"
+test "$(slot_for ICoreWebView2Environment13Vtbl CreateCoreWebView2ControllerOptions)" = "20"
+test "$(slot_for ICoreWebView2Environment13Vtbl CreateCoreWebView2ControllerWithOptions)" = "21"
+test "$(slot_for ICoreWebView2ControllerOptionsVtbl put_IsInPrivateModeEnabled)" = "6"
+test "$(slot_for ICoreWebView2EnvironmentOptionsVtbl put_AdditionalBrowserArguments)" = "4"

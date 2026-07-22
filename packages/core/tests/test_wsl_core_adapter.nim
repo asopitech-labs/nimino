@@ -22,8 +22,12 @@ let customProtocol = app.registerCustomProtocol("nimino", proc(
   CustomProtocolResponse(statusCode: 201,
     mimeType: "text/plain; charset=utf-8", body: "hello from WSL core"))
 doAssert customProtocol.isOk
-let window = app.newWindow(title = "WSL core test", width = 320, height = 200)
+let window = app.newWindow(CoreWindowOptions(title: "WSL core test", width: 320,
+  height: 200, proxyUrl: "http://127.0.0.1:8080", incognito: true,
+  enableDragDrop: true))
 doAssert window.isOk
+var droppedPaths: seq[string]
+doAssert window.value.onFileDrop(proc(paths: seq[string]) = droppedPaths = paths).isOk
 let structuredFailure = window.value.setTitle("structured error")
 doAssert not structuredFailure.isOk
 doAssert structuredFailure.failure.kind == osError
@@ -45,3 +49,4 @@ doAssert window.value.loadHtml("<main>WSL core protocol test</main>").isOk
 doAssert app.run().isOk
 doAssert invoked
 doAssert customProtocolInvoked
+doAssert droppedPaths == @["/tmp/dropped.txt"]

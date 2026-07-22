@@ -15,6 +15,7 @@ fullscreen = true
 maximized = true
 always-on-top = true
 hide-window-decorations = true
+enable-drag-drop = true
 
 [webview]
 user-agent = "NiminoTest/1.0"
@@ -55,6 +56,7 @@ doAssert parsed.value.icon == "https://discord.com/icon.png"
 doAssert parsed.value.window.width == 1280
 doAssert parsed.value.window.fullscreen
 doAssert parsed.value.window.maximized
+doAssert parsed.value.window.enableDragDrop
 doAssert parsed.value.webview.userAgent == "NiminoTest/1.0"
 doAssert parsed.value.webview.proxyUrl == "socks5://proxy.example:1080"
 doAssert parsed.value.runtime.startToTray
@@ -63,6 +65,15 @@ doAssert parsed.value.permissionsAllow == @["microphone", "notifications"]
 doAssert parsed.value.package.version == "1.2.3"
 doAssert parsed.value.package.categories == @["Network", "Utility"]
 doAssert parsed.value.deepLink.schemes == @["nimino", "foo+bar"]
+
+let local = parse("name = \"Local\"\nid = \"app.local\"\nlocal-entry = \"assets/index.html\"")
+doAssert local.isOk
+doAssert local.value.url.len == 0
+doAssert local.value.localEntry == "assets/index.html"
+let localWithUrl = parse("name = \"Invalid local\"\nid = \"app.invalid-local\"\nurl = \"https://example.com\"\nlocal-entry = \"index.html\"")
+doAssert not localWithUrl.isOk
+let unsafeLocal = parse("name = \"Unsafe local\"\nid = \"app.unsafe-local\"\nlocal-entry = \"../index.html\"")
+doAssert not unsafeLocal.isOk
 
 let metadataDefaults = parse("name = \"Defaults\"\nid = \"app.defaults\"\nurl = \"https://example.com\"")
 doAssert metadataDefaults.isOk
