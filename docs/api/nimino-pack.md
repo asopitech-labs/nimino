@@ -55,9 +55,8 @@ irm 'https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-We
 winget install --id Microsoft.EdgeWebView2Runtime --exact --silent --accept-source-agreements --accept-package-agreements
 ```
 
-このURL方式はuvなどのツールで使われる`irm ... | iex`形式と同じで、取得したPowerShellを
-メモリ上で評価します。監査環境では、READMEに掲載したSHA-256検証付きbootstrapコマンドを
-使用してください。
+この方式は取得したPowerShellをメモリ上で評価し、ローカルSHA-256検証は行いません。
+監査環境では、READMEに掲載したSHA-256検証付きbootstrapコマンドを使用してください。
 
 ```powershell
 $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1'; $p=Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $p; if ((Get-FileHash -Algorithm SHA256 $p).Hash -ne 'FBB373CC34D49F8B1FBA0792363103455EEE30608D16F7BBD32E78197E1D6F8A') { throw 'WebView2 setup script SHA-256 mismatch' }; Set-ExecutionPolicy -Scope Process Bypass; & $p
