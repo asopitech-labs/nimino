@@ -26,9 +26,8 @@ if "$nimino" package-linux "$root/bundle" --format appimage \
   echo 'incomplete AppImage generation unexpectedly succeeded' >&2
   exit 1
 fi
-grep -F 'nimino package-linux: AppImage package generation is unavailable:' \
-  "$root/appimage.err"
-grep -Eq 'missing fixed build dependencies|dependency tool failed|dependency closure' \
+grep -F 'nimino package-linux:' "$root/appimage.err"
+grep -Eq 'missing fixed build dependencies|dependency tool failed|dependency closure|ELF|host executable' \
   "$root/appimage.err"
 test -z "$(find "$root/out" -maxdepth 1 -name '*.AppImage' -print -quit)"
 

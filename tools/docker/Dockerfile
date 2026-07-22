@@ -38,7 +38,9 @@ RUN apt-get update \
       unzip \
       xauth \
       xvfb \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders \
+      /usr/local/bin/gdk-pixbuf-query-loaders
 
 RUN curl --fail --location --retry 3 --silent --show-error \
       --output /tmp/Microsoft.Web.WebView2.${WEBVIEW2_SDK_VERSION}.nupkg \

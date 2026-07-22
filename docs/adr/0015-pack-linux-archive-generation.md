@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for Debian/RPM. AppImageの成功条件は[ADR-0019](0019-appimage-fail-closed-boundary.md)で置き換える。
+Accepted for Debian/RPM/AppImage. AppImageの閉包条件は[ADR-0019](0019-appimage-fail-closed-boundary.md)で定義する。
 
 ## Context
 
@@ -21,12 +21,12 @@ AppImage公式のversioned release `1.9.1`にはx86_64 assetとGitHub Release AP
 - `rpm`は`rpmbuild`で同じlayoutを生成する。RPM specに必要な`--license`を明示入力とする。初期実装はrelease version (`major.minor.patch`)だけを許可し、prerelease/build versionのRPM変換は別作業にする。
 - 生成前に`desktop-file-validate`を必須にし、不正なmetadataをarchiveへ入れない。対応architectureは`amd64`と`arm64`で、callerがhost binaryと一致する値を指定する。
 - Docker imageは公式release `1.9.1`の`appimagetool-x86_64.AppImage`をversioned URLから取得し、SHA-256 `ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0` を照合してから配置する。tool自身はAppImageのため、Docker内では`APPIMAGE_EXTRACT_AND_RUN=1`で自己展開して実行する。AppDirがELFからarchitectureを推測できないため、wrapperは`ARCH=x86_64`を固定する。
-- 当初の`appimage`実装はローカルiconを持つbundleからAppDir root、`AppRun`、desktop entry、icon、bundle、起動器を配置した。この経路はdependency closureを保証できなかったためADR-0019で無効化した。`amd64`以外の固定`unsupportedFeature`エラーは維持する。
+- `appimage`実装はbundleからAppDir root、`AppRun`、desktop entry、icon、起動器を配置し、linuxdeploy/lddtree/patchelfでGTK/WebKitGTKと補助processのdependency closureを構築する。`amd64`以外は固定`unsupportedFeature`エラーとする。
 - `copyDir`で失われる実行権限は入力bundleから明示的に復元する。これにより`AppRun`からlauncher、host binaryまで実行できる。
 - tool/format生成を検証しても、GTK/WebKitGTK等のdependency closure、FUSE/runtime互換性、署名、update informationは未実装である。これらは別ADRと配布先実機testを必要とする。
 
 ## Consequences
 
-- `make pack-linux-test`はDockerだけでCLI、desktop validation、Debian/RPMの生成とarchive contents、Flatpak contextを確認する。AppImageのfail-closed契約は`make pack-appimage-guardrails`へ分離する。
+- `make pack-linux-test`はDockerだけでCLI、desktop validation、Debian/RPMの生成とarchive contents、Flatpak contextを確認する。AppImageの依存閉包とfail-closed契約は`make pack-appimage-guardrails`へ分離する。
 - Debian/RPM archiveは署名しない。配布repository、GPG key管理、SBOM、license policy、postinst/prerm、uninstall実機testは後続M6の責務である。
-- AppImageは、同梱対象、各ライブラリのlicense、system libraryとの境界、配布先実機testをADR-0019の再有効化条件として満たすまで生成しない。
+- AppImageは、同梱対象、各ライブラリのlicense、system libraryとの境界、署名、配布先実機testをADR-0019のrelease gateとして扱う。

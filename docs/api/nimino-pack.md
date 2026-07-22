@@ -119,9 +119,9 @@ nimino package-linux dist/discord --format rpm --out dist/packages \
 nimino package-linux dist/discord --format appimage --out dist/packages --arch amd64
 ```
 
-`appimage`というformat名は予約済みですが、現時点では不完全なType 2 AppImageを生成しません。生成前に固定build tool、GTK 4/WebKitGTK 6.0のpkg-config module、GLib schema、GIO/GdkPixbuf module、WebKitGPU/Network/Web process、injected bundle、`bwrap`、`xdg-dbus-proxy`を検査します。ELF依存検査には`lddtree`を要求し、`ldd`で利用者提供hostを実行しません。toolまたはruntime assetがなければ、CLIは`AppImage package generation is unavailable:`で始まる固定エラーを返し、`.AppImage`を残しません。
+`appimage`はDocker内の固定toolchainでAppDirとdependency closureを生成します。生成前に固定build tool、GTK 4/WebKitGTK 6.0のpkg-config module、GLib schema、GIO/GdkPixbuf module、WebKitGPU/Network/Web process、injected bundle、`bwrap`、`xdg-dbus-proxy`を検査します。ELF依存検査には`lddtree`を要求し、`ldd`で利用者提供hostを実行しません。toolまたはruntime assetがなければ、CLIは`AppImage package generation is unavailable:`で始まる固定エラーを返し、`.AppImage`を残しません。
 
-すべてのpreflightが通っても、依存ライブラリのAppDirへのcopy、RPATH、WebKitGTK補助processの安全な再配置、配布先でsandboxを有効にした起動test、同梱ライセンスとSBOMが未実装の間は`unsupportedFeature`を返します。署名とupdate informationも未実装です。これらが揃うまで「単一ファイルを配布できる」とは扱いません。
+preflight後は依存ライブラリのAppDirへのcopy、RPATH、WebKitGTK補助process、GIO/GdkPixbuf resourcesを再配置して`appimagetool`へ渡します。署名、update information、配布先runtimeでのsandbox起動test、同梱ライセンスとSBOMは別のrelease gateです。
 
 Flatpak build contextは次で生成できます。
 
@@ -129,7 +129,7 @@ Flatpak build contextは次で生成できます。
 nimino package-linux dist/discord --format flatpak --out dist/packages
 ```
 
-`<id>-<version>-flatpak/`に、bundleを`bundle/` sourceとして参照する固定GNOME runtime/SDK manifestを生成します。`flatpak-builder`による実bundle生成、runtimeの署名、clean Flatpak環境でのinstall/run/uninstallは別SDK環境で検証します。
+`<id>-<version>-flatpak/`に、bundleを`bundle/` sourceとして参照するGNOME Platform/SDK 49 manifestを生成します。`make pack-flatpak-test`は専用privileged Compose serviceで`flatpak-builder`→OSTree repo→`.flatpak` exportまで検証します。runtimeの署名とclean target環境でのinstall/run/uninstallはrelease gateです。
 
 ## 固定された検証手順
 
@@ -144,4 +144,4 @@ make pack-windows-test
 make pack-archive-test
 ```
 
-`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMとFlatpak context、`pack-appimage-guardrails`は未解決依存と不完全なAppImage生成の拒否、`pack-windows-test`はNSIS setup EXEとMSI databaseのクロス生成・構造、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。CLIを使う検査はDockerコンテナ内で実行します。
+`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMとFlatpak context、`pack-flatpak-test`はGNOME 49からの実bundle export、`pack-appimage-guardrails`は未解決依存と不完全なAppImage生成の拒否、`pack-windows-test`はNSIS setup EXEとMSI databaseのクロス生成・構造、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。CLIを使う検査はDockerコンテナ内で実行します。

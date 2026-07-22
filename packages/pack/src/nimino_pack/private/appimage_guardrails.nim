@@ -38,10 +38,6 @@ const
     "WebKitWebProcess",
     "injected-bundle/libwebkitgtkinjectedbundle.so"
   ]
-  AppImageIncompleteClosureError* =
-    "AppImage package generation is unavailable: dependency copying and " &
-    "WebKitGTK 6.0 helper relocation are not implemented"
-
 type
   AppImageProbeResult = object
     exitCode: int

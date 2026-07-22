@@ -18,10 +18,6 @@ block fixedDependencyContract:
     "WebKitGPUProcess", "WebKitNetworkProcess", "WebKitWebProcess",
     "injected-bundle/libwebkitgtkinjectedbundle.so"
   ]
-  doAssert AppImageIncompleteClosureError ==
-    "AppImage package generation is unavailable: dependency copying and " &
-    "WebKitGTK 6.0 helper relocation are not implemented"
-
 block resolvedStaticReport:
   let checked = validateAppImageDependencyReport("""
 /app/usr/lib/libgtk-4.so.1
