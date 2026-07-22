@@ -17,6 +17,9 @@ printf '%s\n' \
   'description = "Nimino Linux package test"' \
   'homepage = "https://nimino.example/linux-demo"' \
   'categories = ["Network", "Utility"]' \
+  '' \
+  '[deepLink]' \
+  'schemes = ["nimino", "foo+bar"]' \
   > "$root/input.toml"
 printf '%s\n' \
   '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' \
@@ -34,6 +37,7 @@ dpkg-deb -f "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" Package | grep -Fx
 dpkg-deb -f "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" Architecture | grep -Fx 'amd64'
 dpkg-deb -c "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" | grep -q './opt/nimino/app.nimino.linux-demo/run-nimino.sh'
 dpkg-deb -c "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" | grep -q './usr/share/applications/app.nimino.linux-demo.desktop'
+grep -Fq 'MimeType=x-scheme-handler/nimino;x-scheme-handler/foo+bar;' "$root/bundle/app.nimino.linux-demo.desktop"
 
 "$nimino" package-linux "$root/bundle" --format rpm --out "$root/out" \
   --arch amd64 --license MIT
@@ -50,6 +54,8 @@ grep -F '"app-id": "app.nimino.linux-demo"' "$flatpak_context/app.nimino.linux-d
 grep -F '"runtime": "org.gnome.Platform"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
 grep -F '"type": "dir"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
 grep -F '"path": "bundle"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
+grep -F 'install -Dm644 app.nimino.linux-demo.desktop /app/share/applications/app.nimino.linux-demo.desktop' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
+grep -F 'x-scheme-handler/nimino' "$flatpak_context/bundle/app.nimino.linux-demo.desktop"
 
 "$nimino" pack "$root/input.toml" --out "$root/no-host-bundle"
 if "$nimino" package-linux "$root/no-host-bundle" --format deb --out "$root/no-host-out" 2>"$root/no-host.err"; then

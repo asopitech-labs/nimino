@@ -152,6 +152,10 @@ const
   S_OK* = 0'i32
   E_NOINTERFACE* = -2147467262'i32
   E_POINTER* = -2147467261'i32
+  EAccessDenied* = -2147024891'i32
+  ClassENoAggregation* = -2147221232'i32
+  ClsctxLocalServer* = 0x4'u32
+  RegClsMultipleUse* = 0x1'u32
 
   CoInitApartmentThreaded* = 0x2'u32
   ErrorClassAlreadyExists* = 1410'u32
@@ -222,6 +226,10 @@ const
   IidIUnknown* = WinGuid(
     data1: 0x00000000'u32, data2: 0x0000'u16, data3: 0x0000'u16,
     data4: [0xC0'u8, 0x00'u8, 0x00'u8, 0x00'u8, 0x00'u8, 0x00'u8, 0x00'u8, 0x46'u8]
+  )
+  IidIClassFactory* = WinGuid(
+    data1: 0x00000001'u32, data2: 0x0000'u16, data3: 0x0000'u16,
+    data4: [0xc0'u8, 0x00'u8, 0x00'u8, 0x00'u8, 0x00'u8, 0x00'u8, 0x00'u8, 0x46'u8]
   )
   IidEnvironmentCompletedHandler* = WinGuid(
     data1: 0x4e8a3389'u32, data2: 0xc9d8'u16, data3: 0x4bd2'u16,
@@ -319,6 +327,12 @@ const
     data1: 0xab54de2d'u32, data2: 0x97d9'u16, data3: 0x5528'u16,
     data4: [0xb6'u8, 0xad'u8, 0x10'u8, 0x5a'u8, 0xfe'u8, 0x15'u8, 0x65'u8, 0x30'u8]
   )
+  ## INotificationActivationCallback from notificationactivationcallback.h.
+  ## Its Activate method receives LPCWSTR arguments (not HSTRING values).
+  IidNotificationActivationCallback* = WinGuid(
+    data1: 0x53e31837'u32, data2: 0x6600'u16, data3: 0x4a81'u16,
+    data4: [0x93'u8, 0x95'u8, 0x75'u8, 0xcf'u8, 0xfe'u8, 0x74'u8, 0x6f'u8, 0x94'u8]
+  )
 
   ## Vtable indices include the three IUnknown entries.  Keeping them named
   ## makes header verification and the isolated ABI test explicit.
@@ -364,6 +378,13 @@ proc roGetActivationFactory*(classId: HString; iid: ptr WinGuid; factory: ptr po
   {.stdcall, importc: "RoGetActivationFactory", dynlib: "combase.dll".}
 proc roActivateInstance*(classId: HString; instance: ptr pointer): HResult
   {.stdcall, importc: "RoActivateInstance", dynlib: "combase.dll".}
+proc coRegisterClassObject*(classId: ptr WinGuid; classObject: pointer;
+                            context, flags: uint32; registration: ptr uint32): HResult
+  {.stdcall, importc: "CoRegisterClassObject", dynlib: "ole32.dll".}
+proc coRevokeClassObject*(registration: uint32): HResult
+  {.stdcall, importc: "CoRevokeClassObject", dynlib: "ole32.dll".}
+proc coResumeClassObjects*(): HResult
+  {.stdcall, importc: "CoResumeClassObjects", dynlib: "ole32.dll".}
 
 proc winrtQueryInterface*(instance: pointer; iid: ptr WinGuid;
                           outInstance: ptr pointer): HResult {.inline.} =

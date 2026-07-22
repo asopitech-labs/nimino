@@ -11,6 +11,17 @@ block appOptionsAreValidated:
   doAssert not missingName.isOk
   doAssert missingName.failure.kind == invalidArgument
 
+block deepLinkDeliveryIsExplicit:
+  let created = newApp(id = "tech.asopi.deep-link-test", name = "Deep link test")
+  doAssert created.isOk
+  let app = created.value
+  var received = ""
+  doAssert app.onDeepLink(proc(url: string) = received = url).isOk
+  doAssert app.deliverDeepLink("nimino://open/item?id=1").isOk
+  doAssert received == "nimino://open/item?id=1"
+  doAssert not app.deliverDeepLink("nimino://bad\nvalue").isOk
+  doAssert not app.onDeepLink(nil).isOk
+
 block profilePathsAreContainedAndSafe:
   let profile = profilePath("tech.asopi.example", "work")
   doAssert profile.isOk

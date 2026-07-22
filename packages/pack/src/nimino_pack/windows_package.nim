@@ -30,10 +30,13 @@ type
     uninstaller: string
     appUserModelId: string
     toastActivation: string
+    toastActivatorClsid: string
     shortcutPropertiesScript: string
     startMenuShortcut: string
     webViewRuntime: string
     displayIcon: string
+    hostExecutable: string
+    deepLinkSchemes: seq[string]
 
 proc noControlCharacters(value: string): bool =
   for character in value:
@@ -51,6 +54,17 @@ proc safePackageId(value: string): bool =
 
 proc safeFileName(value: string): bool =
   safePackageId(value) and value.find('/') < 0 and value.find('\\') < 0
+
+proc validClsid(value: string): bool =
+  if value.len != 36:
+    return false
+  for index, character in value:
+    if index in [8, 13, 18, 23]:
+      if character != '-':
+        return false
+    elif character notin {'0'..'9', 'a'..'f', 'A'..'F'}:
+      return false
+  true
 
 proc validateWindowsHost(bundleDirectory: string): PackResult[bool] =
   var found = false
@@ -73,6 +87,27 @@ proc jsonString(node: JsonNode; key: string): PackResult[string] =
     return failure[string](invalidManifest,
       "Windows package metadata requires string field: " & key)
   success(node[key].getStr())
+
+proc jsonStringArray(node: JsonNode; key: string): PackResult[seq[string]] =
+  if node.isNil or node.kind != JObject:
+    return failure[seq[string]](invalidManifest,
+      "Windows package metadata requires string array field: " & key)
+  if not node.hasKey(key):
+    ## Keep schemaVersion 1 bundles generated before deep-link support
+    ## installable without registering any OS URL scheme.
+    return success(newSeq[string]())
+  if node[key].kind != JArray:
+    return failure[seq[string]](invalidManifest,
+      "Windows package metadata requires string array field: " & key)
+  var values: seq[string]
+  for item in node[key].items:
+    if item.kind != JString or not validDeepLinkScheme(item.getStr()):
+      return failure[seq[string]](invalidManifest,
+        "Windows package metadata contains an invalid deep-link scheme")
+    let value = item.getStr().toLowerAscii()
+    if value notin values:
+      values.add(value)
+  success(values)
 
 proc expectedInstallRoot(id: string): string =
   "%LOCALAPPDATA%\\Nimino\\" & id
@@ -100,7 +135,7 @@ proc readWindowsBundleMetadata(bundleDirectory: string): PackResult[WindowsBundl
   var metadata: WindowsBundleMetadata
   for key in ["id", "displayName", "version", "publisher", "description", "homepage",
               "installScope", "installRoot", "entryPoint", "uninstaller",
-              "appUserModelId", "toastActivation", "shortcutPropertiesScript",
+              "appUserModelId", "toastActivation", "toastActivatorClsid", "hostExecutable", "shortcutPropertiesScript",
               "startMenuShortcut", "webViewRuntime", "displayIcon"]:
     let parsed = node.jsonString(key)
     if not parsed.isOk:
@@ -118,11 +153,17 @@ proc readWindowsBundleMetadata(bundleDirectory: string): PackResult[WindowsBundl
     of "uninstaller": metadata.uninstaller = parsed.value
     of "appUserModelId": metadata.appUserModelId = parsed.value
     of "toastActivation": metadata.toastActivation = parsed.value
+    of "toastActivatorClsid": metadata.toastActivatorClsid = parsed.value
+    of "hostExecutable": metadata.hostExecutable = parsed.value
     of "shortcutPropertiesScript": metadata.shortcutPropertiesScript = parsed.value
     of "startMenuShortcut": metadata.startMenuShortcut = parsed.value
     of "webViewRuntime": metadata.webViewRuntime = parsed.value
     of "displayIcon": metadata.displayIcon = parsed.value
     else: discard
+  let deepLinks = node.jsonStringArray("deepLinkSchemes")
+  if not deepLinks.isOk:
+    return failure[WindowsBundleMetadata](deepLinks.error.kind, deepLinks.error.detail)
+  metadata.deepLinkSchemes = deepLinks.value
   if not safePackageId(metadata.id) or
       not noControlCharacters(metadata.displayName) or
       not noControlCharacters(metadata.version) or
@@ -136,12 +177,17 @@ proc readWindowsBundleMetadata(bundleDirectory: string): PackResult[WindowsBundl
       metadata.entryPoint != "run-nimino.cmd" or
       metadata.uninstaller != "uninstall-windows.ps1" or
       metadata.appUserModelId != metadata.id or
-      metadata.toastActivation != "inProcess" or
+      metadata.toastActivation != "inProcessOrComLocalServer" or
+      not validClsid(metadata.toastActivatorClsid) or
+      not safeFileName(metadata.hostExecutable) or
       metadata.shortcutPropertiesScript != "register-windows-shortcut.ps1" or
       metadata.startMenuShortcut != metadata.id.expectedShortcut() or
       metadata.webViewRuntime != "evergreen":
     return failure[WindowsBundleMetadata](invalidManifest,
       "Windows package metadata does not match the Nimino per-user install layout")
+  if not fileExists(bundleDirectory / metadata.hostExecutable):
+    return failure[WindowsBundleMetadata](ioFailure,
+      "Windows package bundle is missing a host executable")
   if metadata.displayIcon.len > 0 and
       (not safeFileName(metadata.displayIcon) or
        not fileExists(bundleDirectory / metadata.displayIcon)):
@@ -207,7 +253,8 @@ proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: st
     "  CreateShortcut \"" & shortcut & "\" \"$INSTDIR\\" & metadata.entryPoint & "\"\n" &
     "  ExecWait '\"powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"$INSTDIR\\" &
       metadata.shortcutPropertiesScript & "\" -ShortcutPath \"" & shortcut &
-      "\" -AppUserModelId \"" & metadata.appUserModelId.nsisString() & "\"' $0\n" &
+      "\" -AppUserModelId \"" & metadata.appUserModelId.nsisString() &
+      "\" -ToastActivatorClsid \"" & metadata.toastActivatorClsid.nsisString() & "\"' $0\n" &
     "  StrCmp $0 \"0\" +2\n" &
     "  Abort \"Unable to configure Windows AppUserModelId shortcut property\"\n" &
     "  WriteRegStr HKCU \"" & uninstallKey & "\" \"DisplayName\" \"" &
@@ -227,12 +274,26 @@ proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: st
   if metadata.displayIcon.len > 0:
     result.add("  WriteRegStr HKCU \"" & uninstallKey & "\" \"DisplayIcon\" \"$INSTDIR\\" &
       metadata.displayIcon & "\"\n")
+  result.add("  WriteRegStr HKCU \"Software\\Classes\\CLSID\\{" &
+    metadata.toastActivatorClsid & "}\\LocalServer32\" \"\" \"$\\\"$INSTDIR\\" &
+    metadata.hostExecutable & "$\\\" -Embedding --manifest $\\\"$INSTDIR\\nimino-manifest.json$\\\"\"\n")
+  for scheme in metadata.deepLinkSchemes:
+    let schemeKey = "Software\\Classes\\" & scheme
+    result.add("  WriteRegStr HKCU \"" & schemeKey & "\" \"\" \"URL:Nimino " &
+      scheme.nsisString() & " Protocol\"\n" &
+      "  WriteRegStr HKCU \"" & schemeKey & "\" \"URL Protocol\" \"\"\n" &
+      "  WriteRegStr HKCU \"" & schemeKey & "\\shell\\open\\command\" \"\" \"$\\\"$INSTDIR\\" &
+      metadata.entryPoint & "$\\\" $\\\"%1$\\\"\"\n")
   result.add("SectionEnd\n\n" &
     "Section \"Uninstall\"\n" &
     "  SetShellVarContext current\n" &
     "  Delete \"" & shortcut & "\"\n" &
     "  DeleteRegKey HKCU \"" & uninstallKey & "\"\n" &
-    "  RMDir /r \"$INSTDIR\"\n" &
+    "  DeleteRegKey HKCU \"Software\\Classes\\CLSID\\{" & metadata.toastActivatorClsid & "}\"\n" &
+    "  RMDir /r \"$INSTDIR\"\n")
+  for scheme in metadata.deepLinkSchemes:
+    result.add("  DeleteRegKey HKCU \"Software\\Classes\\" & scheme & "\"\n")
+  result.add(
     "  RMDir \"$SMPROGRAMS\\Nimino\"\n" &
     "SectionEnd\n")
 
@@ -333,6 +394,33 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
       "              <File Id='" & fileId & "' KeyPath='yes' Source='" & entry.source.xmlAttribute() & "' />\n" &
       "            </Component>\n")
     references.add("        <ComponentRef Id='" & componentId & "' />\n")
+  for index, scheme in metadata.deepLinkSchemes:
+    let componentId = "cmpDeepLink" & $index
+    let componentGuid = stableMsiGuid("deep-link:" & metadata.id & ":" & scheme)
+    let command = "&quot;[INSTALLDIR]" & metadata.entryPoint & "&quot; &quot;%1&quot;"
+    result.add("            <Component Id='" & componentId & "' Guid='{" & componentGuid & "}' Win64='yes'>\n" &
+      "              <RegistryKey Root='HKCU' Key='Software\\Classes\\" & scheme & "'>\n" &
+      "                <RegistryValue Type='string' Value='URL:Nimino " & scheme & " Protocol' KeyPath='yes' />\n" &
+      "                <RegistryValue Name='URL Protocol' Type='string' Value='' />\n" &
+      "              </RegistryKey>\n" &
+      "              <RegistryKey Root='HKCU' Key='Software\\Classes\\" & scheme & "\\shell\\open\\command'>\n" &
+      "                <RegistryValue Type='string' Value='" & command & "' />\n" &
+      "              </RegistryKey>\n" &
+      "            </Component>\n")
+    references.add("        <ComponentRef Id='" & componentId & "' />\n")
+  let toastComponentId = "cmpToastActivator"
+  let toastComponentGuid = stableMsiGuid("toast-activator:" & metadata.id)
+  let toastCommand = "&quot;[INSTALLDIR]" & metadata.hostExecutable &
+    "&quot; -Embedding --manifest &quot;[INSTALLDIR]nimino-manifest.json&quot;"
+  result.add("            <Component Id='" & toastComponentId & "' Guid='{" &
+    toastComponentGuid & "}' Win64='yes'>\n" &
+    "              <RegistryKey Root='HKCU' Key='Software\\Classes\\CLSID\\{" &
+    metadata.toastActivatorClsid & "}\\LocalServer32'>\n" &
+    "                <RegistryValue Type='string' Value='" & toastCommand &
+    "' KeyPath='yes' />\n" &
+    "              </RegistryKey>\n" &
+    "            </Component>\n")
+  references.add("        <ComponentRef Id='" & toastComponentId & "' />\n")
   result.add("          </Directory>\n" &
     "        </Directory>\n" &
     "      </Directory>\n" &

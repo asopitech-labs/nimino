@@ -1,7 +1,7 @@
 ## Generic Nimino host used by packaged bundles and online builds.
 ## It intentionally depends on nimino-core only; packaging remains in nimino-pack.
 
-import std/[json, os]
+import std/[json, os, sequtils, strutils, uri]
 
 import nimino_core
 
@@ -52,9 +52,36 @@ proc readInjection(root: string; names: seq[string]): seq[string] =
       fail("injection file cannot be read: " & name)
 
 proc main() =
-  if paramCount() != 2 or paramStr(1) != "--manifest":
+  ## Toast activation of a terminated Win32 process is forwarded by the
+  ## generated launcher as an additional argument.  Keep the manifest option
+  ## mandatory, but accept and preserve the activation payload so the native
+  ## layer can deliver it through `onNotificationActivated`.
+  var manifestArgument = ""
+  var activationArguments: seq[string]
+  var skipActivationPayload = false
+  var index = 1
+  while index <= paramCount():
+    let argument = paramStr(index)
+    if argument == "--manifest":
+      skipActivationPayload = false
+      if index == paramCount():
+        fail("--manifest requires a path", QuitFailure)
+      manifestArgument = paramStr(index + 1)
+      inc index
+    elif argument in ["--nimino-notification", "-Embedding", "--embedding",
+                      "-ToastActivated", "--toastactivated"]:
+      ## COM local-server and the explicit notification fallback are host
+      ## control arguments, not deep-link URLs.  The payload for the fallback
+      ## is consumed here by the native startup notification parser.
+      skipActivationPayload = argument == "--nimino-notification"
+    elif skipActivationPayload:
+      skipActivationPayload = false
+    elif not argument.startsWith("-"):
+      activationArguments.add(argument)
+    inc index
+  if manifestArgument.len == 0:
     fail("usage: nimino-host --manifest <nimino-manifest.json>", QuitFailure)
-  let manifestPath = absolutePath(paramStr(2))
+  let manifestPath = absolutePath(manifestArgument)
   if not fileExists(manifestPath):
     fail("manifest does not exist: " & manifestPath)
   let root = parentDir(manifestPath)
@@ -73,10 +100,23 @@ proc main() =
       manifest["navigation"] else: newJObject()
   let injection = if manifest.hasKey("injection") and manifest["injection"].kind == JObject:
       manifest["injection"] else: newJObject()
+  let deepLinkNode = if manifest.hasKey("deepLink") and manifest["deepLink"].kind == JObject:
+      manifest["deepLink"] else: newJObject()
+  let allowedDeepLinkSchemes = deepLinkNode.stringArray("schemes")
   let created = newApp(id = appId, name = appName)
   if not created.isOk:
     fail(created.failure.detail)
   let app = created.value
+  ## Register before `run()` so both in-process WinRT activation and the
+  ## terminated-process command-line activation path are delivered.  The
+  ## generic host has no application-specific handler, therefore it reports
+  ## the event to stderr for diagnostics while library consumers install
+  ## their own callback through nimino-core.
+  when defined(windows):
+    let activation = app.onNotificationActivated(proc(notificationId: string) =
+      stderr.writeLine("nimino-host: notification activated: " & notificationId))
+    if not activation.isOk:
+      fail(activation.failure.detail)
   let windowCreated = app.newWindow(CoreWindowOptions(
     title: appName,
     width: windowNode.integer("width", 1200),
@@ -92,6 +132,16 @@ proc main() =
     deny: navigation.stringArray("external")))
   if not rules.isOk:
     fail(rules.failure.detail)
+  for activation in activationArguments:
+    let parsed = try: parseUri(activation)
+    except CatchableError:
+      fail("deep-link activation is malformed")
+    let scheme = parsed.scheme.toLowerAscii()
+    if scheme.len == 0 or scheme notin allowedDeepLinkSchemes.mapIt(it.toLowerAscii()):
+      fail("deep-link activation scheme is not declared by the manifest")
+    let delivered = app.deliverDeepLink(activation)
+    if not delivered.isOk:
+      fail(delivered.failure.detail)
   let loaded = if url.len > 0: window.loadUrl(url) else: CoreResult(isOk: true)
   if not loaded.isOk:
     fail(loaded.failure.detail)

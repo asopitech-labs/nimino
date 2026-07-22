@@ -117,6 +117,8 @@ type
   CustomProtocolHandler* = proc(
     request: CustomProtocolRequest): CustomProtocolResponse {.closure.}
 
+  DeepLinkHandler* = proc(url: string) {.closure.}
+
   DesktopMenuItem* = object
     ## A validated command item for the application menu or system tray.
     id*: uint32
@@ -236,6 +238,7 @@ type
     nativeMenuHandler: proc(itemId: uint32)
     trayMenuHandler: proc(itemId: uint32)
     notificationActivatedHandler: proc(notificationId: string)
+    deepLinkHandler: DeepLinkHandler
     appLogger: Logger
     customProtocolHandler: CustomProtocolHandler
     when defined(linux):
@@ -1125,6 +1128,36 @@ proc onNotificationActivated*(app: App;
       return coreFailure(registered.failure.mapNativeError())
   of wslBackend:
     discard
+  coreSuccess()
+
+proc onDeepLink*(app: App; handler: DeepLinkHandler): CoreResult =
+  ## Register an explicit OS deep-link callback.  Packaging registers the
+  ## scheme with the desktop shell; this callback only delivers a validated
+  ## launcher/host activation payload and never registers an OS scheme itself.
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.onDeepLink"))
+  if handler.isNil:
+    return coreFailure(coreError(invalidArgument, "app.onDeepLink",
+      detail = "a deep-link handler is required"))
+  app.deepLinkHandler = handler
+  coreSuccess()
+
+proc deliverDeepLink*(app: App; url: string): CoreResult =
+  ## Host adapters use this narrow entry point to deliver startup activation.
+  ## The caller remains responsible for manifest-level scheme allowlisting.
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.deliverDeepLink"))
+  try:
+    let parsed = parseUri(url)
+    if parsed.scheme.len == 0 or url.find({'\r', '\n', '\0'}) >= 0:
+      return coreFailure(coreError(invalidArgument, "app.deliverDeepLink",
+        detail = "deep-link URL must contain a scheme and no control characters"))
+  except CatchableError:
+    return coreFailure(coreError(invalidArgument, "app.deliverDeepLink",
+      detail = "deep-link URL is malformed"))
+  if not app.deepLinkHandler.isNil:
+    try: app.deepLinkHandler(url)
+    except CatchableError: discard
   coreSuccess()
 
 proc supports*(app: App; capability: Capability): CoreResultOf[bool] =

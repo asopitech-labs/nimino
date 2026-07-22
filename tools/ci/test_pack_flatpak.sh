@@ -21,6 +21,9 @@ printf '%s\n' \
   'description = "Nimino Flatpak package test"' \
   'homepage = "https://nimino.example/flatpak-demo"' \
   'categories = ["Network", "Utility"]' \
+  '' \
+  '[deepLink]' \
+  'schemes = ["nimino", "foo+bar"]' \
   > "$root/input.toml"
 printf '%s\n' \
   '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' \
@@ -43,6 +46,8 @@ test -f "$context/bundle/run-nimino.sh"
 grep -Fq '"runtime-version": "'"$runtime_version"'"' "$manifest"
 grep -Fq '"type": "dir"' "$manifest"
 grep -Fq '"path": "bundle"' "$manifest"
+grep -Fq 'install -Dm644 app.nimino.flatpak-demo.desktop /app/share/applications/app.nimino.flatpak-demo.desktop' "$manifest"
+grep -Fq 'MimeType=x-scheme-handler/nimino;x-scheme-handler/foo+bar;' "$context/bundle/app.nimino.flatpak-demo.desktop"
 
 command -v flatpak >/dev/null
 command -v flatpak-builder >/dev/null

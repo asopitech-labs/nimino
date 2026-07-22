@@ -29,6 +29,9 @@ allow = ["microphone", "notifications"]
 [injection]
 css = ["custom.css"]
 javascript = ["custom.js"]
+
+[deepLink]
+schemes = ["Nimino", "foo+bar", "nimino"]
 """)
 doAssert parsed.isOk
 doAssert parsed.value.name == "Discord"
@@ -38,6 +41,7 @@ doAssert parsed.value.navigationAllow.len == 2
 doAssert parsed.value.permissionsAllow == @["microphone", "notifications"]
 doAssert parsed.value.package.version == "1.2.3"
 doAssert parsed.value.package.categories == @["Network", "Utility"]
+doAssert parsed.value.deepLink.schemes == @["nimino", "foo+bar"]
 
 let metadataDefaults = parse("name = \"Defaults\"\nid = \"app.defaults\"\nurl = \"https://example.com\"")
 doAssert metadataDefaults.isOk
@@ -87,5 +91,9 @@ let missingHost = parse("name = \"Missing host\"\nid = \"app.missing\"\nurl = \"
 doAssert not missingHost.isOk
 let invalidNavigation = parse("name = \"Navigation\"\nid = \"app.nav\"\nurl = \"https://example.com\"\n[navigation]\nallow = [\"example.com\"]")
 doAssert not invalidNavigation.isOk
+let invalidDeepLink = parse("name = \"Deep link\"\nid = \"app.deep\"\nurl = \"https://example.com\"\n[deepLink]\nschemes = [\"https\"]")
+doAssert not invalidDeepLink.isOk
+let invalidDeepLinkName = parse("name = \"Deep link\"\nid = \"app.deep-name\"\nurl = \"https://example.com\"\n[deepLink]\nschemes = [\"9invalid\"]")
+doAssert not invalidDeepLinkName.isOk
 
 echo "nimino-pack manifest tests passed"

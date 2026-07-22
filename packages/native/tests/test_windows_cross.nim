@@ -4,6 +4,15 @@ import nimino_native
 
 let app = newNativeApp()
 let identityApp = newNativeApp(NativeAppOptions(appId: "app.nimino.windows-cross"))
+let startupActivationApp = newNativeApp(NativeAppOptions(
+  appId: "app.nimino.windows-cross-startup",
+  initialNotificationId: "startup-payload"))
+## The low-level option is used by launchers/tests to model a terminated
+## process.  The real backend also accepts the same payload from its command
+## line before `run()` and delivers it through this callback.
+doAssert startupActivationApp.onNotificationActivated(proc(notificationId: string) = discard).isOk
+let activatorClsid = windowsToastActivatorClsid("app.nimino.windows-cross-startup")
+doAssert activatorClsid.data1 != 0
 doAssert identityApp.supports(nativeNotification)
 doAssert app.supports(systemTray)
 doAssert app.supports(nativeMenu)

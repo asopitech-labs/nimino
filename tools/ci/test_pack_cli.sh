@@ -18,6 +18,9 @@ printf '%s\n' \
   'publisher = "Nimino Labs"' \
   'homepage = "https://nimino.example/demo"' \
   'categories = ["Network", "Utility"]' \
+  '' \
+  '[deepLink]' \
+  'schemes = ["NIMINO", "foo+bar"]' \
   > "$root/input.toml"
 printf '#!/bin/sh\n' > "$root/host"
 printf 'icon' > "$root/icon.png"
@@ -44,8 +47,17 @@ grep -Fx 'Exec=/opt/nimino/app.nimino.demo/run-nimino.sh' "$root/out/app.nimino.
 grep -Fx 'TryExec=/opt/nimino/app.nimino.demo/run-nimino.sh' "$root/out/app.nimino.demo.desktop"
 grep -Fx 'Icon=/opt/nimino/app.nimino.demo/icon.png' "$root/out/app.nimino.demo.desktop"
 grep -Fx 'Categories=Network;Utility;' "$root/out/app.nimino.demo.desktop"
+grep -Fx 'MimeType=x-scheme-handler/nimino;x-scheme-handler/foo+bar;' "$root/out/app.nimino.demo.desktop"
+grep -Fx 'X-Nimino-Deep-Link-Schemes=nimino;foo+bar;' "$root/out/app.nimino.demo.desktop"
 grep -q '"version": "1.2.3"' "$root/out/nimino-manifest.json"
+grep -q '"deepLink": {' "$root/out/nimino-manifest.json"
+grep -q '"deepLinkSchemes": \[' "$root/out/nimino-linux-package.json"
+grep -q '"deepLinkSchemes": \[' "$root/out/nimino-windows-installer.json"
+grep -q '"nimino"' "$root/out/nimino-manifest.json"
 grep -q '"installScope": "perUser"' "$root/out/nimino-windows-installer.json"
+grep -Eq '"toastActivatorClsid": "[0-9A-Fa-f-]{36}"' "$root/out/nimino-windows-installer.json"
+grep -q 'System.AppUserModel.ToastActivatorCLSID' "$root/out/register-windows-shortcut.ps1"
+grep -q 'LocalServer32' "$root/out/install-windows.ps1"
 grep -q 'DisplayVersion' "$root/out/install-windows.ps1"
 grep -q 'UninstallString' "$root/out/install-windows.ps1"
 grep -q 'Remove-Item -LiteralPath \$target' "$root/out/uninstall-windows.ps1"
@@ -62,6 +74,12 @@ grep -q 'https://example.com' "$root/url-out/nimino-manifest.json"
 grep -q 'icon.png' "$root/url-out/nimino-manifest.json"
 test -s "$root/url-out/app.nimino.demo-url.desktop"
 ! grep -q '^Icon=' "$root/url-out/app.nimino.demo-url.desktop"
+
+"$nimino" pack https://example.com --name DemoUrlDeep --id app.nimino.demo-url-deep \
+  --deep-link "DEMO" --out "$root/url-deep-out"
+grep -Fq '"schemes": [' "$root/url-deep-out/nimino-manifest.json"
+grep -Fq '"demo"' "$root/url-deep-out/nimino-manifest.json"
+grep -Fq 'MimeType=x-scheme-handler/demo;' "$root/url-deep-out/app.nimino.demo-url-deep.desktop"
 
 "$nimino" pack HTTPS://example.com --name DemoUpperUrl --id app.nimino.demo-upper-url \
   --out "$root/upper-url-out"

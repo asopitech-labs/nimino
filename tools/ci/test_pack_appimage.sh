@@ -18,6 +18,22 @@ printf '%s\n' \
   --icon "$root/icon.svg" \
   --out "$root/bundle" \
   --host "$host"
+
+# The CLI URL form has no deep-link flag, so add a manifest fixture through the
+# TOML path and ensure the AppImage keeps the OS registration metadata in both
+# desktop-entry copies.
+cat > "$root/input.toml" <<EOF
+name = "AppImageSmoke"
+id = "app.nimino.appimage-smoke"
+url = "https://example.com"
+icon = "$root/icon.svg"
+[deepLink]
+schemes = ["nimino"]
+EOF
+rm -rf "$root/bundle"
+"$nimino" pack "$root/input.toml" \
+  --out "$root/bundle" \
+  --host "$host"
 "$nimino" package-linux "$root/bundle" --format appimage \
   --out "$root/out" --arch amd64
 
@@ -30,5 +46,8 @@ test -n "$offset"
 unsquashfs -offset "$offset" -l "$artifact" | grep -F "app.nimino.appimage-smoke.desktop"
 unsquashfs -offset "$offset" -l "$artifact" | grep -F 'AppRun'
 unsquashfs -offset "$offset" -l "$artifact" | grep -F 'libwebkitgtk-6.0.so.4'
+unsquashfs -offset "$offset" -cat "$artifact" \
+  "app.nimino.appimage-smoke.desktop" | \
+  grep -F 'MimeType=x-scheme-handler/nimino;'
 
 echo "AppImage package smoke passed: $artifact"

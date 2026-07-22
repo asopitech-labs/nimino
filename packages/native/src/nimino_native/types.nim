@@ -7,6 +7,11 @@ type
     ## Stable application identity used by native platform registration.  The
     ## value is kept private to the backend and is never exposed to WebView.
     appId*: string
+    ## Optional notification activation payload used by launchers and tests.
+    ## When empty, the Windows backend also inspects the process command line
+    ## for a toast activation argument.  This is intentionally low-level;
+    ## applications normally use `onNotificationActivated` instead.
+    initialNotificationId*: string
 
   NativeIdleHandler* = proc() {.closure.}
   NativeUiHandler* = proc() {.closure.}
@@ -174,6 +179,10 @@ type
     notificationVisible: bool
     notificationWindow: pointer
     notificationId: string
+    startupNotificationId: string
+    toastActivatorProcess: bool
+    toastActivatorClassCookie: uint32
+    toastActivatorFactory: pointer
     notificationActivatedHandler: NativeNotificationActivatedHandler
     customProtocolScheme: string
     customProtocolHandler: NativeCustomProtocolHandler
@@ -634,6 +643,11 @@ proc newNativeApp*(options: NativeAppOptions): NativeApp =
   new(result)
   result.state = created
   result.appId = if options.appId.len > 0: options.appId else: "tech.asopi.nimino.native"
+  result.startupNotificationId = options.initialNotificationId
+  when defined(windows):
+    result.toastActivatorProcess = windowsIsToastActivatorProcess()
+    if result.startupNotificationId.len == 0:
+      result.startupNotificationId = windowsStartupNotificationId()
   initLock(result.uiTaskLock)
   result.capabilities = {webPermissionEvents}
   when defined(windows):

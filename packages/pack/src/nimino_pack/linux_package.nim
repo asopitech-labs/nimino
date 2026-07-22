@@ -4,7 +4,7 @@
 ## re-parsing a TOML manifest.  The generated bundle is the contract between
 ## `nimino pack` and OS-specific package creation.
 
-import std/[json, os, osproc, strutils, times]
+import std/[json, os, osproc, sequtils, strutils, times]
 
 import ./[manifest, flatpak]
 import ./private/appimage_guardrails
@@ -35,6 +35,7 @@ type
     entryPoint: string
     manifest: string
     icon: string
+    deepLinkSchemes: seq[string]
 
 proc noControlCharacters(value: string): bool =
   for character in value:
@@ -81,6 +82,27 @@ proc jsonString(node: JsonNode; key: string): PackResult[string] =
       "Linux package metadata requires string field: " & key)
   success(node[key].getStr())
 
+proc jsonStringArray(node: JsonNode; key: string): PackResult[seq[string]] =
+  if node.isNil or node.kind != JObject:
+    return failure[seq[string]](invalidManifest,
+      "Linux package metadata requires string array field: " & key)
+  if not node.hasKey(key):
+    ## schemaVersion 1 bundles created before deep-link support remain
+    ## installable; absence means that no OS scheme is registered.
+    return success(newSeq[string]())
+  if node[key].kind != JArray:
+    return failure[seq[string]](invalidManifest,
+      "Linux package metadata requires string array field: " & key)
+  var values: seq[string]
+  for item in node[key].items:
+    if item.kind != JString or not validDeepLinkScheme(item.getStr()):
+      return failure[seq[string]](invalidManifest,
+        "Linux package metadata contains an invalid deep-link scheme")
+    let value = item.getStr().toLowerAscii()
+    if value notin values:
+      values.add(value)
+  success(values)
+
 proc expectedInstallRoot(id: string): string = "/opt/nimino/" & id
 
 proc readLinuxBundleMetadata(bundleDirectory: string): PackResult[LinuxBundleMetadata] =
@@ -118,6 +140,10 @@ proc readLinuxBundleMetadata(bundleDirectory: string): PackResult[LinuxBundleMet
     of "manifest": metadata.manifest = parsed.value
     of "icon": metadata.icon = parsed.value
     else: discard
+  let deepLinks = node.jsonStringArray("deepLinkSchemes")
+  if not deepLinks.isOk:
+    return failure[LinuxBundleMetadata](deepLinks.error.kind, deepLinks.error.detail)
+  metadata.deepLinkSchemes = deepLinks.value
   if not safePackageId(metadata.id) or not noControlCharacters(metadata.name) or
       not noControlCharacters(metadata.version) or not noControlCharacters(metadata.description) or
       not noControlCharacters(metadata.homepage):
@@ -441,7 +467,7 @@ proc waitForAppImageSquashfs(path: string): PackResult[bool] =
     "appimagetool produced an invalid AppImage: " & lastDetail)
 
 proc appImageDesktop(metadata: LinuxBundleMetadata): string =
-  "[Desktop Entry]\n" &
+  result = "[Desktop Entry]\n" &
     "Type=Application\n" &
     "Name=" & metadata.name & "\n" &
     "Comment=" & metadata.description & "\n" &
@@ -451,6 +477,10 @@ proc appImageDesktop(metadata: LinuxBundleMetadata): string =
     "Icon=" & metadata.id & "\n" &
     "Terminal=false\n" &
     "Categories=Network;\n"
+  if metadata.deepLinkSchemes.len > 0:
+    result.add("MimeType=" & metadata.deepLinkSchemes.mapIt(
+      "x-scheme-handler/" & it).join(";") & ";\n" &
+      "X-Nimino-Deep-Link-Schemes=" & metadata.deepLinkSchemes.join(";") & ";\n")
 
 proc buildAppImage(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
                    workDirectory, debArchitecture: string): PackResult[string] =

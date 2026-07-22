@@ -18,7 +18,8 @@ function Set-SmokePhase([string]$phase) {
 function Assert-WebView2Runtime {
   $roots = @(
     (Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application"),
-    (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application")
+    (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application"),
+    (Join-Path $env:LOCALAPPDATA "Microsoft\EdgeWebView\Application")
   ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
   $versions = foreach ($root in $roots) {
     Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
@@ -493,17 +494,73 @@ try {
   }
   Wait-ForNavigationCancelled $webViewId $script:deniedNavigationUrl
 
+  Set-SmokePhase "WebView2 CookieManager set"
+  $cookie = @{
+    name = "nimino-runtime-smoke"
+    value = "cookie-value"
+    domain = "example.com"
+    path = "/"
+    secure = $true
+    httpOnly = $true
+    expires = ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 3600)
+  }
+  $cookieSetRequestId = "14"
+  Write-Frame @{
+    version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+    requestId = $cookieSetRequestId; eventId = "0"; method = "native.webview.setCookie"
+    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; cookie = $cookie })
+    error = ""; timeoutMs = 5000
+  }
+  $cookieSetResponse = Read-Response $cookieSetRequestId
+  if (-not [string]::IsNullOrEmpty($cookieSetResponse.error)) {
+    throw "WebView2 CookieManager could not set a cookie: $($cookieSetResponse.error)"
+  }
+
+  Set-SmokePhase "WebView2 CookieManager get"
+  $cookieGetRequestId = "15"
+  Write-Frame @{
+    version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+    requestId = $cookieGetRequestId; eventId = "0"; method = "native.webview.getCookies"
+    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; url = "https://example.com/" })
+    error = ""; timeoutMs = 5000
+  }
+  $cookieGetResponse = Read-Response $cookieGetRequestId
+  if (-not [string]::IsNullOrEmpty($cookieGetResponse.error)) {
+    throw "WebView2 CookieManager could not query cookies: $($cookieGetResponse.error)"
+  }
+  $cookiePayload = $cookieGetResponse.payload | ConvertFrom-Json
+  $queriedCookies = @($cookiePayload.cookies)
+  $queriedCookie = $queriedCookies | Where-Object {
+    $_.name -eq $cookie.name -and $_.value -eq $cookie.value -and $_.httpOnly
+  } | Select-Object -First 1
+  if ($null -eq $queriedCookie) {
+    throw "WebView2 CookieManager did not return the HttpOnly smoke cookie"
+  }
+
+  Set-SmokePhase "WebView2 CookieManager delete"
+  $cookieDeleteRequestId = "16"
+  Write-Frame @{
+    version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+    requestId = $cookieDeleteRequestId; eventId = "0"; method = "native.webview.deleteCookie"
+    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; cookie = $cookie })
+    error = ""; timeoutMs = 5000
+  }
+  $cookieDeleteResponse = Read-Response $cookieDeleteRequestId
+  if (-not [string]::IsNullOrEmpty($cookieDeleteResponse.error)) {
+    throw "WebView2 CookieManager could not delete the smoke cookie: $($cookieDeleteResponse.error)"
+  }
+
   if ($VerifyNewWindow) {
     $newWindowTitle = "Nimino WebView2 New Window Smoke"
     Set-SmokePhase "new-window test title"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-      requestId = "14"; eventId = "0"; method = "native.window.setTitle"
+      requestId = "18"; eventId = "0"; method = "native.window.setTitle"
       payload = (ConvertTo-Json -Compress @{ windowId = $windowId; title = $newWindowTitle })
       error = ""; timeoutMs = 5000
     }
     $newWindowTitleResponse = Read-Frame
-    if ($newWindowTitleResponse.kind -ne "response" -or $newWindowTitleResponse.requestId -ne "14" -or
+    if ($newWindowTitleResponse.kind -ne "response" -or $newWindowTitleResponse.requestId -ne "18" -or
         -not [string]::IsNullOrEmpty($newWindowTitleResponse.error)) {
       throw "Host did not set the new-window test title"
     }
@@ -513,12 +570,12 @@ try {
     Set-SmokePhase "new-window page loading"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-      requestId = "15"; eventId = "0"; method = "native.webview.loadHtml"
+      requestId = "19"; eventId = "0"; method = "native.webview.loadHtml"
       payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; html = $newWindowHtml })
       error = ""; timeoutMs = 5000
     }
     $newWindowLoadResponse = Read-Frame
-    if ($newWindowLoadResponse.kind -ne "response" -or $newWindowLoadResponse.requestId -ne "15" -or
+    if ($newWindowLoadResponse.kind -ne "response" -or $newWindowLoadResponse.requestId -ne "19" -or
         -not [string]::IsNullOrEmpty($newWindowLoadResponse.error)) {
       throw "Host did not load the new-window test page"
     }
@@ -527,12 +584,12 @@ try {
     Set-SmokePhase "new-window page message bridge"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
-      requestId = "16"; eventId = "0"; method = "native.webview.evalJavaScript"
+      requestId = "20"; eventId = "0"; method = "native.webview.evalJavaScript"
       payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "chrome.webview.postMessage('new-window-page-ready')" })
       error = ""; timeoutMs = 5000
     }
     $newWindowBridgeResponse = Read-Frame
-    if ($newWindowBridgeResponse.kind -ne "response" -or $newWindowBridgeResponse.requestId -ne "16" -or
+    if ($newWindowBridgeResponse.kind -ne "response" -or $newWindowBridgeResponse.requestId -ne "20" -or
         -not [string]::IsNullOrEmpty($newWindowBridgeResponse.error)) {
       throw "Host did not execute the new-window page bridge preflight"
     }
@@ -548,7 +605,7 @@ try {
     ## The successful page-ready bridge is the popup intent marker.  Do not
     ## issue a second synthetic click/message here: WebView2 may defer or drop
     ## that callback while processing a non-user-initiated script.
-    $popupWindowRequestId = "18"
+    $popupWindowRequestId = "21"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $popupWindowRequestId; eventId = "0"; method = "native.window.create"
@@ -561,7 +618,7 @@ try {
     $popupWindowId = ($popupWindowResponse.payload | ConvertFrom-Json).windowId
     Set-SmokePhase "popup window created"
     Set-SmokePhase "popup WebView creation"
-    $popupViewRequestId = "19"
+    $popupViewRequestId = "22"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $popupViewRequestId; eventId = "0"; method = "native.webview.create"
@@ -572,7 +629,7 @@ try {
     $popupViewId = ($popupViewResponse.payload | ConvertFrom-Json).webViewId
     Set-SmokePhase "popup HTML loading"
     $popupHtml = '<!doctype html><meta charset="utf-8"><p>Nimino popup</p>'
-    $popupLoadRequestId = "20"
+    $popupLoadRequestId = "23"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $popupLoadRequestId; eventId = "0"; method = "native.webview.loadHtml"
@@ -583,7 +640,7 @@ try {
     Set-SmokePhase "popup navigation completion"
     Wait-ForNavigationCompleted $popupViewId
     Set-SmokePhase "popup message bridge"
-    $popupMessageRequestId = "21"
+    $popupMessageRequestId = "24"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $popupMessageRequestId; eventId = "0"; method = "native.webview.evalJavaScript"
@@ -593,7 +650,7 @@ try {
     if (-not [string]::IsNullOrEmpty($popupMessageResponse.error)) { throw "Host could not send the explicit popup message" }
     Wait-ForWebMessage $popupViewId "popup-message-received"
     Set-SmokePhase "popup message received"
-    $popupCloseRequestId = "22"
+    $popupCloseRequestId = "25"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $popupCloseRequestId; eventId = "0"; method = "native.window.close"
@@ -604,7 +661,7 @@ try {
     Set-SmokePhase "popup window close event"
     Wait-ForWindowClosed $popupWindowId
     Set-SmokePhase "popup window closed"
-    $closedViewRequestId = "23"
+    $closedViewRequestId = "26"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $closedViewRequestId; eventId = "0"; method = "native.webview.evalJavaScript"
@@ -619,7 +676,7 @@ try {
   }
 
   Set-SmokePhase "shutdown"
-  $shutdownRequestId = if ($VerifyNewWindow) { "24" } else { "14" }
+  $shutdownRequestId = if ($VerifyNewWindow) { "27" } else { "17" }
   Write-Frame @{
     version = 1; kind = "shutdown"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = $shutdownRequestId; eventId = "0"; method = ""; payload = ""; error = ""; timeoutMs = 5000

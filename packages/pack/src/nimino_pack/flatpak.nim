@@ -87,6 +87,8 @@ proc buildFlatpakManifest*(options: FlatpakManifestOptions): PackResult[string] 
         "buildsystem": "simple",
         "build-commands": [
           "install -Dm755 run-nimino.sh /app/bin/run-nimino.sh",
+          "install -Dm644 " & appId & ".desktop /app/share/applications/" & appId & ".desktop",
+          "sed -i -e 's#^Exec=.*#Exec=/app/bin/run-nimino.sh#' -e 's#^TryExec=.*#TryExec=/app/bin/run-nimino.sh#' /app/share/applications/" & appId & ".desktop",
           "install -d /app/lib/nimino",
           "cp -a . /app/lib/nimino"
         ],

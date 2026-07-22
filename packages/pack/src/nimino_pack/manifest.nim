@@ -32,6 +32,12 @@ type
     homepage*: string
     categories*: seq[string]
 
+  PackDeepLinkOptions* = object
+    ## OS-level URL schemes owned by the packaged application.  These are
+    ## deliberately separate from nimino-core's WebView custom resource
+    ## protocol registration.
+    schemes*: seq[string]
+
   PackManifest* = object
     name*: string
     id*: string
@@ -40,6 +46,7 @@ type
     profile*: string
     window*: PackWindowOptions
     package*: PackPackageMetadata
+    deepLink*: PackDeepLinkOptions
     navigationAllow*: seq[string]
     navigationExternal*: seq[string]
     permissionsAllow*: seq[string]
@@ -179,6 +186,27 @@ proc validHomepage(value: string): bool =
   except CatchableError:
     false
 
+const ReservedDeepLinkSchemes = [
+  "http", "https", "ws", "wss", "file", "data", "javascript", "about",
+  "blob", "mailto", "tel", "sms", "urn"
+]
+
+proc validDeepLinkScheme*(value: string): bool =
+  ## RFC 3986 scheme grammar: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ).
+  ## Keep OS registration conservative and never claim a platform-owned scheme.
+  if value.len == 0 or value.len > 63:
+    return false
+  let normalized = value.toLowerAscii()
+  if normalized in ReservedDeepLinkSchemes:
+    return false
+  if value[0] notin {'a'..'z', 'A'..'Z'}:
+    return false
+  if value.len > 1:
+    for character in value[1 .. ^1]:
+      if character notin {'a'..'z', 'A'..'Z', '0'..'9', '+', '-', '.'}:
+        return false
+  true
+
 const DesktopCategories = [
   "AudioVideo", "Audio", "Video", "Development", "Education", "Game",
   "Graphics", "Network", "Office", "Science", "Settings", "System",
@@ -234,6 +262,15 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
     if category notin DesktopCategories:
       return failure[PackManifest](invalidManifest,
         "unknown desktop category: " & category)
+  var normalizedSchemes: seq[string]
+  for scheme in normalized.deepLink.schemes:
+    let normalizedScheme = scheme.toLowerAscii()
+    if not validDeepLinkScheme(scheme):
+      return failure[PackManifest](invalidManifest,
+        "deepLink.schemes contains an invalid or reserved URL scheme: " & scheme)
+    if normalizedScheme notin normalizedSchemes:
+      normalizedSchemes.add(normalizedScheme)
+  normalized.deepLink.schemes = normalizedSchemes
   success(normalized)
 
 proc parse*(text: string): PackResult[PackManifest] =
@@ -304,7 +341,7 @@ proc parse*(text: string): PackResult[PackManifest] =
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
         manifest.package.categories = parsed.value
       else: return failure[PackManifest](invalidManifest, "unknown package key: " & key)
-    of "navigation", "permissions", "injection":
+    of "navigation", "permissions", "injection", "deeplink", "deep-link":
       let parsed = parseStringArray(value)
       if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
       case section
@@ -322,6 +359,10 @@ proc parse*(text: string): PackResult[PackManifest] =
         of "css": manifest.css = parsed.value
         of "javascript": manifest.javascript = parsed.value
         else: return failure[PackManifest](invalidManifest, "unknown key: " & section & "." & key)
+      of "deeplink", "deep-link":
+        if key != "schemes":
+          return failure[PackManifest](invalidManifest, "unknown key: " & section & "." & key)
+        manifest.deepLink.schemes = parsed.value
       else: return failure[PackManifest](invalidManifest, "unknown section: " & section)
     else:
       return failure[PackManifest](invalidManifest, "unknown section: " & section)

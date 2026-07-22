@@ -1,5 +1,57 @@
 import std/[atomics, os, strutils, widestrs]
 
+proc windowsToastActivationPayload(value: string): string =
+  ## Accept the command-line form emitted by Nimino's generated launcher and
+  ## the launch URI used by the WinRT toast XML.  Keep parsing deliberately
+  ## strict so arbitrary command-line data cannot be surfaced as an event.
+  if value.len == 0 or '\0' in value:
+    return ""
+  if value == "--nimino-notification":
+    return ""
+  if value.len > "nimino:notification:".len and
+      value.startsWith("nimino:notification:"):
+    let payload = value["nimino:notification:".len .. ^1]
+    if payload.len > 0 and payload.len <= 4096:
+      return payload
+    return ""
+  if value.startsWith("nimino-"):
+    let marker = value.find(":notification:")
+    if marker > 7 and marker + ":notification:".len < value.len:
+      let payload = value[marker + ":notification:".len .. ^1]
+      if payload.len > 0 and payload.len <= 4096:
+        return payload
+  ""
+
+proc windowsIsToastActivatorProcess*(): bool =
+  ## COM local-server activation is started by the shell with this switch.
+  ## Keep `-Embedding` as well because classic COM may append that spelling
+  ## when launching LocalServer32.
+  for index in 1 .. paramCount():
+    let argument = paramStr(index).toLowerAscii()
+    if argument in ["-toastactivated", "--toastactivated", "-embedding", "--embedding"]:
+      return true
+  false
+
+proc windowsStartupNotificationId*(): string =
+  ## Toast activation of a classic desktop shortcut may launch a fresh process
+  ## and pass the `launch` value on its command line.  The generated launcher
+  ## forwards all arguments, so inspect both the explicit option and URI form.
+  var index = 1
+  while index <= paramCount():
+    let argument = paramStr(index)
+    if argument == "--nimino-notification":
+      if index < paramCount():
+        let payload = windowsToastActivationPayload(paramStr(index + 1))
+        if payload.len > 0:
+          return payload
+      inc index
+    else:
+      let payload = windowsToastActivationPayload(argument)
+      if payload.len > 0:
+        return payload
+    inc index
+  ""
+
 type
   EnvironmentCompletedVTable = object
     queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
@@ -169,8 +221,35 @@ type
     app: pointer
     notificationId: cstring
 
+  ToastActivatorCallbackVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    activate: proc(self: pointer; appUserModelId, invokedArgs: WideCString;
+                   data: pointer; count: uint32): HResult {.stdcall.}
+
+  ToastActivatorClassFactoryVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    createInstance: proc(self, outer: pointer; iid: ptr WinGuid;
+                         outInstance: ptr pointer): HResult {.stdcall.}
+    lockServer: proc(self: pointer; lock: WinBool): HResult {.stdcall.}
+
+  ToastActivatorCallback = object
+    vtable: ptr ToastActivatorCallbackVTable
+    references: Atomic[int]
+    app: pointer
+
+  ToastActivatorClassFactory = object
+    vtable: ptr ToastActivatorClassFactoryVTable
+    references: Atomic[int]
+    app: pointer
+
 var downloadOperationVTable: DownloadOperationVTable
 var toastActivatedVTable: ToastActivatedVTable
+var toastActivatorCallbackVTable: ToastActivatorCallbackVTable
+var toastActivatorFactoryVTable: ToastActivatorClassFactoryVTable
 
 proc windowsDisposeWindow(window: NativeWindow)
 proc windowsRemoveNotificationIcon(app: NativeApp)
@@ -1250,6 +1329,170 @@ proc toastActivatedInvoke(self: pointer; sender, args: pointer): HResult {.stdca
       discard
   S_OK
 
+proc windowsDispatchStartupNotification(app: NativeApp) =
+  ## Deliver a command-line activation exactly once after the first window has
+  ## been created.  This is the terminated-process counterpart to the WinRT
+  ## `Activated` callback above.  Delivery is best-effort and remains on the
+  ## UI thread, matching all other native callbacks.
+  if app.isNil or app.startupNotificationId.len == 0 or
+      app.notificationActivatedHandler.isNil:
+    return
+  let payload = app.startupNotificationId
+  app.startupNotificationId = ""
+  try:
+    app.notificationActivatedHandler(payload)
+  except CatchableError:
+    discard
+
+proc windowsToastActivatorClsid*(appId: string): WinGuid =
+  ## Derive a stable per-application CLSID without exposing a crypto primitive
+  ## as public API.  This identifier is only a registry key; authenticity is
+  ## provided by the installed, signed executable.
+  var a = 2166136261'u32
+  var b = 2246822519'u32
+  var c = 3266489917'u32
+  var d = 668265263'u32
+  for index, character in appId:
+    let value = uint32(ord(character) + index + 1)
+    a = (a xor value) * 16777619'u32
+    b = (b xor (value + a)) * 2246822519'u32
+    c = (c xor (value + b)) * 3266489917'u32
+    d = (d xor (value + c)) * 668265263'u32
+  result = WinGuid(data1: a, data2: uint16(b shr 16), data3: uint16(c shr 16),
+    data4: [uint8(b and 0xff), uint8(b shr 8), uint8(c and 0xff),
+      uint8(c shr 8), uint8(d and 0xff), uint8(d shr 8), uint8(d shr 16),
+      uint8(d shr 24)])
+
+proc toastActivatorCallbackAddRef(self: pointer): uint32 {.stdcall.} =
+  let callback = cast[ptr ToastActivatorCallback](self)
+  uint32(callback.references.fetchAdd(1, moRelaxed) + 1)
+
+proc toastActivatorCallbackRelease(self: pointer): uint32 {.stdcall.} =
+  let callback = cast[ptr ToastActivatorCallback](self)
+  let remaining = callback.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    if callback.app != nil:
+      GC_unref(cast[NativeApp](callback.app))
+    deallocShared(callback)
+  uint32(remaining)
+
+proc toastActivatorCallbackQueryInterface(self: pointer; iid: ptr WinGuid;
+                                          outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidNotificationActivationCallback,
+    toastActivatorCallbackAddRef)
+
+proc toastActivatorCallbackActivate(self: pointer; appUserModelId, invokedArgs: WideCString;
+                                    data: pointer; count: uint32): HResult {.stdcall.} =
+  let callback = cast[ptr ToastActivatorCallback](self)
+  let app = cast[NativeApp](callback.app)
+  if app.isNil:
+    return E_POINTER
+  if not appUserModelId.isNil and $appUserModelId != app.appId:
+    return EAccessDenied
+  let arguments = if invokedArgs.isNil: "" else: $invokedArgs
+  let payload = windowsToastActivationPayload(arguments)
+  app.startupNotificationId = if payload.len > 0: payload else: arguments
+  ## COM activation can arrive after the first dispatch point in `run()`.
+  ## Wake the native UI thread so the public callback remains UI-thread bound.
+  for window in app.windows:
+    if not window.isNil and window.platformWindow != nil:
+      discard postMessageW(window.platformWindow, WmUiTask, 0, 0)
+      break
+  S_OK
+
+proc toastActivatorFactoryAddRef(self: pointer): uint32 {.stdcall.} =
+  let factory = cast[ptr ToastActivatorClassFactory](self)
+  uint32(factory.references.fetchAdd(1, moRelaxed) + 1)
+
+proc toastActivatorFactoryRelease(self: pointer): uint32 {.stdcall.} =
+  let factory = cast[ptr ToastActivatorClassFactory](self)
+  let remaining = factory.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    if factory.app != nil:
+      GC_unref(cast[NativeApp](factory.app))
+    deallocShared(factory)
+  uint32(remaining)
+
+proc toastActivatorFactoryQueryInterface(self: pointer; iid: ptr WinGuid;
+                                         outInstance: ptr pointer): HResult {.stdcall.} =
+  if iid.isNil or outInstance.isNil:
+    return E_POINTER
+  if not sameGuid(iid[], IidIUnknown) and not sameGuid(iid[], IidIClassFactory):
+    outInstance[] = nil
+    return E_NOINTERFACE
+  outInstance[] = self
+  discard toastActivatorFactoryAddRef(self)
+  S_OK
+
+proc toastActivatorFactoryCreateInstance(self, outer: pointer; iid: ptr WinGuid;
+                                          outInstance: ptr pointer): HResult {.stdcall.} =
+  if outInstance.isNil:
+    return E_POINTER
+  outInstance[] = nil
+  if outer != nil:
+    return ClassENoAggregation
+  let factory = cast[ptr ToastActivatorClassFactory](self)
+  let callback = cast[ptr ToastActivatorCallback](allocShared0(sizeof(ToastActivatorCallback)))
+  callback.vtable = addr toastActivatorCallbackVTable
+  callback.references.store(1, moRelaxed)
+  callback.app = factory.app
+  GC_ref(cast[NativeApp](callback.app))
+  let status = toastActivatorCallbackQueryInterface(cast[pointer](callback), iid, outInstance)
+  discard toastActivatorCallbackRelease(cast[pointer](callback))
+  status
+
+proc toastActivatorFactoryLockServer(self: pointer; lock: WinBool): HResult {.stdcall.} =
+  S_OK
+
+proc windowsRegisterToastActivator(app: NativeApp): NativeResult =
+  if app.isNil or not app.toastActivatorProcess:
+    return success()
+  if app.toastActivatorFactory != nil:
+    return success()
+  toastActivatorCallbackVTable = ToastActivatorCallbackVTable(
+    queryInterface: toastActivatorCallbackQueryInterface,
+    addRef: toastActivatorCallbackAddRef,
+    release: toastActivatorCallbackRelease,
+    activate: toastActivatorCallbackActivate)
+  toastActivatorFactoryVTable = ToastActivatorClassFactoryVTable(
+    queryInterface: toastActivatorFactoryQueryInterface,
+    addRef: toastActivatorFactoryAddRef,
+    release: toastActivatorFactoryRelease,
+    createInstance: toastActivatorFactoryCreateInstance,
+    lockServer: toastActivatorFactoryLockServer)
+  let factory = cast[ptr ToastActivatorClassFactory](allocShared0(sizeof(ToastActivatorClassFactory)))
+  factory.vtable = addr toastActivatorFactoryVTable
+  factory.references.store(1, moRelaxed)
+  factory.app = cast[pointer](app)
+  GC_ref(app)
+  var cookie: uint32
+  let classId = windowsToastActivatorClsid(app.appId)
+  let status = coRegisterClassObject(addr classId,
+    cast[pointer](factory), ClsctxLocalServer, RegClsMultipleUse, addr cookie)
+  if not succeeded(status):
+    discard toastActivatorFactoryRelease(cast[pointer](factory))
+    return failure(hresultError("app.toastActivator", status))
+  app.toastActivatorFactory = cast[pointer](factory)
+  app.toastActivatorClassCookie = cookie
+  let resumed = coResumeClassObjects()
+  if not succeeded(resumed):
+    discard coRevokeClassObject(cookie)
+    app.toastActivatorClassCookie = 0
+    discard toastActivatorFactoryRelease(cast[pointer](factory))
+    app.toastActivatorFactory = nil
+    return failure(hresultError("app.toastActivator", resumed))
+  success()
+
+proc windowsUnregisterToastActivator(app: NativeApp) =
+  if app.isNil:
+    return
+  if app.toastActivatorClassCookie != 0:
+    discard coRevokeClassObject(app.toastActivatorClassCookie)
+    app.toastActivatorClassCookie = 0
+  if app.toastActivatorFactory != nil:
+    discard toastActivatorFactoryRelease(app.toastActivatorFactory)
+    app.toastActivatorFactory = nil
+
 proc windowsWideLength(value: WideCString): uint32 =
   if value.isNil:
     return 0
@@ -1966,6 +2209,7 @@ proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
     of WmUiTask:
       if not window.app.dispatchUiTasks():
         window.app.windowsRequestQuit()
+      window.app.windowsDispatchStartupNotification()
       return 0
     of WmTrayCallback:
       let notification = uint32(cast[uint](lParam) and 0xffff'u)
@@ -2348,6 +2592,12 @@ proc windowsRun(app: NativeApp): NativeResult =
     return failure(hresultError("app.run", initialized))
 
   app.state = running
+  if app.toastActivatorProcess:
+    let activator = app.windowsRegisterToastActivator()
+    if not activator.isOk:
+      app.hasRunError = true
+      app.runError = activator.failure
+      app.quitRequested = true
   let registered = app.windowsRegisterWindowClass()
   if not registered.isOk:
     app.hasRunError = true
@@ -2387,6 +2637,9 @@ proc windowsRun(app: NativeApp): NativeResult =
           app.idleTimerWindow = window.platformWindow
         break
 
+  if not app.quitRequested:
+    app.windowsDispatchStartupNotification()
+
   var message: WinMessage
   var messageResult = 1'i32
   while messageResult > 0:
@@ -2410,6 +2663,7 @@ proc windowsRun(app: NativeApp): NativeResult =
   app.trayMenuItems.setLen(0)
   app.trayMenuHandler = nil
   app.windowsStopIdleTimer()
+  app.windowsUnregisterToastActivator()
   app.windowsUnloadLoader()
   app.windowsUnregisterWindowClass()
   coUninitialize()
