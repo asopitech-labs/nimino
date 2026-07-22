@@ -41,23 +41,23 @@ Releaseへ添付します。READMEのGalleryまたは[Releases](https://github.c
 bundleを再生成する場合の低水準手順です。
 
 Windows installerを実行する前に、WebView2 Evergreen Runtimeの導入が必須です。
-`winget`がある場合は、管理者PowerShellで次の短い導入コマンドを実行します。
-
-```powershell
-winget install --id Microsoft.EdgeWebView2Runtime --exact --silent --accept-source-agreements --accept-package-agreements
-```
-
-`winget`がない場合は、次のNimino URL bootstrapが最短のワンライナーです。uvなどの
-ツールで使われる`irm ... | iex`形式と同じ利便性モードで、ローカルSHA-256検証は省略します。
+最短の導入コマンドは、PowerShellで実行するURL bootstrapです。これは取得したスクリプトを
+評価する利便性モードで、ローカルSHA-256検証は省略します。
 
 ```powershell
 irm 'https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1' | iex
 ```
 
-この利便性モードは取得したPowerShellをメモリ上で評価します。監査環境では、下記の
-SHA-256検証付きコマンドを使用してください。
+`winget`がある場合は、リモートスクリプトを評価せずWindows Package Managerで導入する
+管理された経路として、管理者PowerShellで次を実行します。
 
-厳格な検証が必要な場合は、READMEに掲載したSHA-256検証付きbootstrapコマンドを使用します。
+```powershell
+winget install --id Microsoft.EdgeWebView2Runtime --exact --silent --accept-source-agreements --accept-package-agreements
+```
+
+このURL方式はuvなどのツールで使われる`irm ... | iex`形式と同じで、取得したPowerShellを
+メモリ上で評価します。監査環境では、READMEに掲載したSHA-256検証付きbootstrapコマンドを
+使用してください。
 
 ```powershell
 $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1'; $p=Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $p; if ((Get-FileHash -Algorithm SHA256 $p).Hash -ne 'FBB373CC34D49F8B1FBA0792363103455EEE30608D16F7BBD32E78197E1D6F8A') { throw 'WebView2 setup script SHA-256 mismatch' }; Set-ExecutionPolicy -Scope Process Bypass; & $p

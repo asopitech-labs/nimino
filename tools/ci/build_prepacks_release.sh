@@ -71,9 +71,10 @@ printf '%s\n' \
   'Windows: NSIS (.exe), MSI (.msi)' \
   '' \
   'Windows prerequisite (required before installing):' \
-  'Fast path (if winget is available):' \
+  'Shortest command (convenience mode): run the README irm URL | iex bootstrap.' \
+  'Managed installation (if winget is available):' \
   '  winget install --id Microsoft.EdgeWebView2Runtime --exact --silent --accept-source-agreements --accept-package-agreements' \
-  'Short URL path: run the README irm URL | iex bootstrap (convenience mode; no local SHA-256 check).' \
+  'The URL convenience command has no local SHA-256 check.' \
   'Strict path: verify SHA256SUMS, then run the downloaded setup script from elevated PowerShell.' \
   'After the runtime is confirmed, install the downloaded NSIS or MSI package.' \
   'WebView2Loader.dll is bundled; the Evergreen Runtime itself is not bundled.' \
