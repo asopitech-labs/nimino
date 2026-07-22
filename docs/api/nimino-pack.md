@@ -17,6 +17,12 @@ nimino pack https://discord.com/app \
 URL指定でも`--width`、`--height`、`--resizable`、`--allow-permission`、`--inject-css`、
 `--inject-js`、`--allow-url`、`--external-url`を指定できます。複雑な設定はTOMLへ移せます。
 
+Pake固有の`--proxy-url`、`--user-agent`、`--incognito`、`--multi-instance`、
+`--multi-window`、`--start-to-tray`などは、対応する`nimino-core`の公開APIがないため
+CLIで受け付けません。未知のオプションはエラー終了し、設定を黙って捨てることはありません。
+Niminoで利用できる同等制御は、明示的なnavigation/permission policy、profile、injection、
+Window APIとして提供します。
+
 既存のTOMLマニフェストも利用できます。
 
 ```bash
