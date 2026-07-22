@@ -49,7 +49,7 @@ When a prepack release is published, download the installer directly from the [N
 | Fedora/RPM | `youtube-*.rpm`, `gmail-*.rpm`, `google-analytics-*.rpm` |
 | Windows | `youtube-*-setup.exe`, `gmail-*-setup.exe`, `google-analytics-*-setup.exe` (NSIS) or matching `.msi`; the installer checks and installs WebView2 when needed |
 
-The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The initial [`v0.1.0` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.0) is available now. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
+The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The [`v0.1.1` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.1) includes the installer-side WebView2 bootstrap. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
 
 **Windows installer behavior:** NSIS and MSI installers check the WebView2 Evergreen Runtime and download the official Microsoft Bootstrapper only when the runtime is missing. Internet access is required for that first-time download. `WebView2Loader.dll` is bundled with the application.
 
@@ -57,7 +57,7 @@ For manual repair or development setup, use the optional verified script:
 
 ```powershell
 $p = Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'
-Invoke-WebRequest -UseBasicParsing 'https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1' -OutFile $p
+Invoke-WebRequest -UseBasicParsing 'https://github.com/asopitech-labs/nimino/releases/download/v0.1.1/Nimino-WebView2-Setup.ps1' -OutFile $p
 if ((Get-FileHash -Algorithm SHA256 $p).Hash -ne 'FBB373CC34D49F8B1FBA0792363103455EEE30608D16F7BBD32E78197E1D6F8A') { throw 'WebView2 setup script SHA-256 mismatch' }
 Set-ExecutionPolicy -Scope Process Bypass
 & $p
@@ -95,7 +95,7 @@ sudo apt install ./dist/packages/*.deb
 sudo dnf install ./dist/packages/*.rpm
 ```
 
-For Windows, complete one of the WebView2 prerequisite paths above, then run the generated `*-setup.exe`. It is a per-user installer and normally does not require administrator privileges. `make setup` is the equivalent developer setup when working from a checkout.
+For Windows, run the generated `*-setup.exe` or `.msi`. The installer checks WebView2 and bootstraps it when needed. `make setup` is the equivalent developer setup when working from a checkout.
 
 For an AppImage, make the file executable and run it:
 
