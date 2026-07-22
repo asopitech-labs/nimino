@@ -97,6 +97,32 @@ categories = ["Network", "Utility"]
 schemes = ["myapp", "myapp+secure"]
 ```
 
+Window/WebView/runtime制御は次のセクションで指定できます。
+
+```toml
+[window]
+fullscreen = true
+maximized = false
+always-on-top = true
+hide-window-decorations = false
+
+[webview]
+user-agent = "Example/1.0"
+proxy-url = "http://127.0.0.1:8080" # Linux native host
+incognito = false                  # Linux native host
+
+[runtime]
+show-system-tray = true
+start-to-tray = true
+hide-on-close = true
+multi-window = true
+multi-instance = false
+```
+
+`proxy-url`と`incognito`はLinux native hostで実装済みです。Windows/WSL hostで指定した場合は
+起動時に明示エラーとなり、設定を無視して通常セッションへフォールバックしません。`multi-instance`
+も同様に、全ターゲット対応まで明示エラーです。
+
 `version`は`major.minor.patch`形式（任意のSemVer prerelease/build suffix付き）、`homepage`はHTTP(S) URL、`categories`はDesktop Entry category registryの許可値に検証します。省略時は`version = "0.1.0"`、`description = name`、`categories = ["Network"]`になります。
 
 `[deepLink] schemes`はOSがアプリを起動するURL schemeを明示します。schemeはRFC 3986形式へ正規化（小文字化・重複除去）し、`http`、`https`、`file`、`mailto`などの予約schemeは拒否します。これは`nimino-core.registerCustomProtocol`のWebView内部resource schemeとは別機能です。schemeを指定すると、Linux Desktop Entryへ標準の`MimeType=x-scheme-handler/<scheme>`を追加し、WindowsではHKCUの`Software\\Classes\\<scheme>`へper-user URL Protocolを登録します。
