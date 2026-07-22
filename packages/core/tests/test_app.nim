@@ -22,6 +22,15 @@ block deepLinkDeliveryIsExplicit:
   doAssert not app.deliverDeepLink("nimino://bad\nvalue").isOk
   doAssert not app.onDeepLink(nil).isOk
 
+block deepLinkDeliveryQueuesUntilHandlerRegistration:
+  let created = newApp(id = "tech.asopi.deep-link-queue-test", name = "Deep link queue")
+  doAssert created.isOk
+  let app = created.value
+  doAssert app.deliverDeepLink("queue://open/item").isOk
+  var received = ""
+  doAssert app.onDeepLink(proc(url: string) = received = url).isOk
+  doAssert received == "queue://open/item"
+
 block profilePathsAreContainedAndSafe:
   let profile = profilePath("tech.asopi.example", "work")
   doAssert profile.isOk

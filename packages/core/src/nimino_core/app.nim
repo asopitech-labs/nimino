@@ -239,6 +239,10 @@ type
     trayMenuHandler: proc(itemId: uint32)
     notificationActivatedHandler: proc(notificationId: string)
     deepLinkHandler: DeepLinkHandler
+    ## Activation can arrive before application bootstrap registers its
+    ## callback (for example a terminated-process launcher). Keep validated
+    ## URLs until `onDeepLink` installs the consumer instead of dropping them.
+    pendingDeepLinks: seq[string]
     appLogger: Logger
     customProtocolHandler: CustomProtocolHandler
     when defined(linux):
@@ -1140,6 +1144,11 @@ proc onDeepLink*(app: App; handler: DeepLinkHandler): CoreResult =
     return coreFailure(coreError(invalidArgument, "app.onDeepLink",
       detail = "a deep-link handler is required"))
   app.deepLinkHandler = handler
+  let pending = app.pendingDeepLinks
+  app.pendingDeepLinks.setLen(0)
+  for url in pending:
+    try: handler(url)
+    except CatchableError: discard
   coreSuccess()
 
 proc deliverDeepLink*(app: App; url: string): CoreResult =
@@ -1158,6 +1167,8 @@ proc deliverDeepLink*(app: App; url: string): CoreResult =
   if not app.deepLinkHandler.isNil:
     try: app.deepLinkHandler(url)
     except CatchableError: discard
+  else:
+    app.pendingDeepLinks.add(url)
   coreSuccess()
 
 proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
@@ -3309,6 +3320,19 @@ when defined(linux):
       except CatchableError:
         return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
           detail = "notification activation event is malformed"))
+    of "native.app.deepLink":
+      try:
+        let payload = parseJson(event.payload)
+        if payload.kind != JObject or not payload.hasKey("url") or
+            payload["url"].kind != JString:
+          return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+            detail = "deep-link activation event is malformed"))
+        let delivered = app.deliverDeepLink(payload["url"].getStr())
+        if not delivered.isOk:
+          return coreFailureOf[bool](delivered.failure)
+      except CatchableError:
+        return coreFailureOf[bool](coreError(nativeFailure, "wsl.event",
+          detail = "deep-link activation event is malformed"))
     of "app.error":
       return coreFailureOf[bool](coreError(nativeFailure, "app.run",
         detail = "WSL host reported an application error"))

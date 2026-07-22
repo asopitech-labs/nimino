@@ -4,7 +4,7 @@
 ## setup requests synchronously.  After the UI loop starts, a Win32 timer calls
 ## the non-blocking stdio poller so shutdown/EOF is handled on that same thread.
 
-import std/[asyncfutures, json, os, streams, sysrand]
+import std/[asyncfutures, json, os, streams, strutils, sysrand, uri]
 
 import nimino_native except success, successOf, failure, failureOf
 
@@ -45,6 +45,7 @@ type
     pendingFileDialogs: seq[PendingFileDialog]
     nextEventId: uint64
     nextPolicyRequestId: uint64
+    startupDeepLinks: seq[string]
 
 proc sessionIdFromRandom(): string =
   let bytes = urandom(16)
@@ -112,6 +113,22 @@ proc writeEvent(state: HostState; methodName, payload, error: string): bool =
     payload: payload,
     error: error
   ))
+
+proc startupDeepLinkArguments(): seq[string] =
+  ## The WSL client normally passes only the app ID. Packaged launchers may
+  ## append an OS URL activation; forward only URI-shaped, control-free values
+  ## so COM/control switches and arbitrary command-line text never become app
+  ## events. Scheme allowlisting remains the application's responsibility.
+  for index in 2 .. paramCount():
+    let value = paramStr(index)
+    if value.len == 0 or value.len > 8192 or value.find({'\r', '\n', '\0'}) >= 0:
+      continue
+    try:
+      let parsed = parseUri(value)
+      if parsed.scheme.len > 0:
+        result.add(value)
+    except CatchableError:
+      discard
 
 proc readyCapabilities(state: HostState): string =
   ## The ready frame is the negotiated native capability snapshot for this
@@ -586,7 +603,8 @@ proc runHost(): int =
     output: output,
     sessionId: sessionId,
     nextEventId: 1,
-    nextPolicyRequestId: 1
+    nextPolicyRequestId: 1,
+    startupDeepLinks: startupDeepLinkArguments()
   )
   let statePointer = cast[pointer](state)
   state.adapter.policyDecision = proc(request: PolicyRequest): bool =
@@ -604,6 +622,13 @@ proc runHost(): int =
   )):
     stderr.writeLine("nimino-wsl-host: cannot write handshake response")
     return 2
+
+  ## Emit startup activations after `ready`, allowing the WSL client to finish
+  ## authentication and register its application callback before `run()`.
+  for url in state.startupDeepLinks:
+    if not state.writeEvent("native.app.deepLink", $(%*{"url": url}), ""):
+      discard state.adapter.app.close()
+      return 2
 
   while true:
     let received = state.input.next(60_000)
