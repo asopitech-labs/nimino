@@ -143,15 +143,21 @@ proc main() =
   let window = windowCreated.value
   let allowPatterns = navigation.stringArray("allow")
   let externalPatterns = navigation.stringArray("external")
-  let policyConfigured = window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
-    if externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
-      navigationExternal
-    elif allowPatterns.anyIt(matchesNavigationPattern(it, request.url)):
-      navigationAllow
-    else:
-      navigationDeny)
-  if not policyConfigured.isOk:
-    fail(policyConfigured.failure.detail)
+  ## An omitted navigation section means the packaged URL keeps core's
+  ## default policy (the initial URL is allowed).  Once either list is
+  ## present, every navigation must match one of the explicit rules; this
+  ## avoids silently turning a simple `nimino pack URL` invocation into a
+  ## blank window while retaining fail-closed behavior for configured apps.
+  if allowPatterns.len > 0 or externalPatterns.len > 0:
+    let policyConfigured = window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
+      if externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+        navigationExternal
+      elif allowPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+        navigationAllow
+      else:
+        navigationDeny)
+    if not policyConfigured.isOk:
+      fail(policyConfigured.failure.detail)
   let permissionConfigured = window.onPermission(proc(request: PermissionRequest): PermissionDecision =
     let requested = case request.kind
       of microphone: "microphone"
