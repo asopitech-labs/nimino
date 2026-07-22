@@ -9,17 +9,17 @@ macOS work is performed in a separate environment and is intentionally excluded.
 - [x] Save accepted downloads into the profile download directory with collision-safe names.
 - [x] Forward download started/progress/completed/failed/cancelled events to the host policy layer.
 - [x] Add download status notifications without logging URLs, cookies, or credentials.
-- [ ] Add Pake-compatible handling for `target=_blank`, `window.open`, OAuth redirects, and external URLs.
+- [x] Add Pake-compatible handling for `target=_blank`, `window.open`, OAuth redirects, and external URLs.
 - [ ] Add generated-host tests for regular, `blob:`, and `data:` downloads.
 
 ## P0 — manifest and navigation contract
 
-- [ ] Define a complete JSON schema for Nimino pack configuration.
-- [ ] Reject unknown JSON fields instead of silently discarding them.
-- [ ] Apply explicit CLI options over manifest values with deterministic precedence.
-- [ ] Replace last-two-label site matching with URL-host boundary validation.
-- [ ] Make `safe-domain` host-aware and resistant to userinfo/path look-alikes.
-- [ ] Add unit tests for public-suffix-like hosts, subdomains, ports, and redirects.
+- [x] Define a complete JSON schema for Nimino pack configuration.
+- [x] Reject unknown JSON fields instead of silently discarding them.
+- [x] Apply explicit CLI options over manifest values with deterministic precedence.
+- [x] Replace last-two-label site matching with URL-host boundary validation.
+- [x] Make `safe-domain` host-aware and resistant to userinfo/path look-alikes.
+- [x] Add unit tests for public-suffix-like hosts, subdomains, ports, and redirects.
 
 ## P1 — Pake wrapper features
 
