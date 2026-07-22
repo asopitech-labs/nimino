@@ -61,6 +61,9 @@ task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
 task testPackLinux, "Build Debian/RPM archives from nimino-pack Linux metadata":
   exec "bash tools/ci/test_pack_linux.sh /tmp/nimino"
 
+task testPackFlatpak, "Build and export a real Flatpak bundle from the pack context":
+  exec "bash tools/ci/test_pack_flatpak.sh /tmp/nimino"
+
 task testPackOnline, "Exercise the URL-to-bundle online pack flow":
   exec "nimble buildPackCli"
   exec "nimble buildNiminoHost"

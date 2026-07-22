@@ -55,7 +55,7 @@ proc buildFlatpakManifest*(options: FlatpakManifestOptions): PackResult[string] 
   if not safeFlatpakId(appId) or unsafeVersion:
     return failure[string](invalidManifest, "Flatpak app id or version is unsafe")
   let runtime = if options.runtime.len > 0: options.runtime else: "org.gnome.Platform"
-  let runtimeVersion = if options.runtimeVersion.len > 0: options.runtimeVersion else: "46"
+  let runtimeVersion = if options.runtimeVersion.len > 0: options.runtimeVersion else: "49"
   let sdk = if options.sdk.len > 0: options.sdk else: "org.gnome.Sdk"
   if not safeFlatpakId(runtime) or not safeFlatpakId(sdk) or runtimeVersion.len == 0:
     return failure[string](invalidManifest, "Flatpak runtime metadata is unsafe")
