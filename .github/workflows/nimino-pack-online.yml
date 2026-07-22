@@ -82,6 +82,13 @@ jobs:
             /tmp/nimino pack "$NIMINO_URL" "${identity_args[@]}" \
               --out /workspace/.tmp/online-bundle --host "$host" "${icon_args[@]}"
             case "$NIMINO_TARGET" in
+              windows-nsis|windows-msi)
+                test -s /opt/nimino/webview2/x64/WebView2Loader.dll
+                install -m 0644 /opt/nimino/webview2/x64/WebView2Loader.dll \
+                  /workspace/.tmp/online-bundle/WebView2Loader.dll
+                ;;
+            esac
+            case "$NIMINO_TARGET" in
               linux-deb)
                 /tmp/nimino package-linux /workspace/.tmp/online-bundle --format deb \
                   --out /workspace/.tmp/online-out --arch amd64 \
