@@ -4,6 +4,7 @@
 import std/[json, os, sequtils, strutils, uri]
 
 import nimino_core
+import ./policy
 
 proc fail(message: string; code = QuitFailure) {.noreturn.} =
   stderr.writeLine("nimino-host: " & message)
@@ -153,6 +154,33 @@ proc main() =
   let userAgent = optionalString(webview, "userAgent", "")
   let proxyUrl = optionalString(webview, "proxyUrl", "")
   let incognito = webview.boolean("incognito", false)
+  let newWindow = webview.boolean("newWindow", false)
+  ## These Pake-compatible fields are accepted by the manifest schema, but
+  ## this generated host does not have a native implementation yet.  Fail at
+  ## startup instead of silently claiming that the requested control exists.
+  let minWidth = if windowNode.hasKey("minWidth") and windowNode["minWidth"].kind == JInt:
+      windowNode["minWidth"].getInt() else: 0
+  let minHeight = if windowNode.hasKey("minHeight") and windowNode["minHeight"].kind == JInt:
+      windowNode["minHeight"].getInt() else: 0
+  if minWidth < 0 or minHeight < 0:
+    fail("window minimum size must not be negative")
+  if minWidth > 0 or minHeight > 0:
+    fail("window minimum size is not supported by this host")
+  if windowNode.boolean("hideTitleBar", false):
+    fail("window.hideTitleBar is not supported by this host")
+  if webview.boolean("darkMode", false):
+    fail("webview.darkMode is not supported by this host")
+  if webview.boolean("disabledWebShortcuts", false):
+    fail("webview.disabledWebShortcuts is not supported by this host")
+  if webview.boolean("enableFind", false):
+    fail("webview.enableFind is not supported by this host")
+  if webview.boolean("forceInternalNavigation", false) or
+      optionalString(webview, "internalUrlRegex", "").len > 0:
+    fail("webview.forceInternalNavigation is not supported by this host")
+  if optionalString(runtime, "activationShortcut", "").len > 0:
+    fail("runtime.activationShortcut is not supported by this host")
+  if optionalString(runtime, "systemTrayIcon", "").len > 0:
+    fail("runtime.systemTrayIcon is not supported by this host")
   let zoomFactor = if webview.hasKey("zoom") and webview["zoom"].kind in {JInt, JFloat}:
       webview["zoom"].getFloat() / 100.0
     else: 1.0
@@ -163,7 +191,10 @@ proc main() =
     if permission notin ["microphone", "camera", "notifications", "geolocation",
                          "clipboard", "screenCapture"]:
       fail("manifest contains an unknown permission: " & permission)
-  let created = newApp(AppOptions(id: appId, name: appName,
+  let packageVersion = if manifest.hasKey("package") and manifest["package"].kind == JObject:
+      optionalString(manifest["package"], "version", NiminoCoreVersion)
+    else: NiminoCoreVersion
+  let created = newApp(AppOptions(id: appId, name: appName, version: packageVersion,
     multiInstance: multiInstance))
   if not created.isOk:
     fail(created.failure.detail)
@@ -261,7 +292,12 @@ proc main() =
         navigationDeny
     else:
       defaultNavigationDecision(url, request.url)
-    case decision
+    let popupDecision = if decision == navigationAllow and not newWindow and
+        not isAuthenticationNavigation(request.url):
+        navigationExternal
+      else:
+        decision
+    case popupDecision
     of navigationAllow:
       ## The request came from the WebView's user gesture.  Consume it by
       ## creating the popup explicitly; native backends never create one
@@ -277,6 +313,45 @@ proc main() =
       true)
   if not popupConfigured.isOk:
     fail(popupConfigured.failure.detail)
+  ## Pake accepts browser downloads by default.  Core deliberately denies an
+  ## unhandled request, so the generated host must install an explicit policy
+  ## instead of relying on a native backend default.
+  let downloadPolicy = window.onDownload(proc(request: DownloadRequest): DownloadDecision =
+    discard request
+    downloadAllow)
+  if not downloadPolicy.isOk:
+    fail(downloadPolicy.failure.detail)
+  var downloadNotificationSequence = 0
+  let downloadEvents = window.onDownloadEvent(proc(event: DownloadEvent) =
+    let label = safeDownloadLabel(event.request.suggestedName)
+    var title = "Download"
+    var body = ""
+    var state = "event"
+    case event.state
+    of downloadStarted:
+      title = "Download started"
+      body = label
+      state = "started"
+    of downloadCompleted:
+      title = "Download complete"
+      body = label
+      state = "completed"
+    of downloadFailed:
+      title = "Download failed"
+      body = label
+      state = "failed"
+    of downloadCancelled:
+      title = "Download cancelled"
+      body = label
+      state = "cancelled"
+    of downloadProgress:
+      return
+    discard app.sendNotification(DesktopNotification(
+      id: downloadNotificationId(downloadNotificationSequence, state),
+      title: title,
+      body: body)))
+  if not downloadEvents.isOk:
+    fail(downloadEvents.failure.detail)
   let permissionConfigured = window.onPermission(proc(request: PermissionRequest): PermissionDecision =
     let requested = case request.kind
       of microphone: "microphone"

@@ -229,3 +229,17 @@ WebView2の`ICoreWebView2Settings::put_AreDevToolsEnabled`、WebKitGTKの
 `webkit_settings_set_enable_developer_extras`へ接続します。JavaScript注入による擬似制御では
 なく、ネイティブ設定として適用されます。未対応のバックエンドは成功扱いにせず
 `platformUnavailable`を返します。
+
+`window.saveWindowState()` / `window.restoreWindowState()`は、Windowのサイズ・位置・表示状態を
+`App ID / profile / settings/window-state.json`へ保存・復元します。サイズ変更、位置変更、表示・非表示
+も同じprofileへ自動保存されます。保存値が壊れている場合はエラーとして扱い、既定値へ黙って置換しません。
+
+更新は`app.checkForUpdate(manifest, verifier)`から開始します。manifestはHTTPS URL、64桁SHA-256、
+detached signature、key IDを必須とし、アプリが所有する`UpdateSignatureVerifier`が受理した場合だけ
+`updateAvailable`へ遷移します。`app.beginUpdateDownload()`、`app.markUpdateReady()`、
+`app.failUpdate()`、`app.cancelUpdate()`で状態を明示的に遷移させます。Coreは未検証のURLを取得・実行せず、
+署名鍵と更新インストーラーの所有権はホスト／packager側に残します。
+
+`app.setAutostart(enabled)`はCapability `autostart`を確認してからOS状態を変更する唯一の公開入口です。
+現行のWindows/Linux/WSLバックエンドはこのCapabilityを広告しないため、呼出しは
+`platformUnavailable`を返します。シェル起動や任意のstartupファイル書込みによる代替は行いません。

@@ -78,6 +78,12 @@ while true:
     break
   of request:
     case incomingMessage.methodName
+    of "app.capabilities":
+      ## The fake host intentionally omits autostart.  Core must report a
+      ## capability-checked unsupported result rather than writing startup
+      ## files from WSL.
+      doAssert output.writeMessageTo(incomingMessage.response(
+        nativeCapabilitiesPayload(["webPermissionEvents"]))).isOk
     of "native.window.create":
       let payload = parseJson(incomingMessage.payload)
       doAssert payload["proxyUrl"].getStr() == "http://127.0.0.1:8080"
@@ -86,6 +92,11 @@ while true:
       doAssert payload["zoomFactor"].getFloat() == 1.25
       doAssert payload["ignoreCertificateErrors"].getBool()
       doAssert output.writeMessageTo(incomingMessage.response("{\"windowId\":\"1\"}")).isOk
+    of "native.window.setSize", "native.window.setPosition",
+       "native.window.show", "native.window.hide":
+      doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
+    of "native.webview.setZoom":
+      doAssert output.writeMessageTo(incomingMessage.response("{}")).isOk
     of "native.webview.create":
       doAssert output.writeMessageTo(incomingMessage.response("{\"webViewId\":\"1\"}")).isOk
     of "native.webview.setDevToolsEnabled":

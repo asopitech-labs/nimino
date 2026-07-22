@@ -1,4 +1,4 @@
-import std/[json, os, strutils, uri]
+import std/[json, os, sequtils, strutils, uri]
 
 type
   PackErrorKind* = enum
@@ -28,6 +28,9 @@ type
     alwaysOnTop*: bool
     hideWindowDecorations*: bool
     enableDragDrop*: bool
+    minWidth*: int
+    minHeight*: int
+    hideTitleBar*: bool
 
   PackWebViewOptions* = object
     userAgent*: string
@@ -35,6 +38,13 @@ type
     incognito*: bool
     zoomFactor*: float
     ignoreCertificateErrors*: bool
+    darkMode*: bool
+    disabledWebShortcuts*: bool
+    enableFind*: bool
+    wasm*: bool
+    newWindow*: bool
+    forceInternalNavigation*: bool
+    internalUrlRegex*: string
 
   PackRuntimeOptions* = object
     showSystemTray*: bool
@@ -42,6 +52,8 @@ type
     hideOnClose*: bool
     multiWindow*: bool
     multiInstance*: bool
+    activationShortcut*: string
+    systemTrayIcon*: string
 
   PackPackageMetadata* = object
     ## Distribution-facing fields. They remain separate from the URL and
@@ -51,6 +63,14 @@ type
     publisher*: string
     homepage*: string
     categories*: seq[string]
+    targets*: string
+    installerLanguage*: string
+    keepBinary*: bool
+    bundle*: bool
+    iterativeBuild*: bool
+    debug*: bool
+    multiArch*: bool
+    install*: bool
 
   PackDeepLinkOptions* = object
     ## OS-level URL schemes owned by the packaged application.  These are
@@ -78,6 +98,9 @@ type
     permissionsAllow*: seq[string]
     css*: seq[string]
     javascript*: seq[string]
+    injectionFiles*: seq[string]
+    useLocalFile*: bool
+    safeDomains*: seq[string]
 
 proc success*[T](value: T): PackResult[T] {.inline.} =
   PackResult[T](isOk: true, value: value)
@@ -352,7 +375,8 @@ proc parse*(text: string): PackResult[PackManifest] =
     profile: "default",
     window: PackWindowOptions(width: 1200, height: 800, resizable: true),
     webview: PackWebViewOptions(zoomFactor: 1.0),
-    package: PackPackageMetadata(version: "0.1.0", categories: @["Network"]))
+    package: PackPackageMetadata(version: "0.1.0", categories: @["Network"], bundle: true,
+      installerLanguage: "en-US"))
   var section = ""
   for rawLine in text.splitLines():
     var line = rawLine.strip()
@@ -496,6 +520,71 @@ proc parse*(text: string): PackResult[PackManifest] =
       return failure[PackManifest](invalidManifest, "unknown section: " & section)
   manifest.validate()
 
+proc jsonString(node: JsonNode; keys: openArray[string]; fallback: string): PackResult[string] =
+  for key in keys:
+    if node.hasKey(key):
+      if node[key].kind != JString:
+        return failure[string](invalidManifest, key & " must be a string")
+      return success(node[key].getStr())
+  success(fallback)
+
+proc jsonBool(node: JsonNode; keys: openArray[string]; fallback: bool): PackResult[bool] =
+  for key in keys:
+    if node.hasKey(key):
+      if node[key].kind != JBool:
+        return failure[bool](invalidManifest, key & " must be a boolean")
+      return success(node[key].getBool())
+  success(fallback)
+
+proc jsonInt(node: JsonNode; keys: openArray[string]; fallback: int): PackResult[int] =
+  for key in keys:
+    if node.hasKey(key):
+      if node[key].kind != JInt:
+        return failure[int](invalidManifest, key & " must be an integer")
+      return success(node[key].getInt())
+  success(fallback)
+
+proc jsonFloat(node: JsonNode; keys: openArray[string]; fallback: float): PackResult[float] =
+  for key in keys:
+    if node.hasKey(key):
+      if node[key].kind notin {JInt, JFloat}:
+        return failure[float](invalidManifest, key & " must be a number")
+      return success(node[key].getFloat())
+  success(fallback)
+
+proc jsonStringArray(node: JsonNode; keys: openArray[string]): PackResult[seq[string]] =
+  for key in keys:
+    if node.hasKey(key):
+      if node[key].kind != JArray:
+        return failure[seq[string]](invalidManifest, key & " must be an array of strings")
+      var values: seq[string]
+      for item in node[key].items:
+        if item.kind != JString or item.getStr().len == 0:
+          return failure[seq[string]](invalidManifest,
+            key & " must contain only non-empty strings")
+        values.add(item.getStr())
+      return success(values)
+  success(newSeq[string]())
+
+const JsonManifestKeys = [
+  "$schema", "url", "name", "identifier", "id", "title", "icon", "width", "height", "resizable",
+  "useLocalFile", "use_local_file", "fullscreen", "hideTitleBar", "hide_title_bar",
+  "hideWindowDecorations", "hide_window_decorations", "multiArch", "multi_arch", "inject",
+  "debug", "proxyUrl", "proxy_url", "userAgent", "user_agent", "targets", "appVersion",
+  "app_version", "alwaysOnTop", "always_on_top", "maximize", "maximized", "darkMode",
+  "dark_mode", "disabledWebShortcuts", "disabled_web_shortcuts", "activationShortcut",
+  "activation_shortcut", "showSystemTray", "show_system_tray", "systemTrayIcon",
+  "system_tray_icon", "hideOnClose", "hide_on_close", "incognito", "wasm", "enableDragDrop",
+  "enable_drag_drop", "keepBinary", "keep_binary", "bundle", "multiInstance", "multi_instance",
+  "multiWindow", "multi_window", "startToTray", "start_to_tray", "forceInternalNavigation",
+  "force_internal_navigation", "internalUrlRegex", "internal_url_regex", "safeDomain",
+  "safe_domain", "enableFind", "enable_find", "installerLanguage", "installer_language", "zoom",
+  "minWidth", "min_width", "minHeight", "min_height", "ignoreCertificateErrors",
+  "ignore_certificate_errors", "iterativeBuild", "iterative_build", "newWindow", "new_window",
+  "install", "camera", "microphone", "profile", "description", "publisher", "homepage",
+  "categories", "permissions", "deepLink", "deep_link", "css", "javascript", "injection"
+]
+
 proc loadManifest*(path: string): PackResult[PackManifest] =
   if path.len == 0 or not fileExists(path):
     return failure[PackManifest](ioFailure, "manifest file does not exist")
@@ -505,34 +594,167 @@ proc loadManifest*(path: string): PackResult[PackManifest] =
       let node = parseJson(source)
       if node.kind != JObject:
         return failure[PackManifest](invalidManifest, "JSON config must be an object")
-      let getString = proc(key: string; fallback = ""): string =
-        if node.hasKey(key) and node[key].kind == JString: node[key].getStr() else: fallback
-      let getBool = proc(key: string; fallback: bool): bool =
-        if node.hasKey(key) and node[key].kind == JBool: node[key].getBool() else: fallback
-      let getInt = proc(key: string; fallback: int): int =
-        if node.hasKey(key) and node[key].kind == JInt: node[key].getInt() else: fallback
+      for key, _ in node.pairs:
+        if key notin JsonManifestKeys:
+          return failure[PackManifest](invalidManifest, "unknown JSON key: " & key)
+      if node.hasKey("$schema") and node["$schema"].kind != JString:
+        return failure[PackManifest](invalidManifest, "$schema must be a string")
+      let name = jsonString(node, ["name"], "")
+      let identifier = jsonString(node, ["identifier", "id"], "")
+      let url = jsonString(node, ["url"], "")
+      let profile = jsonString(node, ["profile"], "default")
+      let title = jsonString(node, ["title"], "")
+      let icon = jsonString(node, ["icon"], "")
+      let width = jsonInt(node, ["width"], 1200)
+      let height = jsonInt(node, ["height"], 800)
+      let resizable = jsonBool(node, ["resizable"], true)
+      let fullscreen = jsonBool(node, ["fullscreen"], false)
+      let maximized = jsonBool(node, ["maximize", "maximized"], false)
+      let alwaysOnTop = jsonBool(node, ["alwaysOnTop", "always_on_top"], false)
+      let hideWindowDecorations = jsonBool(node,
+        ["hideWindowDecorations", "hide_window_decorations"], false)
+      let enableDragDrop = jsonBool(node, ["enableDragDrop", "enable_drag_drop"], false)
+      let minWidth = jsonInt(node, ["minWidth", "min_width"], 0)
+      let minHeight = jsonInt(node, ["minHeight", "min_height"], 0)
+      let hideTitleBar = jsonBool(node, ["hideTitleBar", "hide_title_bar"], false)
+      let userAgent = jsonString(node, ["userAgent", "user_agent"], "")
+      let proxyUrl = jsonString(node, ["proxyUrl", "proxy_url"], "")
+      let incognito = jsonBool(node, ["incognito"], false)
+      let zoom = jsonFloat(node, ["zoom"], 100.0)
+      let ignoreCertificateErrors = jsonBool(node,
+        ["ignoreCertificateErrors", "ignore_certificate_errors"], false)
+      let showSystemTray = jsonBool(node, ["showSystemTray", "show_system_tray"], false)
+      let startToTray = jsonBool(node, ["startToTray", "start_to_tray"], false)
+      let hideOnClose = jsonBool(node, ["hideOnClose", "hide_on_close"], false)
+      let multiWindow = jsonBool(node, ["multiWindow", "multi_window"], false)
+      let multiInstance = jsonBool(node, ["multiInstance", "multi_instance"], false)
+      let activationShortcut = jsonString(node,
+        ["activationShortcut", "activation_shortcut"], "")
+      let systemTrayIcon = jsonString(node, ["systemTrayIcon", "system_tray_icon"], "")
+      let darkMode = jsonBool(node, ["darkMode", "dark_mode"], false)
+      let disabledWebShortcuts = jsonBool(node, ["disabledWebShortcuts", "disabled_web_shortcuts"], false)
+      let enableFind = jsonBool(node, ["enableFind", "enable_find"], false)
+      let wasm = jsonBool(node, ["wasm"], false)
+      let newWindow = jsonBool(node, ["newWindow", "new_window"], false)
+      let forceInternalNavigation = jsonBool(node,
+        ["forceInternalNavigation", "force_internal_navigation"], false)
+      let internalUrlRegex = jsonString(node, ["internalUrlRegex", "internal_url_regex"], "")
+      let safeDomain = jsonString(node, ["safeDomain", "safe_domain"], "")
+      let targets = jsonString(node, ["targets"], "")
+      let installerLanguage = jsonString(node,
+        ["installerLanguage", "installer_language"], "en-US")
+      let appVersion = jsonString(node, ["appVersion", "app_version"], "0.1.0")
+      let description = jsonString(node, ["description"], "")
+      let publisher = jsonString(node, ["publisher"], "Nimino")
+      let homepage = jsonString(node, ["homepage"], url.value)
+      let categories = jsonStringArray(node, ["categories"])
+      let inject = jsonStringArray(node, ["inject"])
+      let css = jsonStringArray(node, ["css"])
+      let javascript = jsonStringArray(node, ["javascript"])
+      let permissions = jsonStringArray(node, ["permissions"])
+      let deepLinks = jsonStringArray(node, ["deepLink", "deep_link"])
+      template ensureJson(parsed: untyped) =
+        if not parsed.isOk:
+          return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+      ensureJson(name)
+      ensureJson(identifier)
+      ensureJson(url)
+      ensureJson(profile)
+      ensureJson(title)
+      ensureJson(icon)
+      ensureJson(width)
+      ensureJson(height)
+      ensureJson(resizable)
+      ensureJson(fullscreen)
+      ensureJson(maximized)
+      ensureJson(alwaysOnTop)
+      ensureJson(hideWindowDecorations)
+      ensureJson(enableDragDrop)
+      ensureJson(minWidth)
+      ensureJson(minHeight)
+      ensureJson(hideTitleBar)
+      ensureJson(userAgent)
+      ensureJson(proxyUrl)
+      ensureJson(incognito)
+      ensureJson(zoom)
+      ensureJson(ignoreCertificateErrors)
+      ensureJson(showSystemTray)
+      ensureJson(startToTray)
+      ensureJson(hideOnClose)
+      ensureJson(multiWindow)
+      ensureJson(multiInstance)
+      ensureJson(activationShortcut)
+      ensureJson(systemTrayIcon)
+      ensureJson(darkMode)
+      ensureJson(disabledWebShortcuts)
+      ensureJson(enableFind)
+      ensureJson(wasm)
+      ensureJson(newWindow)
+      ensureJson(forceInternalNavigation)
+      ensureJson(internalUrlRegex)
+      ensureJson(safeDomain)
+      ensureJson(targets)
+      ensureJson(installerLanguage)
+      ensureJson(appVersion)
+      ensureJson(description)
+      ensureJson(publisher)
+      ensureJson(homepage)
+      ensureJson(categories)
+      ensureJson(inject)
+      ensureJson(css)
+      ensureJson(javascript)
+      ensureJson(permissions)
+      ensureJson(deepLinks)
+      var allow: seq[string]
+      let useLocalFile = jsonBool(node, ["useLocalFile", "use_local_file"], false)
+      let keepBinary = jsonBool(node, ["keepBinary", "keep_binary"], false)
+      let bundle = jsonBool(node, ["bundle"], true)
+      let iterativeBuild = jsonBool(node, ["iterativeBuild", "iterative_build"], false)
+      let debug = jsonBool(node, ["debug"], false)
+      let multiArch = jsonBool(node, ["multiArch", "multi_arch"], false)
+      let install = jsonBool(node, ["install"], false)
+      ensureJson(useLocalFile)
+      ensureJson(keepBinary)
+      ensureJson(bundle)
+      ensureJson(iterativeBuild)
+      ensureJson(debug)
+      ensureJson(multiArch)
+      ensureJson(install)
+      if safeDomain.value.len > 0:
+        for domain in safeDomain.value.split(','):
+          let trimmed = domain.strip()
+          if trimmed.len > 0:
+            allow.add("https://" & trimmed & "/**")
       var manifest = PackManifest(
-        name: getString("name"), id: getString("identifier", getString("id")),
-        url: getString("url"), icon: getString("icon"), profile: getString("profile", "default"),
-        window: PackWindowOptions(width: getInt("width", 1200), height: getInt("height", 800),
-          resizable: getBool("resizable", true), fullscreen: getBool("fullscreen", false),
-          maximized: getBool("maximize", getBool("maximized", false)),
-          alwaysOnTop: getBool("always_on_top", getBool("alwaysOnTop", false)),
-          hideWindowDecorations: getBool("hide_window_decorations", false),
-          enableDragDrop: getBool("enable_drag_drop", false)),
-        webview: PackWebViewOptions(userAgent: getString("user_agent", getString("userAgent")),
-          proxyUrl: getString("proxy_url", getString("proxyUrl")),
-          incognito: getBool("incognito", false), zoomFactor: getInt("zoom", 100).float / 100.0,
-          ignoreCertificateErrors: getBool("ignore_certificate_errors", false)),
-        runtime: PackRuntimeOptions(showSystemTray: getBool("show_system_tray", false),
-          startToTray: getBool("start_to_tray", false), hideOnClose: getBool("hide_on_close", false),
-          multiWindow: getBool("multi_window", true), multiInstance: getBool("multi_instance", false)),
-        package: PackPackageMetadata(version: getString("app_version", "0.1.0"),
-          description: getString("description"), publisher: getString("publisher", "Nimino"),
-          homepage: getString("homepage", getString("url")), categories: @[
-            "Network"]))
-      if node.hasKey("title") and node["title"].kind == JString:
-        manifest.window.title = node["title"].getStr()
+        name: name.value, id: identifier.value, url: url.value, icon: icon.value,
+        profile: profile.value, window: PackWindowOptions(title: title.value,
+          width: width.value, height: height.value, resizable: resizable.value,
+          fullscreen: fullscreen.value, maximized: maximized.value,
+          alwaysOnTop: alwaysOnTop.value, hideWindowDecorations: hideWindowDecorations.value,
+          enableDragDrop: enableDragDrop.value, minWidth: minWidth.value,
+          minHeight: minHeight.value, hideTitleBar: hideTitleBar.value),
+        webview: PackWebViewOptions(userAgent: userAgent.value, proxyUrl: proxyUrl.value,
+          incognito: incognito.value, zoomFactor: zoom.value / 100.0,
+          ignoreCertificateErrors: ignoreCertificateErrors.value, darkMode: darkMode.value,
+          disabledWebShortcuts: disabledWebShortcuts.value, enableFind: enableFind.value,
+          wasm: wasm.value, newWindow: newWindow.value,
+          forceInternalNavigation: forceInternalNavigation.value,
+          internalUrlRegex: internalUrlRegex.value),
+        runtime: PackRuntimeOptions(showSystemTray: showSystemTray.value,
+          startToTray: startToTray.value, hideOnClose: hideOnClose.value,
+          multiWindow: multiWindow.value, multiInstance: multiInstance.value,
+          activationShortcut: activationShortcut.value, systemTrayIcon: systemTrayIcon.value),
+        package: PackPackageMetadata(version: appVersion.value, description: description.value,
+          publisher: publisher.value, homepage: homepage.value,
+          categories: if categories.value.len == 0: @[
+            "Network"] else: categories.value, targets: targets.value,
+          installerLanguage: installerLanguage.value, keepBinary: keepBinary.value, bundle: bundle.value,
+          iterativeBuild: iterativeBuild.value, debug: debug.value, multiArch: multiArch.value,
+          install: install.value), navigationAllow: allow,
+        permissionsAllow: permissions.value, css: css.value, javascript: javascript.value,
+        deepLink: PackDeepLinkOptions(schemes: deepLinks.value), injectionFiles: inject.value,
+        useLocalFile: useLocalFile.value, safeDomains: if safeDomain.value.len == 0: @[] else:
+          safeDomain.value.split(',').mapIt(it.strip()))
       return manifest.validate()
     parse(source)
   except OSError:

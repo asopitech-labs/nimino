@@ -9,6 +9,9 @@ type
     nativeNotification
     customProtocol
     webPermissionEvents
+    ## Autostart registration is intentionally opt-in and currently has no
+    ## backend implementation; callers receive an explicit unsupported result.
+    autostart
 
   ## Window controls are kept separate from the application capability set.
   ## The WSL handshake exposes `Capability` values, while these controls are

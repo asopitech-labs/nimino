@@ -84,7 +84,7 @@ $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.1/Nimino-Web
 
 
 `--out`を使う場合は、実行可能hostを同梱して独立bundleにするため`--host <nimino-host>`が必須です。
-省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`は不要です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。HTTP(S)または`data:`アイコンはpack時に最大8 MiBまで取得し、bundle直下へステージングします。取得できないURLや空・過大なpayloadは成功扱いにしません。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定やパッケージ情報はURLから生成され、ナビゲーションの既定値はコアの同一サイト＋認証遷移ポリシーです。サイト固有のルールが必要な場合だけTOMLマニフェストで上書きします。生成物の機械処理が必要な場合は`--json`を付けるとmanifest path・bundle directory・local entry・artifactsをJSONで標準出力へ返します。
+省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`は不要です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。`--icon`を省略したURL入力では`https?://<host>/favicon.ico`を最大8 MiB・3秒以内で取得し、存在する場合だけ`favicon.ico`として同梱します。HTTP(S)または`data:`アイコンはpack時に最大8 MiBまで取得し、bundle直下へステージングします。取得できない明示URLや空・過大なpayloadは成功扱いにしません。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定やパッケージ情報はURLから生成され、ナビゲーションの既定値はコアの同一サイト＋認証遷移ポリシーです。サイト固有のルールが必要な場合だけTOMLマニフェストで上書きします。生成物の機械処理が必要な場合は`--json`を付けるとmanifest path・bundle directory・local entry・artifactsをJSONで標準出力へ返します。
 
 PakeのCLI包装フローを参考にしているが、生成物はNimino hostと`nimino-core`を使用し、Pake/Tauriを実行時依存にしません。
 
