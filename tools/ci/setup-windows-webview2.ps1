@@ -16,7 +16,8 @@ New-Item -ItemType Directory -Force -Path $temp | Out-Null
 
 $runtimeRoots = @(
   (Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application"),
-  (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application")
+  (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application"),
+  (Join-Path $env:LOCALAPPDATA "Microsoft\EdgeWebView\Application")
 ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
 $versions = foreach ($root in $runtimeRoots) {
   Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |

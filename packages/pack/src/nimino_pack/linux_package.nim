@@ -410,12 +410,44 @@ export WEBKIT_EXEC_PATH="$APPDIR/usr/lib/webkitgtk-6.0"
 exec "$APPDIR/usr/lib/nimino/""" & metadata.id & """/run-nimino.sh" "$@"
 """
 
+proc waitForAppImageSquashfs(path: string): PackResult[bool] =
+  ## appimagetool's extracted runtime can return while its payload writer is
+  ## still flushing. Validate the actual SquashFS before removing AppDir.
+  let inspector = findExe("unsquashfs")
+  var lastDetail = "unknown validation error"
+  for _ in 0 .. 120:
+    if fileExists(path):
+      try:
+        let image = readFile(path)
+        var offset = 0
+        while offset + 4 <= image.len:
+          if image[offset] == 'h' and image[offset + 1] == 's' and
+              image[offset + 2] == 'q' and image[offset + 3] == 's':
+            let checked = appImageCommandOutput(inspector,
+              ["-offset", $offset, "-s", path])
+            if checked.isOk:
+              return success(true)
+            lastDetail = checked.error.detail
+          inc offset
+      except OSError:
+        lastDetail = "unable to read the generated AppImage"
+    sleep(250)
+  try:
+    if fileExists(path):
+      removeFile(path)
+  except OSError:
+    discard
+  failure[bool](ioFailure,
+    "appimagetool produced an invalid AppImage: " & lastDetail)
+
 proc appImageDesktop(metadata: LinuxBundleMetadata): string =
   "[Desktop Entry]\n" &
     "Type=Application\n" &
     "Name=" & metadata.name & "\n" &
     "Comment=" & metadata.description & "\n" &
-    "Exec=run-nimino.sh\n" &
+    ## appimagetool consumes the desktop file at the AppDir root and the
+    ## AppRun entrypoint is the stable AppImage launcher contract.
+    "Exec=AppRun\n" &
     "Icon=" & metadata.id & "\n" &
     "Terminal=false\n" &
     "Categories=Network;\n"
@@ -516,10 +548,15 @@ proc buildAppImage(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
     createDir(appDir / "usr" / "share" / "applications")
     writeFile(appDir / "usr" / "share" / "applications" / metadata.desktopFile,
       metadata.appImageDesktop())
+    ## appimagetool 1.9.x requires a desktop entry and matching icon at the
+    ## AppDir root in addition to the installed desktop integration copy.
+    writeFile(appDir / metadata.desktopFile, metadata.appImageDesktop())
     let iconExtension = splitFile(metadata.icon).ext
     createDir(appDir / "usr" / "share" / "icons" / "hicolor" / "128x128" / "apps")
     copyFile(options.bundleDirectory / extractFilename(metadata.icon),
       appDir / "usr" / "share" / "icons" / "hicolor" / "128x128" / (metadata.id & iconExtension))
+    copyFile(options.bundleDirectory / extractFilename(metadata.icon),
+      appDir / (metadata.id & iconExtension))
   except OSError as error:
     return failure[string](ioFailure,
       "unable to write AppImage runtime metadata: " & error.msg)
@@ -547,6 +584,9 @@ proc buildAppImage(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
     return failure[string](built.error.kind, built.error.detail)
   if not fileExists(outputPath) or getFileSize(outputPath) == 0:
     return failure[string](ioFailure, "appimagetool did not produce the expected AppImage")
+  let verified = waitForAppImageSquashfs(outputPath)
+  if not verified.isOk:
+    return failure[string](verified.error.kind, verified.error.detail)
   success(outputPath)
 
 proc buildLinuxPackage*(options: LinuxPackageOptions): PackResult[string] =

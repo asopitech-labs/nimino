@@ -20,6 +20,7 @@ const
     "gdk-pixbuf-query-loaders",
     "gio-querymodules",
     "bwrap",
+    "unsquashfs",
     "xdg-dbus-proxy"
   ]
   AppImageRequiredPkgConfigModules* = [

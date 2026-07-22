@@ -6,7 +6,7 @@ block fixedDependencyContract:
   doAssert AppImageRequiredTools == [
     "appimagetool", "linuxdeploy", "patchelf", "lddtree", "pkg-config",
     "glib-compile-schemas", "gdk-pixbuf-query-loaders", "gio-querymodules",
-    "bwrap", "xdg-dbus-proxy"
+    "bwrap", "unsquashfs", "xdg-dbus-proxy"
   ]
   doAssert AppImageRequiredPkgConfigModules == [
     "gtk4", "webkitgtk-6.0", "gio-2.0", "gdk-pixbuf-2.0"

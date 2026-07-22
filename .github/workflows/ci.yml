@@ -45,6 +45,7 @@ jobs:
           pack-linux-test
           pack-popular-catalog-test
           pack-appimage-guardrails
+          pack-appimage-test
           pack-windows-test
           pack-archive-test
           linux-smoke
