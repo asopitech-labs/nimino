@@ -597,6 +597,50 @@ proc packBooleanFlag(flag: string): bool =
            "--start-to-tray", "--hide-on-close", "--multi-window",
            "--multi-instance", "--use-local-file", "--json"]
 
+proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
+  case flag
+  of "--name": manifest.name = value
+  of "--title": manifest.window.title = value
+  of "--id": manifest.id = value
+  of "--profile": manifest.profile = value
+  of "--width":
+    try: manifest.window.width = parseInt(value)
+    except ValueError: usage()
+  of "--height":
+    try: manifest.window.height = parseInt(value)
+    except ValueError: usage()
+  of "--resizable": manifest.window.resizable = parseCliBool(value)
+  of "--fullscreen": manifest.window.fullscreen = parseCliBool(value)
+  of "--maximize": manifest.window.maximized = parseCliBool(value)
+  of "--always-on-top": manifest.window.alwaysOnTop = parseCliBool(value)
+  of "--hide-window-decorations": manifest.window.hideWindowDecorations = parseCliBool(value)
+  of "--enable-drag-drop": manifest.window.enableDragDrop = parseCliBool(value)
+  of "--user-agent": manifest.webview.userAgent = value
+  of "--proxy-url": manifest.webview.proxyUrl = value
+  of "--incognito": manifest.webview.incognito = parseCliBool(value)
+  of "--zoom":
+    try: manifest.webview.zoomFactor = parseInt(value).float / 100.0
+    except ValueError: usage()
+  of "--ignore-certificate-errors":
+    manifest.webview.ignoreCertificateErrors = parseCliBool(value)
+  of "--show-system-tray": manifest.runtime.showSystemTray = parseCliBool(value)
+  of "--start-to-tray": manifest.runtime.startToTray = parseCliBool(value)
+  of "--hide-on-close": manifest.runtime.hideOnClose = parseCliBool(value)
+  of "--multi-window": manifest.runtime.multiWindow = parseCliBool(value)
+  of "--multi-instance": manifest.runtime.multiInstance = parseCliBool(value)
+  of "--use-local-file": manifest.useLocalFile = parseCliBool(value)
+  of "--icon": manifest.icon = value
+  of "--deep-link": manifest.deepLink.schemes.add(value)
+  of "--allow-permission": manifest.permissionsAllow.add(value)
+  of "--inject-css": manifest.css.add(value)
+  of "--inject-js": manifest.javascript.add(value)
+  of "--allow-url": manifest.navigationAllow.add(value)
+  of "--safe-domain":
+    manifest.safeDomains.add(value)
+    manifest.navigationAllow.add("https://" & value & "/**")
+  of "--external-url": manifest.navigationExternal.add(value)
+  else: discard
+
 if paramCount() >= 1 and paramStr(1) == "package-linux":
   runPackageLinux()
 if paramCount() >= 1 and paramStr(1) == "package-windows":
@@ -762,11 +806,19 @@ while index <= paramCount():
      "--start-to-tray", "--hide-on-close", "--multi-window", "--multi-instance",
      "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--safe-domain", "--external-url",
      "--use-local-file":
-    if not sourceIsUrl and not sourceIsLocal: usage()
+    if not sourceIsUrl and not sourceIsLocal:
+      if not hasValue and not packBooleanFlag(flag): usage()
+      let value = if hasValue: paramStr(index + 1) else: "true"
+      applyManifestCliOverride(loaded.value, flag, value)
   of "--json":
     jsonOutput = true
   else: usage()
   if hasValue: index += 2 else: inc index
+let validatedLoaded = loaded.value.validate()
+if not validatedLoaded.isOk:
+  stderr.writeLine("nimino pack: " & validatedLoaded.error.detail)
+  quit(1)
+loaded = validatedLoaded
 if hostPath.len > 0 and not fileExists(hostPath):
   stderr.writeLine("nimino pack: host executable does not exist")
   quit(1)
