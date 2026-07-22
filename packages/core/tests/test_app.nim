@@ -256,6 +256,8 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert first.value.restore().isOk
   doAssert first.value.setResizable(false).isOk
   doAssert first.value.setResizable(true).isOk
+  doAssert first.value.setZoom(1.25).isOk
+  doAssert not first.value.setZoom(0.1).isOk
   doAssert not first.value.setPosition(10, 20).isOk
   doAssert not first.value.reload().isOk
   doAssert first.value.close().isOk

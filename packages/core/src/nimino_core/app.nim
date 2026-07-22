@@ -317,6 +317,7 @@ type
 proc setFullscreen*(window: Window; enabled: bool): CoreResult
 proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult
 proc maximize*(window: Window): CoreResult
+proc setZoom*(window: Window; factor: float): CoreResult
 
 proc mapNativeError(error: native.NativeError): CoreError =
   let kind = case error.kind
@@ -2467,6 +2468,34 @@ proc setFullscreen*(window: Window; enabled: bool): CoreResult =
       }))
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else: coreFailure(coreError(platformUnavailable, "window.setFullscreen"))
+
+proc setZoom*(window: Window; factor: float): CoreResult =
+  ## Apply a runtime zoom change to every WebView owned by this Window.
+  ## Pake's keyboard/UI controls can call this API without depending on a
+  ## platform-specific WebView handle.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setZoom"))
+  if factor < 0.25 or factor > 5.0:
+    return coreFailure(coreError(invalidArgument, "window.setZoom",
+      detail = "zoom factor must be between 0.25 and 5.0"))
+  for view in window.webViews:
+    if view.isNil or view.closed:
+      continue
+    case window.app.backend
+    of nativeBackend:
+      let updated = native.setZoom(view.nativeView, factor)
+      if not updated.isOk:
+        return coreFailure(updated.failure.mapNativeError())
+    of wslBackend:
+      when defined(linux):
+        let updated = window.app.wslCall("native.webview.setZoom", $(%*{
+          "webViewId": $view.webViewId, "factor": factor
+        }))
+        if not updated.isOk:
+          return coreFailure(updated.failure)
+      else:
+        return coreFailure(coreError(platformUnavailable, "window.setZoom"))
+  coreSuccess()
 
 proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
