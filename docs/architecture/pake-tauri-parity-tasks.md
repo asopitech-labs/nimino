@@ -28,7 +28,7 @@ macOS work is performed in a separate environment and is intentionally excluded.
 - [x] Reject unsupported dark-mode, disabled web shortcuts, and activation shortcut options explicitly.
 - [x] Reject unsupported minimum window size and custom system-tray icon options explicitly.
 - [x] Add explicit `new-window` policy and preserve user-gesture popup semantics.
-- [ ] Fetch a favicon automatically when no icon is supplied.
+- [x] Fetch a bounded `https?://<host>/favicon.ico` automatically when no icon is supplied; a site without one remains valid and explicit icon failures remain fatal.
 
 ## P1 — packaging and release parity
 

@@ -99,6 +99,7 @@ grep -Fx 'Icon=/opt/nimino/app.nimino.demo-url/icon.png' "$root/url-out/app.nimi
 
 mkdir -p "$root/icon-server"
 printf 'remote-icon' > "$root/icon-server/remote.png"
+printf 'auto-favicon' > "$root/icon-server/favicon.ico"
 python3 -m http.server 18765 --bind 0.0.0.0 --directory "$root/icon-server" > "$root/icon-server.log" 2>&1 &
 icon_server=$!
 trap 'kill "$icon_server" 2>/dev/null || true' EXIT
@@ -107,6 +108,10 @@ sleep 1
   --icon http://127.0.0.1:18765/remote.png --out "$root/remote-icon-out" --host "$root/host"
 test -s "$root/remote-icon-out/remote.png"
 grep -q '"icon": "remote.png"' "$root/remote-icon-out/nimino-manifest.json"
+"$nimino" pack http://127.0.0.1:18765/app --name DemoAutoFavicon --id app.nimino.demo-auto-favicon \
+  --out "$root/auto-favicon-out" --host "$root/host"
+test -s "$root/auto-favicon-out/favicon.ico"
+grep -q '"icon": "favicon.ico"' "$root/auto-favicon-out/nimino-manifest.json"
 kill "$icon_server" 2>/dev/null || true
 wait "$icon_server" 2>/dev/null || true
 trap - EXIT

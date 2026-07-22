@@ -595,7 +595,7 @@ proc fetchRemoteIcon(url, destination: string): bool =
   if not (lower.startsWith("http://") or lower.startsWith("https://")):
     return false
   try:
-    var client = newHttpClient(timeout = 15_000)
+    var client = newHttpClient(timeout = 3_000)
     let response = client.get(url)
     if response.code.int < 200 or response.code.int >= 300:
       stderr.writeLine("nimino pack: remote icon returned HTTP " & $response.code.int)
@@ -926,6 +926,20 @@ else:
         quit(1)
       paths[index] = fileName
   var localIconName = ""
+  if packaged.icon.len == 0 and packaged.url.len > 0:
+    ## Pake-compatible default: URL bundles get the site's favicon when it is
+    ## available.  A site without a favicon remains a valid bundle; explicit
+    ## --icon failures are still fatal below.
+    try:
+      let page = parseUri(packaged.url)
+      if page.scheme.toLowerAscii() in ["http", "https"] and page.hostname.len > 0:
+        let authority = page.hostname & (if page.port.len > 0: ":" & page.port else: "")
+        let faviconUrl = page.scheme & "://" & authority & "/favicon.ico"
+        if fetchRemoteIcon(faviconUrl, directory / "favicon.ico"):
+          packaged.icon = "favicon.ico"
+          localIconName = "favicon.ico"
+    except CatchableError:
+      discard
   let iconIsRemote = packaged.icon.toLowerAscii().startsWith("http://") or
     packaged.icon.toLowerAscii().startsWith("https://") or
     packaged.icon.toLowerAscii().startsWith("data:")
