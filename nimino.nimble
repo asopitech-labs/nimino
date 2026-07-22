@@ -46,6 +46,9 @@ task testCoreLinuxRpcSmoke, "Run the Linux core RPC smoke test under Xvfb":
 task testPackManifest, "Run nimino-pack manifest tests":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-manifest-nimcache --path:packages/pack packages/pack/tests/test_manifest.nim"
 
+task testPackPrepack, "Run built-in URL prepack tests":
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-prepack-nimcache --out:/tmp/nimino-test-prepack --path:packages/pack packages/pack/tests/test_prepack.nim"
+
 task buildPackCli, "Build the nimino-pack validation CLI":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"
 
@@ -58,6 +61,9 @@ task buildNiminoHostWindows, "Cross-compile the generic Windows Nimino host":
 
 task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "bash tools/ci/test_pack_cli.sh /tmp/nimino"
+
+task testPackPrepacks, "Verify YouTube, Gmail, and Google Analytics prepacks":
+  exec "bash tools/ci/test_pack_prepacks.sh /tmp/nimino"
 
 task testPackLinux, "Build Debian/RPM archives from nimino-pack Linux metadata":
   exec "bash tools/ci/test_pack_linux.sh /tmp/nimino"

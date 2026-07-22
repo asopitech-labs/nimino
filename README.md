@@ -44,6 +44,8 @@ Linux配布物は`make pack-linux-test`でDebian/RPM生成、Flatpak context、a
 
 Popular Packagesは`catalog/popular-packages.json`を厳格に読み込む公開pack APIを持ちます。未検証artifactは登録せず、現時点の正式catalogは空です。登録時にはversion付きrelease URL、artifact/SBOMのSHA-256、生成commit/workflow/run IDをminisign署名へ結合し、別経路で信頼した公開鍵による検証を必須とします。
 
+すぐに使える組み込みprepackとして`youtube`、`gmail`、`google-analytics`を同梱しています。`nimino pack prepack youtube --out dist/youtube --host nimino-host`のように実行すると、各サービスのURL、profile、window設定、Googleログインを含む明示的なnavigation allow-listを持つbundleを生成します。未知のprepack名は失敗し、生成経路は`make pack-prepack-test`と`make pack-prepacks-test`で検証できます。
+
 Windows配布物は`make pack-windows-test`でDocker内のNSISを使いper-user setup EXEをクロス生成します。setupのWindows実機でのinstall/uninstall/upgradeとcode signingは別途検証が必要です。
 
 WSLの自動smokeは既定120秒でhostを回収します。環境に応じて`WSL_SMOKE_TIMEOUT=30 make wsl-host-popup-smoke`のように短縮できます。手動操作用`wsl-host-interactive`は既定300秒で、`WSL_INTERACTIVE_TIMEOUT=600 make wsl-host-interactive`のように延長できます。

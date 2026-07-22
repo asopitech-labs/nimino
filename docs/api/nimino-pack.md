@@ -20,6 +20,19 @@ nimino pack https://discord.com/app \
 nimino pack discord.toml --out dist/discord --host nimino-host
 ```
 
+レビュー済みの組み込みprepackは、URLや許可リストを手入力せずに生成できます。
+
+```bash
+nimino pack prepack youtube --out dist/youtube --host nimino-host
+nimino pack prepack gmail --out dist/gmail --host nimino-host
+nimino pack prepack google-analytics --out dist/google-analytics --host nimino-host
+```
+
+prepackは`YouTube`、`Gmail`、`Google Analytics`の3つで、各サービスのログイン用
+Google originとアプリoriginだけをnavigation allow-listへ含めます。未知の名前は
+失敗し、定義は`catalog/prepacks/*.toml`とテストで追跡できます。これは署名済み
+Popular Packages release catalogとは別の、ソースに同梱した安全な初期設定です。
+
 `--out`を省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`が必須です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定・ナビゲーション・権限・注入設定はマニフェスト形式で指定します。
 
 PakeのCLI包装フローを参考にしているが、生成物はNimino hostと`nimino-core`を使用し、Pake/Tauriを実行時依存にしません。
