@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — Docker内のDebian `nsis` packageでper-user NSIS setupをクロス生成する。MSIは未対応とする。
+Accepted — Docker内のDebian `nsis` packageでper-user NSIS setupを、`wixl`（msitools）でper-user MSIをクロス生成する。
 
 ## Context
 
@@ -10,7 +10,7 @@ Accepted — Docker内のDebian `nsis` packageでper-user NSIS setupをクロス
 
 NSISはWindows installer/uninstallerをscriptから作るtoolであり、`File /r`、`WriteUninstaller`、registry、shortcutを扱える。[NSIS Users Manual](https://nsis.sourceforge.io/Docs/) [NSIS File reference](https://nsis.sourceforge.io/Reference/File) [NSIS WriteUninstaller reference](https://nsis.sourceforge.io/Reference/WriteUninstaller) Debian stableはNSIS 3.11-1を配布し、Windows installer作成用packageとして保守している。[Debian nsis package](https://packages.debian.org/stable/nsis)
 
-MSIにはWiX等のtoolchainに加え、Windows Installer databaseとICEによるWindows側validationが必要である。現行Docker imageには固定したWiX toolchainもWindows Installer validation環境もない。WiXのCLIにはMSI validation commandが存在するが、未検証のtool導入だけでMSIを生成済みと扱わない。[WiX MSI command reference](https://docs.firegiant.com/wix/tools/wixexe/)
+MSIにはWiX等のtoolchainに加え、Windows Installer databaseとICEによるWindows側validationが必要である。Debianの`wixl`はWiX互換の生成器で、Docker内で再現可能なMSI databaseを生成できる。一方、Windows Installerの実機install/upgrade/uninstallおよびICE検査は別のWindows CI境界として扱う。[Debian wixl manual](https://manpages.debian.org/trixie/wixl/wixl.1.en.html)
 
 ## Decision
 
@@ -19,9 +19,10 @@ MSIにはWiX等のtoolchainに加え、Windows Installer databaseとICEによる
 - NSIS scriptは`RequestExecutionLevel user`と`SetShellVarContext current`を使い、`%LOCALAPPDATA%\\Nimino\\<id>`、HKCUのUninstall key、current userのStart Menu shortcutだけを操作する。管理者権限、全ユーザー導入、code signing、WebView2 Runtime同梱は扱わない。
 - Start Menu shortcutには生成したPropertyStore helperで`System.AppUserModel.ID`を設定する。AUMIDはmanifestの`id`と一致させ、Toast activation契約は実行中プロセス向けの`inProcess`とする。終了済みプロセスを起動するCOM `INotificationActivationCallback` serverは、未実装のまま登録しない。
 - bundle外からのscript注入を避けるため、Windows metadataのschema、per-user layout、launcher、manifest、任意iconのファイル名を検証する。表示文字列はNSISのquoted stringとしてescapeする。
-- `--format msi`は固定された`unsupportedFeature`エラーにする。WiXのversion/license/保守、Docker導入、Windows Installer ICE、Windows実機のinstall/upgrade/uninstall testがそろうまでMSI生成を追加しない。
+- `nimino package-windows <bundle> --format msi --out <directory>`は、bundleトップレベルのファイル、per-user directory tree、安定したProduct/Component GUIDを含むWix descriptorを生成し、Docker内の`wixl --arch x64`でMSIへ変換する。descriptorは成果物として残さず、生成後は`msiinfo`/`msiextract`で構造を検査する。
+- MSIはWiX互換サブセットのper-user databaseに限定する。管理者導入、インストーラーUI、コード署名、Windows Installer ICE、Windows実機のinstall/upgrade/uninstall testは別のWindows実機CIが整うまでリリース条件に含めない。
 
 ## Consequences
 
-- `make pack-windows-test`はLinux Docker上でNSIS scriptをcompileし、出力がPE (`MZ`) であること、per-user install/shortcut/ARP/uninstaller記述、MSI未対応エラーを検証する。
+- `make pack-windows-test`はLinux Docker上でNSIS scriptとMSIを生成し、NSIS出力がPE (`MZ`) であること、per-user install/shortcut/ARP/uninstaller記述、MSIのFile tableとbundleファイル一覧を検証する。
 - Docker testはWindows setupを実行しない。実際のWindowsでのinstall、uninstall、upgrade、shortcut起動、WebView2 runtime検出、Defender/SmartScreen挙動、code signingは未検証であり、リリース前にWindows実機CIと署名手順を追加する必要がある。

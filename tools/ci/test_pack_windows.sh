@@ -23,6 +23,7 @@ printf 'MZfake-windows-host\n' > "$root/nimino-host.exe"
 
 "$nimino" pack "$root/input.toml" --out "$root/bundle" --host "$root/nimino-host.exe"
 "$nimino" package-windows "$root/bundle" --format nsis --out "$root/out"
+"$nimino" package-windows "$root/bundle" --format msi --out "$root/out/msi"
 
 setup="$root/out/app.nimino.windows-demo-1.2.3-setup.exe"
 script="$root/out/app.nimino.windows-demo-1.2.3-setup.nsi"
@@ -48,7 +49,10 @@ if "$nimino" package-windows "$root/no-host-bundle" --format nsis --out "$root/n
 fi
 grep -Fx 'nimino package-windows: Windows package bundle is missing a host executable' "$root/no-host.err"
 
-if "$nimino" package-windows "$root/bundle" --format msi --out "$root/out/msi" 2>"$root/msi.err"; then
-  exit 1
-fi
-grep -Fx 'nimino package-windows: MSI package generation is unavailable: a fixed WiX toolchain and Windows Installer validation are not configured' "$root/msi.err"
+msi="$root/out/msi/app.nimino.windows-demo-1.2.3.msi"
+test -s "$msi"
+test ! -e "$root/out/msi/app.nimino.windows-demo-1.2.3.wxs"
+msiinfo tables "$msi" | grep -Fx 'File'
+msiextract -l "$msi" | grep -F 'nimino-manifest.json'
+msiextract -l "$msi" | grep -F 'run-nimino.cmd'
+msiextract -l "$msi" | grep -F 'nimino-host.exe'

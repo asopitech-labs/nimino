@@ -3,7 +3,7 @@
 ## NSIS is compiled on Linux by makensis, but the resulting installer must be
 ## executed and code-signed on Windows before release.
 
-import std/[json, os, osproc, strutils]
+import std/[algorithm, json, os, osproc, strutils]
 
 import ./manifest
 
@@ -258,6 +258,123 @@ proc buildNsis(options: WindowsPackageOptions; metadata: WindowsBundleMetadata):
     return failure[string](ioFailure, "NSIS did not produce the expected installer")
   success(outputPath)
 
+proc xmlAttribute(value: string): string =
+  ## Escape a value inserted into a single-quoted WiX XML attribute.
+  value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    .replace("'", "&apos;").replace("\"", "&quot;")
+
+proc stableMsiGuid(seed: string): string =
+  ## Derive a stable component/product GUID without adding a crypto dependency.
+  ## The GUID is an identifier, not an authenticity mechanism; signed artifacts
+  ## remain the release boundary.
+  var first = 1469598103934665603'u64
+  var second = 1099511628211'u64
+  for index, character in seed:
+    first = (first xor uint64(ord(character))) * 1099511628211'u64
+    second = (second xor uint64(ord(character) + index + 1)) * 1469598103934665603'u64
+  let left = toHex(first, 16)
+  let right = toHex(second, 16)
+  result = left[0..7] & "-" & left[8..11] & "-" & left[12..15] & "-" &
+    right[0..3] & "-" & right[4..15]
+
+proc msiVersion(value: string): PackResult[string] =
+  let parts = value.split('.')
+  if parts.len < 1 or parts.len > 4:
+    return failure[string](invalidManifest, "MSI package version must contain one to four numeric components")
+  for part in parts:
+    if part.len == 0 or not part.allCharsInSet({'0'..'9'}) or
+        parseInt(part) > 65535:
+      return failure[string](invalidManifest, "MSI package version must contain numeric components <= 65535")
+  success(value)
+
+proc wixFileEntries(bundleDirectory: string): PackResult[seq[tuple[name, source: string]]] =
+  var entries: seq[tuple[name, source: string]] = @[]
+  try:
+    for kind, path in walkDir(bundleDirectory, relative = false):
+      if kind != pcFile:
+        continue
+      let name = path.lastPathPart()
+      if not safeFileName(name):
+        return failure[seq[tuple[name, source: string]]](invalidManifest,
+          "Windows MSI bundle contains an unsafe top-level filename")
+      entries.add((name, path))
+  except OSError:
+    return failure[seq[tuple[name, source: string]]](ioFailure,
+      "Windows MSI bundle cannot be scanned")
+  if entries.len == 0:
+    return failure[seq[tuple[name, source: string]]](ioFailure,
+      "Windows MSI bundle contains no files")
+  entries.sort(proc(left, right: tuple[name, source: string]): int = cmp(left.name, right.name))
+  success(entries)
+
+proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string;
+               entries: seq[tuple[name, source: string]]): string =
+  let productGuid = stableMsiGuid("product:" & metadata.id)
+  result = "<?xml version='1.0' encoding='utf-8'?>\n" &
+    "<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>\n" &
+    "  <Product Name='" & metadata.displayName.xmlAttribute() & "' Id='*' UpgradeCode='{" &
+      productGuid & "}' Language='1033' Version='" & version & "' Manufacturer='" &
+      metadata.publisher.xmlAttribute() & "'>\n" &
+    "    <Package Id='*' Keywords='Installer' Description='" & metadata.description.xmlAttribute() &
+      "' Manufacturer='" & metadata.publisher.xmlAttribute() &
+      "' InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252'\n" &
+    "             InstallPrivileges='limited' InstallScope='perUser' />\n" &
+    "    <Media Id='1' Cabinet='nimino.cab' EmbedCab='yes' />\n" &
+    "    <Directory Id='TARGETDIR' Name='SourceDir'>\n" &
+    "      <Directory Id='LocalAppDataFolder' Name='LocalAppData'>\n" &
+    "        <Directory Id='NiminoFolder' Name='Nimino'>\n" &
+    "          <Directory Id='INSTALLDIR' Name='" & metadata.id.xmlAttribute() & "'>\n"
+  var references = ""
+  for index, entry in entries:
+    let componentId = "cmp" & $index
+    let fileId = "fil" & $index
+    let componentGuid = stableMsiGuid("component:" & metadata.id & ":" & entry.name)
+    result.add("            <Component Id='" & componentId & "' Guid='{" & componentGuid & "}' Win64='yes'>\n" &
+      "              <File Id='" & fileId & "' KeyPath='yes' Source='" & entry.source.xmlAttribute() & "' />\n" &
+      "            </Component>\n")
+    references.add("        <ComponentRef Id='" & componentId & "' />\n")
+  result.add("          </Directory>\n" &
+    "        </Directory>\n" &
+    "      </Directory>\n" &
+    "    </Directory>\n" &
+    "    <Feature Id='Complete' Level='1' Title='" & metadata.displayName.xmlAttribute() & "'>\n" &
+    references &
+    "    </Feature>\n" &
+    "  </Product>\n" &
+    "</Wix>\n")
+
+proc buildMsi(options: WindowsPackageOptions; metadata: WindowsBundleMetadata): PackResult[string] =
+  let tool = findExe("wixl")
+  if tool.len == 0:
+    return failure[string](unsupportedFeature,
+      "MSI package generation requires wixl (msitools) in the Docker image")
+  let version = metadata.version.msiVersion()
+  if not version.isOk:
+    return failure[string](version.error.kind, version.error.detail)
+  let entries = options.bundleDirectory.wixFileEntries()
+  if not entries.isOk:
+    return failure[string](entries.error.kind, entries.error.detail)
+  let outputName = metadata.id & "-" & metadata.version & ".msi"
+  let scriptName = metadata.id & "-" & metadata.version & ".wxs"
+  let outputPath = options.outputDirectory / outputName
+  let scriptPath = options.outputDirectory / scriptName
+  if fileExists(outputPath) or fileExists(scriptPath):
+    return failure[string](ioFailure, "Windows MSI package output already exists")
+  try:
+    writeFile(scriptPath, metadata.wixSource(options.bundleDirectory, version.value, entries.value))
+  except OSError:
+    return failure[string](ioFailure, "unable to write WiX MSI descriptor")
+  let built = tool.executeTool(["-o", outputPath, "--arch", "x64", scriptPath])
+  try:
+    removeFile(scriptPath)
+  except OSError:
+    discard
+  if not built.isOk:
+    return failure[string](built.error.kind, built.error.detail)
+  if not fileExists(outputPath) or getFileSize(outputPath) == 0:
+    return failure[string](ioFailure, "wixl did not produce the expected MSI package")
+  success(outputPath)
+
 proc buildWindowsPackage*(options: WindowsPackageOptions): PackResult[string] =
   let metadata = options.bundleDirectory.readWindowsBundleMetadata()
   if not metadata.isOk:
@@ -269,5 +386,4 @@ proc buildWindowsPackage*(options: WindowsPackageOptions): PackResult[string] =
   of nsisPackage:
     return options.buildNsis(metadata.value)
   of msiPackage:
-    return failure[string](unsupportedFeature,
-      "MSI package generation is unavailable: a fixed WiX toolchain and Windows Installer validation are not configured")
+    return options.buildMsi(metadata.value)

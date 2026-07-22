@@ -79,7 +79,7 @@ categories = ["Network", "Utility"]
 
 `<id>.desktop`はreverse-DNS形式のアプリIDをファイル名に使います。`Icon`はbundleに同梱できるローカルアイコンだけを参照します。リモートURLの`--icon`は実行時に取得しないため、desktop entryの`Icon`へ書き込みません。パッケージャーはローカルアイコンを所定のicon directoryに配置する場合、生成metadataと同じアプリIDを使ってdesktop entryを調整する必要があります。
 
-署名済みMSI、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。NSIS setupは下記のDocker生成経路で実装済みです。`install-windows.ps1`はWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
+署名済みMSI、WebView2 Runtimeの同梱・検出は、後続のプラットフォーム別packagerがこのmetadataを入力として実装する範囲です。NSIS/MSI setupは下記のDocker生成経路で実装済みです。`install-windows.ps1`はWindows PowerShellで実行するtemplateであり、このリポジトリのDocker検証では実機実行しません。
 
 ### Windows NSIS setup
 
@@ -93,7 +93,13 @@ nimino package-windows dist/discord --format nsis --out dist/packages
 
 Windows通知のAUMIDはmanifestの`id`と同一に固定し、NSISおよび`install-windows.ps1`がStart Menu shortcutの`System.AppUserModel.ID`へ設定します。Toastの現在のactivation契約は`inProcess`です。実行中プロセスの`IToastNotification.Activated`は利用できますが、終了済みプロセスを起動するCOM `INotificationActivationCallback` serverの登録・実装は未対応です。そのため、未登録のCOM activatorを成功扱いせず、完全なバックグラウンドactivationは後続のWindows host/packaging作業とします。
 
-`--format msi`は現在、固定された未対応エラーになります。固定WiX toolchain、Windows Installer/ICE validation、Windows実機testを整備するまでMSIは生成しません。
+### Windows MSI setup
+
+```bash
+nimino package-windows dist/discord --format msi --out dist/packages
+```
+
+`<id>-<version>.msi`をDocker内のDebian `wixl`（msitools）で生成します。per-userの`%LOCALAPPDATA%\\Nimino\\<id>`へbundleのトップレベルファイルを配置するWindows Installer databaseで、同じbundleを`msiextract`/`msiinfo`で検査できます。WiX互換サブセットのため、管理者導入、UI、コード署名、Windows実機のinstall/upgrade/uninstallは含みません。
 
 ### Linux archive
 
@@ -138,4 +144,4 @@ make pack-windows-test
 make pack-archive-test
 ```
 
-`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMとFlatpak context、`pack-appimage-guardrails`は未解決依存と不完全なAppImage生成の拒否、`pack-windows-test`はNSIS setup EXEのクロス生成とMSI未対応エラー、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。CLIを使う検査はDockerコンテナ内で実行します。
+`pack-test`はマニフェスト値の解析・検証、`pack-cli-test`はbundleとplatform metadata、`pack-linux-test`はDebian/RPMとFlatpak context、`pack-appimage-guardrails`は未解決依存と不完全なAppImage生成の拒否、`pack-windows-test`はNSIS setup EXEとMSI databaseのクロス生成・構造、`pack-archive-test`は生成bundleからLinux tar.gzとWindows zipを作れることを検査します。CLIを使う検査はDockerコンテナ内で実行します。
