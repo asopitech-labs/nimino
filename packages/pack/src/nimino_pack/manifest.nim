@@ -640,6 +640,8 @@ proc loadManifest*(path: string): PackResult[PackManifest] =
       let internalUrlRegex = jsonString(node, ["internalUrlRegex", "internal_url_regex"], "")
       let safeDomain = jsonString(node, ["safeDomain", "safe_domain"], "")
       let targets = jsonString(node, ["targets"], "")
+      let installerLanguage = jsonString(node,
+        ["installerLanguage", "installer_language"], "en-US")
       let appVersion = jsonString(node, ["appVersion", "app_version"], "0.1.0")
       let description = jsonString(node, ["description"], "")
       let publisher = jsonString(node, ["publisher"], "Nimino")
@@ -691,6 +693,7 @@ proc loadManifest*(path: string): PackResult[PackManifest] =
       ensureJson(internalUrlRegex)
       ensureJson(safeDomain)
       ensureJson(targets)
+      ensureJson(installerLanguage)
       ensureJson(appVersion)
       ensureJson(description)
       ensureJson(publisher)
@@ -744,7 +747,7 @@ proc loadManifest*(path: string): PackResult[PackManifest] =
           publisher: publisher.value, homepage: homepage.value,
           categories: if categories.value.len == 0: @[
             "Network"] else: categories.value, targets: targets.value,
-          installerLanguage: "en-US", keepBinary: keepBinary.value, bundle: bundle.value,
+          installerLanguage: installerLanguage.value, keepBinary: keepBinary.value, bundle: bundle.value,
           iterativeBuild: iterativeBuild.value, debug: debug.value, multiArch: multiArch.value,
           install: install.value), navigationAllow: allow,
         permissionsAllow: permissions.value, css: css.value, javascript: javascript.value,

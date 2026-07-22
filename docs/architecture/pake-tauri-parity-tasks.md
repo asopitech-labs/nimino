@@ -23,7 +23,7 @@ macOS work is performed in a separate environment and is intentionally excluded.
 
 ## P1 — Pake wrapper features
 
-- [ ] Add built-in browser shortcuts and runtime zoom controls.
+- [ ] Add built-in browser shortcuts and runtime zoom controls. (Runtime zoom API is implemented; built-in shortcut wiring remains.)
 - [ ] Add optional in-page Find UI and native menu actions.
 - [ ] Add dark-mode preference, disabled web shortcuts, and activation shortcut capabilities.
 - [ ] Add minimum window size and custom system-tray icon support.
@@ -32,9 +32,9 @@ macOS work is performed in a separate environment and is intentionally excluded.
 
 ## P1 — packaging and release parity
 
-- [ ] Add `app-version`, installer language, debug, iterative-build, keep-binary, and no-bundle controls.
-- [ ] Add Linux zst and architecture-aware target parsing.
-- [ ] Add Windows ARM64 target handling.
+- [ ] Add `app-version`, installer language, debug, iterative-build, keep-binary, and no-bundle controls. (Values are schema-validated and emitted; build-time behavior remains.)
+- [x] Add Linux zst and architecture-aware target parsing. (zst and unsupported architectures fail with explicit results until their native toolchains are available.)
+- [x] Add Windows ARM64 target handling. (The target is recognized and fails closed unless an ARM64 host/signer is supplied.)
 - [ ] Produce a complete Flatpak/AppImage release path or fail with a precise unsupported result.
 - [ ] Add packaging tests for every accepted target and architecture.
 
