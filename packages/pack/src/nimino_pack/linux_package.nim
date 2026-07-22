@@ -520,8 +520,9 @@ proc buildAppImage(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
     createDir(appDir / "usr" / "share" / "icons" / "hicolor" / "128x128" / "apps")
     copyFile(options.bundleDirectory / metadata.icon,
       appDir / "usr" / "share" / "icons" / "hicolor" / "128x128" / (metadata.id & iconExtension))
-  except OSError:
-    return failure[string](ioFailure, "unable to write AppImage runtime metadata")
+  except OSError as error:
+    return failure[string](ioFailure,
+      "unable to write AppImage runtime metadata: " & error.msg)
   let hostRPath = appImageSetRPath(patchelf, appHost, "$ORIGIN/../..:$ORIGIN/../../lib")
   if not hostRPath.isOk:
     return failure[string](hostRPath.error.kind, hostRPath.error.detail)
