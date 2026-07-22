@@ -193,6 +193,8 @@ proc g_application_quit*(application: ptr GApplication)
 proc g_application_send_notification*(application: ptr GApplication; id: cstring;
                                       notification: ptr GNotification)
   {.cdecl, importc, dynlib: LibGio.}
+proc g_main_context_iteration*(context: pointer; mayBlock: cint): cint
+  {.cdecl, importc, dynlib: LibGlib.}
 
 proc g_bus_get_sync*(busType: GBusType; cancellable: pointer;
                      error: ptr ptr GError): ptr GDBusConnection

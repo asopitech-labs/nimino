@@ -6,7 +6,7 @@ WSL_SMOKE_TIMEOUT ?= 120
 WSL_INTERACTIVE_TIMEOUT ?= 300
 WSL_SITE_TIMEOUT ?= 180
 
-.PHONY: help setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-sites-test pack-site-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-sites-test pack-site-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke linux-tray-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -148,6 +148,10 @@ linux-smoke: image ## Xvfb上でLinux GTK/WebKitGTKのM1 smoke testを実行す�
 linux-custom-protocol-smoke: image ## Xvfb上でLinux WebView custom protocol harnessを実行する
 
 	$(COMPOSE) run --rm -e WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 $(SERVICE) nimble testLinuxCustomProtocolSmoke
+
+linux-tray-smoke: image ## Xvfbとprivate D-Bus上でLinux StatusNotifierItem/dbusmenu harnessを実行する
+
+	$(COMPOSE) run --rm $(SERVICE) nimble testLinuxTraySmoke
 
 core-linux-rpc-smoke: image ## Xvfb上でLinux core RPC bootstrap smoke testを実行する
 

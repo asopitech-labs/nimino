@@ -39,6 +39,10 @@ task testLinuxCustomProtocolSmoke, "Run the Linux WebView custom protocol harnes
   exec "nim c --mm:arc --nimcache:/tmp/nimino-linux-custom-protocol-smoke-nimcache --out:/tmp/nimino-linux-custom-protocol-smoke --path:packages/native packages/native/tests/test_linux_custom_protocol_smoke.nim"
   exec "timeout 45s dbus-run-session -- xvfb-run -a /tmp/nimino-linux-custom-protocol-smoke"
 
+task testLinuxTraySmoke, "Run the Linux StatusNotifierItem/dbusmenu harness":
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-linux-tray-smoke-nimcache --out:/tmp/nimino-linux-tray-smoke --path:packages/native packages/native/tests/test_linux_system_tray.nim"
+  exec "timeout 45s dbus-run-session -- xvfb-run -a /tmp/nimino-linux-tray-smoke"
+
 task testCoreLinuxRpcSmoke, "Run the Linux core RPC smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_smoke.nim"
   exec "xvfb-run -a /tmp/nimino-core-linux-rpc-smoke"
