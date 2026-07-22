@@ -29,7 +29,9 @@ jobs:
       - name: Check out the release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          # Tag pushes build the tagged commit. Manual dispatches build the
+          # selected branch while publishing to the existing release tag.
+          ref: ${{ github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
