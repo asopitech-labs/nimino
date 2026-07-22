@@ -72,8 +72,8 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
       description: appName & " web application",
       publisher: "Nimino",
       homepage: url,
-      categories: @[
-        "Network"])
+      categories: @["Network"],
+      installerLanguage: "en-US", bundle: true)
     validate(PackManifest(
       name: appName,
       id: appId,
@@ -136,7 +136,7 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
     description: appName & " local web application",
     publisher: "Nimino",
     homepage: "",
-    categories: @["Network"])
+    categories: @["Network"], installerLanguage: "en-US", bundle: true)
   validate(PackManifest(
     name: appName,
     id: appId,

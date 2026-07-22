@@ -65,11 +65,17 @@ grep -F 'nimino-host.exe$\" -Embedding' "$script"
 grep -Fx '  StrCmp $0 "0" +2' "$script"
 grep -F '  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\app.nimino.windows-demo" "UninstallString"' "$script"
 
-"$nimino" pack "$root/input.toml" --out "$root/no-host-bundle"
+cp -a "$root/bundle" "$root/no-host-bundle"
+rm -f "$root/no-host-bundle/nimino-host.exe"
 if "$nimino" package-windows "$root/no-host-bundle" --format nsis --out "$root/no-host-out" 2>"$root/no-host.err"; then
   exit 1
 fi
 grep -Fx 'nimino package-windows: Windows package bundle is missing a host executable' "$root/no-host.err"
+
+if "$nimino" package-windows "$root/bundle" --format nsis --arch arm64 --out "$root/arm64-out" 2>"$root/arm64.err"; then
+  exit 1
+fi
+grep -Fx 'nimino package-windows: Windows ARM64 packaging requires an ARM64 host executable and signer; the Linux pack builder currently supports x64 only' "$root/arm64.err"
 
 msi="$root/out/msi/app.nimino.windows-demo-1.2.3.msi"
 test -s "$msi"

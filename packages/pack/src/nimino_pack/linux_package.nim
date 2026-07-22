@@ -15,6 +15,7 @@ type
     rpmPackage
     appImagePackage
     flatpakPackage
+    zstPackage
 
   LinuxPackageOptions* = object
     bundleDirectory*: string
@@ -650,6 +651,9 @@ proc buildLinuxPackage*(options: LinuxPackageOptions): PackResult[string] =
       if not built.isOk:
         return failure[string](built.error.kind, built.error.detail)
       return built
+    of zstPackage:
+      return failure[string](unsupportedFeature,
+        "Arch Linux zst package generation requires makepkg and an Arch base image; use the documented Arch packaging job")
   finally:
     if dirExists(workDirectory):
       try: removeDir(workDirectory)

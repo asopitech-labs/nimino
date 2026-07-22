@@ -60,7 +60,8 @@ grep -F '"path": "bundle"' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
 grep -F 'install -Dm644 app.nimino.linux-demo.desktop /app/share/applications/app.nimino.linux-demo.desktop' "$flatpak_context/app.nimino.linux-demo.flatpak.json"
 grep -F 'x-scheme-handler/nimino' "$flatpak_context/bundle/app.nimino.linux-demo.desktop"
 
-"$nimino" pack "$root/input.toml" --out "$root/no-host-bundle"
+cp -a "$root/bundle" "$root/no-host-bundle"
+rm -f "$root/no-host-bundle/nimino-host"
 if "$nimino" package-linux "$root/no-host-bundle" --format deb --out "$root/no-host-out" 2>"$root/no-host.err"; then
   exit 1
 fi
@@ -70,3 +71,8 @@ if "$nimino" package-linux "$root/bundle" --format appimage --out "$root/out" --
   exit 1
 fi
 grep -Fx 'nimino package-linux: AppImage package generation currently supports amd64 only' "$root/appimage-arm64.err"
+
+if "$nimino" package-linux "$root/bundle" --format zst --out "$root/zst-out" 2>"$root/zst.err"; then
+  exit 1
+fi
+grep -Fx 'nimino package-linux: Arch Linux zst package generation requires makepkg and an Arch base image; use the documented Arch packaging job' "$root/zst.err"

@@ -57,11 +57,20 @@ grep -q '"nimino"' "$root/out/nimino-manifest.json"
 
 "$nimino" pack --config "$root/input.toml" --out "$root/config-out" --host "$root/host"
 grep -q 'Demo' "$root/config-out/nimino-manifest.json"
+"$nimino" pack --config "$root/input.toml" --name Override --width 1111 \
+  --multi-window false --out "$root/config-override-out" --host "$root/host"
+grep -q 'Override' "$root/config-override-out/nimino-manifest.json"
+grep -q '"width": 1111' "$root/config-override-out/nimino-manifest.json"
+grep -q '"multiWindow": false' "$root/config-override-out/nimino-manifest.json"
 printf '%s\n' '{"url":"https://example.com","name":"JsonDemo","identifier":"app.nimino.json","title":"Json Window","width":900,"zoom":125}' > "$root/config.json"
 "$nimino" pack --config "$root/config.json" --out "$root/json-config-out" --host "$root/host"
 grep -q 'JsonDemo' "$root/json-config-out/nimino-manifest.json"
 grep -q 'Json Window' "$root/json-config-out/nimino-manifest.json"
 grep -q '"zoom": 125' "$root/json-config-out/nimino-manifest.json"
+"$nimino" pack --config "$root/config.json" --title "CLI Window" --zoom 150 \
+  --out "$root/json-config-override-out" --host "$root/host"
+grep -q 'CLI Window' "$root/json-config-override-out/nimino-manifest.json"
+grep -q '"zoom": 150' "$root/json-config-override-out/nimino-manifest.json"
 grep -q '"installScope": "perUser"' "$root/out/nimino-windows-installer.json"
 grep -Eq '"toastActivatorClsid": "[0-9A-Fa-f-]{36}"' "$root/out/nimino-windows-installer.json"
 grep -q 'System.AppUserModel.ToastActivatorCLSID' "$root/out/register-windows-shortcut.ps1"
@@ -90,6 +99,7 @@ grep -Fx 'Icon=/opt/nimino/app.nimino.demo-url/icon.png' "$root/url-out/app.nimi
 
 mkdir -p "$root/icon-server"
 printf 'remote-icon' > "$root/icon-server/remote.png"
+printf 'auto-favicon' > "$root/icon-server/favicon.ico"
 python3 -m http.server 18765 --bind 0.0.0.0 --directory "$root/icon-server" > "$root/icon-server.log" 2>&1 &
 icon_server=$!
 trap 'kill "$icon_server" 2>/dev/null || true' EXIT
@@ -98,6 +108,10 @@ sleep 1
   --icon http://127.0.0.1:18765/remote.png --out "$root/remote-icon-out" --host "$root/host"
 test -s "$root/remote-icon-out/remote.png"
 grep -q '"icon": "remote.png"' "$root/remote-icon-out/nimino-manifest.json"
+"$nimino" pack http://127.0.0.1:18765/app --name DemoAutoFavicon --id app.nimino.demo-auto-favicon \
+  --out "$root/auto-favicon-out" --host "$root/host"
+test -s "$root/auto-favicon-out/favicon.ico"
+grep -q '"icon": "favicon.ico"' "$root/auto-favicon-out/nimino-manifest.json"
 kill "$icon_server" 2>/dev/null || true
 wait "$icon_server" 2>/dev/null || true
 trap - EXIT

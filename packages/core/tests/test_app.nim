@@ -247,6 +247,12 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert app.windows().len == 4
   doAssert first.value.setTitle("Updated first").isOk
   doAssert first.value.setSize(640, 480).isOk
+  let persistedWindowState = first.value.readSetting("window-state")
+  doAssert persistedWindowState.isOk
+  doAssert persistedWindowState.value["width"].getInt() == 640
+  doAssert persistedWindowState.value["height"].getInt() == 480
+  doAssert first.value.saveWindowState().isOk
+  doAssert first.value.restoreWindowState().isOk
   doAssert not first.value.setSize(0, 480).isOk
   doAssert first.value.show().isOk
   doAssert first.value.focus().isOk
@@ -256,6 +262,8 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert first.value.restore().isOk
   doAssert first.value.setResizable(false).isOk
   doAssert first.value.setResizable(true).isOk
+  doAssert first.value.setZoom(1.25).isOk
+  doAssert not first.value.setZoom(0.1).isOk
   doAssert not first.value.setPosition(10, 20).isOk
   doAssert not first.value.reload().isOk
   doAssert first.value.close().isOk
@@ -410,6 +418,18 @@ block navigationRulesAreExplicit:
     "https://support.example.invalid/help") == navigationExternal
   doAssert matchesNavigationPattern("https://*.discord.com/**", "https://canary.discord.com/channels")
   doAssert not matchesNavigationPattern("https://*.discord.com/**", "https://discord.net/channels")
+  doAssert not matchesNavigationPattern("https://example.com/**",
+    "https://example.com.evil.test/")
+  doAssert not matchesNavigationPattern("https://example.com/**",
+    "https://user:password@example.com/private")
+  doAssert matchesNavigationPattern("https://example.com:8443/**",
+    "https://example.com:8443/app")
+  doAssert not matchesNavigationPattern("https://example.com:8443/**",
+    "https://example.com/app")
+  doAssert defaultNavigationDecision("https://app.example.co.uk/",
+    "https://login.example.co.uk/callback") == navigationAllow
+  doAssert defaultNavigationDecision("https://app.example.co.uk/",
+    "https://evil.co.uk/") == navigationExternal
   let created = newApp(id = "tech.asopi.navigation-test", name = "Navigation test")
   doAssert created.isOk
   let window = created.value.newWindow(title = "Navigation").value

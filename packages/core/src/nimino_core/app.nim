@@ -9,7 +9,7 @@ when defined(linux):
 
 import nimino_native as native
 
-import ./[errors, instance, logging, profile, rpc]
+import ./[errors, instance, logging, profile, rpc, update]
 
 const RpcBootstrapSource = """
 (() => {
@@ -99,10 +99,14 @@ type
     nativeNotification
     customProtocol
     webPermissionEvents
+    autostart
 
   AppOptions* = object
     id*: string
     name*: string
+    ## Version used by the update lifecycle; packagers should set this to the
+    ## application version rather than relying on the framework default.
+    version*: string
     ## When false (the default), only one live process may own this app ID.
     ## The lock is acquired before any native or WSL host UI is started.
     multiInstance*: bool
@@ -165,6 +169,16 @@ type
     injectionEnabled*: bool
     ## Disable browser developer tools for production windows.
     disableDevTools*: bool
+
+  WindowState* = object
+    ## Profile-persisted native window state. Position is optional in spirit;
+    ## zero is a valid desktop coordinate, so callers use `positionKnown`.
+    width*: int
+    height*: int
+    x*: int
+    y*: int
+    positionKnown*: bool
+    visible*: bool
 
   NavigationRules* = object
     allow*: seq[string]
@@ -262,6 +276,7 @@ type
     ## URLs until `onDeepLink` installs the consumer instead of dropping them.
     pendingDeepLinks: seq[string]
     appLogger: Logger
+    update*: UpdateLifecycle
     instanceLock: InstanceLock
     customProtocolHandler: CustomProtocolHandler
     when defined(linux):
@@ -306,6 +321,7 @@ type
     downloadEventHandler*: proc(event: DownloadEvent)
     closed: bool
     inlineRemoteAssets: bool
+    windowState: WindowState
 
   WebView* = ref object
     window: Window
@@ -317,6 +333,13 @@ type
 proc setFullscreen*(window: Window; enabled: bool): CoreResult
 proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult
 proc maximize*(window: Window): CoreResult
+proc setZoom*(window: Window; factor: float): CoreResult
+proc saveWindowState*(window: Window): CoreResult
+proc restoreWindowState*(window: Window): CoreResult
+proc show*(window: Window): CoreResult
+proc hide*(window: Window): CoreResult
+proc setPosition*(window: Window; x, y: int): CoreResult
+proc setSize*(window: Window; width, height: int): CoreResult
 
 proc mapNativeError(error: native.NativeError): CoreError =
   let kind = case error.kind
@@ -360,22 +383,73 @@ proc fromNativeOf[T](nativeResult: native.NativeResultOf[T]): CoreResultOf[T] =
   else:
     coreFailureOf[T](nativeResult.failure.mapNativeError())
 
-proc navigationPatternMatches(pattern, url: string): bool {.inline.} =
+proc globMatches(pattern, value: string): bool {.inline.} =
   if pattern.len == 0:
-    return false
+    return value.len == 0
   if pattern.find('*') < 0:
-    return pattern == url
+    return pattern == value
   var cursor = 0
   var first = true
   for part in pattern.split('*'):
     if part.len == 0:
       continue
-    let found = url.find(part, cursor)
+    let found = value.find(part, cursor)
     if found < 0 or (first and found != 0):
       return false
     cursor = found + part.len
     first = false
-  pattern.endsWith('*') or cursor == url.len
+  pattern.endsWith('*') or cursor == value.len
+
+proc navigationPatternMatches(pattern, url: string): bool =
+  ## Match URL rules without allowing a path or user-info string to masquerade
+  ## as a host.  Host wildcards are label-boundary aware (`*.example.com`).
+  if pattern.len == 0 or url.len == 0:
+    return false
+  let separator = pattern.find("://")
+  if separator < 0:
+    return globMatches(pattern, url)
+  var requested: Uri
+  try:
+    requested = parseUri(url)
+  except CatchableError:
+    return false
+  if requested.scheme.toLowerAscii() notin ["http", "https"] or
+      requested.hostname.len == 0 or requested.username.len > 0 or
+      requested.password.len > 0:
+    return false
+  let scheme = pattern[0 ..< separator].toLowerAscii()
+  if scheme != requested.scheme.toLowerAscii():
+    return false
+  let rule = pattern[separator + 3 .. ^1]
+  let slash = rule.find('/')
+  let authority = if slash < 0: rule else: rule[0 ..< slash]
+  let pathRule = if slash < 0: "*" else: rule[slash .. ^1]
+  if authority.len == 0 or authority.contains('@'):
+    return false
+  var hostRule = authority
+  var portRule = ""
+  let colon = authority.rfind(':')
+  if colon > 0 and authority[colon + 1 .. ^1].allCharsInSet({'0'..'9'}):
+    hostRule = authority[0 ..< colon]
+    portRule = authority[colon + 1 .. ^1]
+  let host = requested.hostname.toLowerAscii().strip(chars = {'.'})
+  let normalizedRule = hostRule.toLowerAscii().strip(chars = {'.'})
+  if normalizedRule.startsWith("*."):
+    let suffix = normalizedRule[2 .. ^1]
+    if host.len <= suffix.len or not host.endsWith("." & suffix):
+      return false
+  elif normalizedRule != host:
+    return false
+  if portRule.len > 0 and requested.port != portRule:
+    return false
+  var requestedPath = requested.path
+  if requestedPath.len == 0:
+    requestedPath = "/"
+  if requested.query.len > 0:
+    requestedPath &= "?" & requested.query
+  if requested.anchor.len > 0:
+    requestedPath &= "#" & requested.anchor
+  globMatches(pathRule, requestedPath)
 
 proc matchesNavigationPattern*(pattern, url: string): bool =
   ## Pure URL-rule matcher for policy tests and manifest tooling.
@@ -404,6 +478,18 @@ proc navigationSiteKey(host: string): string =
       break
   if numeric:
     return host
+  const multiLabelSuffixes = [
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au",
+    "co.jp", "ne.jp", "com.br", "com.cn", "com.hk", "com.sg", "co.nz"
+  ]
+  for suffix in multiLabelSuffixes:
+    if host == suffix:
+      return host
+    if host.endsWith("." & suffix):
+      let prefix = host[0 ..< host.len - suffix.len - 1]
+      let prefixLabels = prefix.split('.')
+      if prefixLabels.len > 0:
+        return prefixLabels[^1] & "." & suffix
   labels[^2] & "." & labels[^1]
 
 proc isAuthenticationNavigation*(url: string): bool =
@@ -1001,7 +1087,9 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
         name: options.name,
         wslClient: launched.value,
         instanceLock: instanceLock,
-        appLogger: newLogger()
+        appLogger: newLogger(),
+        update: newUpdateLifecycle(options.id,
+          if options.version.len == 0: NiminoCoreVersion else: options.version)
       ))
     else:
       releaseInstanceLock(instanceLock)
@@ -1011,7 +1099,9 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
   let app = App(state: coreCreated, backend: nativeBackend, id: options.id, name: options.name,
                 nativeApp: native.newNativeApp(native.NativeAppOptions(appId: options.id)),
                 instanceLock: instanceLock,
-                appLogger: newLogger())
+                appLogger: newLogger(),
+                update: newUpdateLifecycle(options.id,
+                  if options.version.len == 0: NiminoCoreVersion else: options.version))
   let idleConfigured = native.setIdleHandler(app.nativeApp, proc() =
     if app != nil and app.state == coreRunning:
       for window in app.windows:
@@ -1284,6 +1374,7 @@ proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
       of nativeNotification: native.nativeNotification
       of customProtocol: native.customProtocol
       of webPermissionEvents: native.webPermissionEvents
+      of autostart: native.autostart
     coreSuccessOf(app.nativeApp.supports(nativeCapability))
   of wslBackend:
     when defined(linux):
@@ -1305,6 +1396,49 @@ proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
           detail = "host capabilities response is malformed"))
     else:
       coreFailureOf[bool](coreError(platformUnavailable, "app.supports"))
+
+proc setAutostart*(app: App; enabled: bool): CoreResult =
+  ## Autostart is never implemented by shelling out or writing arbitrary
+  ## startup files.  A backend must advertise the capability before this API
+  ## can change OS state; current backends explicitly report unavailable.
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.setAutostart"))
+  let supported = app.supports(autostart)
+  if not supported.isOk:
+    return coreFailure(supported.failure)
+  if not supported.value:
+    return coreFailure(coreError(platformUnavailable, "app.setAutostart",
+      detail = "autostart registration is not supported by this backend"))
+  ## Keep this guard even when a future backend advertises the capability: an
+  ## implementation must be added at this boundary before state can change.
+  coreFailure(coreError(platformUnavailable, "app.setAutostart",
+    detail = "autostart backend is not implemented"))
+
+proc checkForUpdate*(app: App; manifest: UpdateManifest;
+                     verifier: UpdateSignatureVerifier): CoreResultOf[bool] =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailureOf[bool](coreError(invalidState, "app.checkForUpdate"))
+  app.update.checkForUpdate(manifest, verifier)
+
+proc beginUpdateDownload*(app: App): CoreResult =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailure(coreError(invalidState, "app.beginUpdateDownload"))
+  app.update.beginDownload()
+
+proc markUpdateReady*(app: App): CoreResult =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailure(coreError(invalidState, "app.markUpdateReady"))
+  app.update.markReady()
+
+proc failUpdate*(app: App; detail: string): CoreResult =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailure(coreError(invalidState, "app.failUpdate"))
+  app.update.failUpdate(detail)
+
+proc cancelUpdate*(app: App): CoreResult =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailure(coreError(invalidState, "app.cancelUpdate"))
+  app.update.cancelUpdate()
 
 proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if app.isNil or app.state notin {coreCreated, coreRunning}:
@@ -1359,6 +1493,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                           enableDragDrop: options.enableDragDrop,
                           hideOnClose: options.hideOnClose,
                           inlineRemoteAssets: options.inlineRemoteAssets,
+                          windowState: WindowState(width: options.width, height: options.height,
+                            visible: true),
                           injectionCss: options.injectionCss,
                           injectionJavaScript: options.injectionJavaScript,
                           injectionEnabled: options.injectionEnabled or
@@ -1370,6 +1506,9 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         return coreFailureOf[Window](devTools.failure)
       window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
       app.windows.add(window)
+      let restored = window.restoreWindowState()
+      if not restored.isOk:
+        return coreFailureOf[Window](restored.failure)
       return coreSuccessOf(window)
     else:
       return coreFailureOf[Window](coreError(platformUnavailable, "window.create"))
@@ -1407,6 +1546,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                       enableDragDrop: options.enableDragDrop,
                       hideOnClose: options.hideOnClose,
                       inlineRemoteAssets: options.inlineRemoteAssets,
+                      windowState: WindowState(width: options.width, height: options.height,
+                        visible: true),
                       injectionCss: options.injectionCss,
                       injectionJavaScript: options.injectionJavaScript,
                       injectionEnabled: options.injectionEnabled or
@@ -1437,6 +1578,9 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
       window.rpc.close()
       return coreFailureOf[Window](alwaysOnTop.failure)
   app.windows.add(window)
+  let restored = window.restoreWindowState()
+  if not restored.isOk:
+    return coreFailureOf[Window](restored.failure)
   coreSuccessOf(window)
 
 proc newWindow*(app: App; title = ""; width = 1200; height = 800;
@@ -2345,29 +2489,91 @@ proc close*(window: Window): CoreResult =
     else:
       coreFailure(coreError(platformUnavailable, "window.close"))
 
+proc saveWindowState*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.saveWindowState"))
+  let written = writeProfileSetting(window.app.id, window.profileName,
+    "window-state", %*{
+      "width": window.windowState.width,
+      "height": window.windowState.height,
+      "x": window.windowState.x,
+      "y": window.windowState.y,
+      "positionKnown": window.windowState.positionKnown,
+      "visible": window.windowState.visible
+    })
+  if written.isOk:
+    coreSuccess()
+  else:
+    coreFailure(coreError(osError, "window.saveWindowState", detail = written.error))
+
+proc restoreWindowState*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.restoreWindowState"))
+  let loaded = readProfileSetting(window.app.id, window.profileName, "window-state")
+  if not loaded.isOk:
+    ## A first launch has no saved state and should use the manifest defaults.
+    return coreSuccess()
+  let node = try: parseJson(loaded.value)
+    except CatchableError:
+      return coreFailure(coreError(invalidArgument, "window.restoreWindowState",
+        detail = "persisted window state is not valid JSON"))
+  if node.kind != JObject or not node.hasKey("width") or not node.hasKey("height") or
+      node["width"].kind != JInt or node["height"].kind != JInt:
+    return coreFailure(coreError(invalidArgument, "window.restoreWindowState",
+      detail = "persisted window state has invalid dimensions"))
+  let width = node["width"].getInt()
+  let height = node["height"].getInt()
+  if width <= 0 or height <= 0 or width > 10000 or height > 10000:
+    return coreFailure(coreError(invalidArgument, "window.restoreWindowState",
+      detail = "persisted window dimensions are out of range"))
+  let resized = window.setSize(width, height)
+  if not resized.isOk:
+    return resized
+  if node.hasKey("positionKnown") and node["positionKnown"].kind == JBool and
+      node["positionKnown"].getBool() and node.hasKey("x") and node.hasKey("y") and
+      node["x"].kind == JInt and node["y"].kind == JInt:
+    let positioned = window.setPosition(node["x"].getInt(), node["y"].getInt())
+    if not positioned.isOk:
+      return positioned
+  if node.hasKey("visible") and node["visible"].kind == JBool:
+    if node["visible"].getBool():
+      return window.show()
+    return window.hide()
+  coreSuccess()
+
 proc show*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.show"))
-  case window.app.backend
-  of nativeBackend:
-    native.show(window.nativeWindow).fromNative()
-  of wslBackend:
-    when defined(linux):
-      let shown = window.app.wslCall("native.window.show", $(%*{"windowId": $window.windowId}))
-      if shown.isOk: coreSuccess() else: coreFailure(shown.failure)
-    else: coreFailure(coreError(platformUnavailable, "window.show"))
+  let shown = case window.app.backend
+    of nativeBackend:
+      native.show(window.nativeWindow).fromNative()
+    of wslBackend:
+      when defined(linux):
+        let response = window.app.wslCall("native.window.show", $(%*{"windowId": $window.windowId}))
+        if response.isOk: coreSuccess() else: coreFailure(response.failure)
+      else: coreFailure(coreError(platformUnavailable, "window.show"))
+  if shown.isOk:
+    window.windowState.visible = true
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
+  shown
 
 proc hide*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.hide"))
-  case window.app.backend
-  of nativeBackend:
-    native.hide(window.nativeWindow).fromNative()
-  of wslBackend:
-    when defined(linux):
-      let hidden = window.app.wslCall("native.window.hide", $(%*{"windowId": $window.windowId}))
-      if hidden.isOk: coreSuccess() else: coreFailure(hidden.failure)
-    else: coreFailure(coreError(platformUnavailable, "window.hide"))
+  let hidden = case window.app.backend
+    of nativeBackend:
+      native.hide(window.nativeWindow).fromNative()
+    of wslBackend:
+      when defined(linux):
+        let response = window.app.wslCall("native.window.hide", $(%*{"windowId": $window.windowId}))
+        if response.isOk: coreSuccess() else: coreFailure(response.failure)
+      else: coreFailure(coreError(platformUnavailable, "window.hide"))
+  if hidden.isOk:
+    window.windowState.visible = false
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
+  hidden
 
 proc minimize*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -2404,6 +2610,34 @@ proc setFullscreen*(window: Window; enabled: bool): CoreResult =
       }))
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else: coreFailure(coreError(platformUnavailable, "window.setFullscreen"))
+
+proc setZoom*(window: Window; factor: float): CoreResult =
+  ## Apply a runtime zoom change to every WebView owned by this Window.
+  ## Pake's keyboard/UI controls can call this API without depending on a
+  ## platform-specific WebView handle.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setZoom"))
+  if factor < 0.25 or factor > 5.0:
+    return coreFailure(coreError(invalidArgument, "window.setZoom",
+      detail = "zoom factor must be between 0.25 and 5.0"))
+  for view in window.webViews:
+    if view.isNil or view.closed:
+      continue
+    case window.app.backend
+    of nativeBackend:
+      let updated = native.setZoom(view.nativeView, factor)
+      if not updated.isOk:
+        return coreFailure(updated.failure.mapNativeError())
+    of wslBackend:
+      when defined(linux):
+        let updated = window.app.wslCall("native.webview.setZoom", $(%*{
+          "webViewId": $view.webViewId, "factor": factor
+        }))
+        if not updated.isOk:
+          return coreFailure(updated.failure)
+      else:
+        return coreFailure(coreError(platformUnavailable, "window.setZoom"))
+  coreSuccess()
 
 proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -2447,16 +2681,23 @@ proc setResizable*(window: Window; resizable: bool): CoreResult =
 proc setPosition*(window: Window; x, y: int): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setPosition"))
-  case window.app.backend
-  of nativeBackend:
-    native.setPosition(window.nativeWindow, x, y).fromNative()
-  of wslBackend:
-    when defined(linux):
-      let response = window.app.wslCall("native.window.setPosition", $(%*{
-        "windowId": $window.windowId, "x": x, "y": y
-      }))
-      if response.isOk: coreSuccess() else: coreFailure(response.failure)
-    else: coreFailure(coreError(platformUnavailable, "window.setPosition"))
+  let positioned = case window.app.backend
+    of nativeBackend:
+      native.setPosition(window.nativeWindow, x, y).fromNative()
+    of wslBackend:
+      when defined(linux):
+        let response = window.app.wslCall("native.window.setPosition", $(%*{
+          "windowId": $window.windowId, "x": x, "y": y
+        }))
+        if response.isOk: coreSuccess() else: coreFailure(response.failure)
+      else: coreFailure(coreError(platformUnavailable, "window.setPosition"))
+  if positioned.isOk:
+    window.windowState.x = x
+    window.windowState.y = y
+    window.windowState.positionKnown = true
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
+  positioned
 
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -2485,24 +2726,27 @@ proc setSize*(window: Window; width, height: int): CoreResult =
   if width <= 0 or height <= 0:
     return coreFailure(coreError(invalidArgument, "window.setSize",
       detail = "size must be positive"))
-  case window.app.backend
-  of nativeBackend:
-    if window.nativeWindow.isNil:
-      return coreFailure(coreError(invalidState, "window.setSize"))
-    native.setSize(window.nativeWindow, width, height).fromNative()
-  of wslBackend:
-    when defined(linux):
-      let updated = window.app.wslCall("native.window.setSize", $(%*{
-        "windowId": $window.windowId,
-        "width": width,
-        "height": height
-      }))
-      if updated.isOk:
-        coreSuccess()
+  let resized = case window.app.backend
+    of nativeBackend:
+      if window.nativeWindow.isNil:
+        coreFailure(coreError(invalidState, "window.setSize"))
       else:
-        coreFailure(updated.failure)
-    else:
-      coreFailure(coreError(platformUnavailable, "window.setSize"))
+        native.setSize(window.nativeWindow, width, height).fromNative()
+    of wslBackend:
+      when defined(linux):
+        let updated = window.app.wslCall("native.window.setSize", $(%*{
+          "windowId": $window.windowId,
+          "width": width,
+          "height": height
+        }))
+        if updated.isOk: coreSuccess() else: coreFailure(updated.failure)
+      else: coreFailure(coreError(platformUnavailable, "window.setSize"))
+  if resized.isOk:
+    window.windowState.width = width
+    window.windowState.height = height
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
+  resized
 
 proc setNavigationRules*(window: Window; rules: NavigationRules): CoreResult =
   if window.isNil or window.closed or window.app.isNil:

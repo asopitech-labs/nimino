@@ -1,3 +1,4 @@
+import std/os
 import nimino_pack
 
 let parsed = parse("""
@@ -129,5 +130,28 @@ let invalidDeepLink = parse("name = \"Deep link\"\nid = \"app.deep\"\nurl = \"ht
 doAssert not invalidDeepLink.isOk
 let invalidDeepLinkName = parse("name = \"Deep link\"\nid = \"app.deep-name\"\nurl = \"https://example.com\"\n[deepLink]\nschemes = [\"9invalid\"]")
 doAssert not invalidDeepLinkName.isOk
+
+let jsonPath = getTempDir() / "nimino-pack-manifest.json"
+writeFile(jsonPath, """
+{"$schema":"https://example.invalid/schema.json","name":"JSON app","identifier":"app.json",
+ "url":"https://example.com","width":1024,"height":768,"multiWindow":false,
+ "safeDomain":"accounts.example.com,cdn.example.com","zoom":125,
+ "inject":["custom.css","custom.js"],"appVersion":"2.3.4","newWindow":true}
+""")
+let jsonManifest = loadManifest(jsonPath)
+doAssert jsonManifest.isOk
+doAssert jsonManifest.value.window.width == 1024
+doAssert jsonManifest.value.webview.zoomFactor == 1.25
+doAssert jsonManifest.value.webview.newWindow
+doAssert jsonManifest.value.package.version == "2.3.4"
+doAssert jsonManifest.value.safeDomains == @[
+  "accounts.example.com", "cdn.example.com"]
+removeFile(jsonPath)
+writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"unknown\":true}")
+doAssert not loadManifest(jsonPath).isOk
+removeFile(jsonPath)
+writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"width\":\"1024\"}")
+doAssert not loadManifest(jsonPath).isOk
+removeFile(jsonPath)
 
 echo "nimino-pack manifest tests passed"
