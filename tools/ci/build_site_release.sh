@@ -53,6 +53,7 @@ for site in \
   "$cli" package-linux "$linux_bundle" --format rpm --out "$linux_packages" \
     --arch amd64 --license MIT
   copy_assets "$app" "$linux_packages"
+  cp "$linux_bundle/nimino-manifest.json" "$assets/${app}-linux-nimino-manifest.json"
   cp "$linux_bundle/nimino-sbom.cdx.json" "$assets/${app}-linux-nimino-sbom.cdx.json"
 
   windows_bundle="$root/$app-windows"
@@ -63,6 +64,7 @@ for site in \
   "$cli" package-windows "$windows_bundle" --format nsis --out "$windows_packages"
   "$cli" package-windows "$windows_bundle" --format msi --out "$windows_packages"
   copy_assets "$app" "$windows_packages"
+  cp "$windows_bundle/nimino-manifest.json" "$assets/${app}-windows-nimino-manifest.json"
   cp "$windows_bundle/nimino-sbom.cdx.json" "$assets/${app}-windows-nimino-sbom.cdx.json"
 done
 

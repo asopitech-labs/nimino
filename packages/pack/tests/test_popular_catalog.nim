@@ -34,7 +34,7 @@ proc entryJson(slug = "example-linux-amd64";
     "source": {
       "repository": repository,
       "commit": CommitA,
-      "workflow": ".github/workflows/nimino-pack-online.yml",
+    "workflow": ".github/workflows/nimino-site-release.yml",
       "runId": "123456789",
       "manifestSha256": ShaB,
       "sbomUrl": "https://github.com/asopitech-labs/nimino/releases/download/v1.2.3/example.cdx.json",

@@ -60,7 +60,7 @@ const
 proc defaultPopularCatalogPolicy*(): PopularCatalogPolicy =
   PopularCatalogPolicy(
     repository: "https://github.com/asopitech-labs/nimino",
-    workflow: ".github/workflows/nimino-pack-online.yml")
+    workflow: ".github/workflows/nimino-site-release.yml")
 
 proc hasOnlyFields(node: JsonNode; fields: openArray[string];
     context: string): PackResult[bool] =

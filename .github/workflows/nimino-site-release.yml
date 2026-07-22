@@ -45,6 +45,44 @@ jobs:
           test -s .tmp/site-release/assets/SHA256SUMS
           (cd .tmp/site-release/assets && sha256sum -c SHA256SUMS)
 
+      - name: Generate signed Popular Packages catalog
+        env:
+          NIMINO_POPULAR_CATALOG_SECRET_KEY: ${{ secrets.NIMINO_POPULAR_CATALOG_SECRET_KEY }}
+          NIMINO_POPULAR_CATALOG_PUBLIC_KEY: ${{ secrets.NIMINO_POPULAR_CATALOG_PUBLIC_KEY }}
+          NIMINO_POPULAR_CATALOG_KEY_ID: ${{ secrets.NIMINO_POPULAR_CATALOG_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$NIMINO_POPULAR_CATALOG_SECRET_KEY" || {
+            echo 'NIMINO_POPULAR_CATALOG_SECRET_KEY repository secret is required' >&2
+            exit 1
+          }
+          test -n "$NIMINO_POPULAR_CATALOG_PUBLIC_KEY" || {
+            echo 'NIMINO_POPULAR_CATALOG_PUBLIC_KEY repository secret is required' >&2
+            exit 1
+          }
+          test -n "$NIMINO_POPULAR_CATALOG_KEY_ID" || {
+            echo 'NIMINO_POPULAR_CATALOG_KEY_ID repository secret is required' >&2
+            exit 1
+          }
+          mkdir -p .tmp/popular-catalog-signing
+          printf '%s' "$NIMINO_POPULAR_CATALOG_SECRET_KEY" > .tmp/popular-catalog-signing/release.key
+          printf '%s' "$NIMINO_POPULAR_CATALOG_PUBLIC_KEY" > .tmp/popular-catalog-signing/release.pub
+          docker compose run --rm \
+            -e CATALOG_TAG="$RELEASE_TAG" \
+            -e CATALOG_COMMIT="$GITHUB_SHA" \
+            -e CATALOG_RUN_ID="$GITHUB_RUN_ID" \
+            -e CATALOG_KEY_ID="$NIMINO_POPULAR_CATALOG_KEY_ID" \
+            nimino-dev bash -lc 'python3 tools/ci/generate_popular_catalog.py \
+              --assets-dir /workspace/.tmp/site-release/assets \
+              --output /workspace/.tmp/site-release/assets/popular-packages.json \
+              --tag "$CATALOG_TAG" --commit "$CATALOG_COMMIT" --run-id "$CATALOG_RUN_ID" \
+              --secret-key /workspace/.tmp/popular-catalog-signing/release.key \
+              --key-id "$CATALOG_KEY_ID"'
+          cp .tmp/popular-catalog-signing/release.pub .tmp/site-release/assets/nimino-popular-packages.pub
+          rm -rf .tmp/popular-catalog-signing
+          test -s .tmp/site-release/assets/popular-packages.json
+          test -s .tmp/site-release/assets/nimino-popular-packages.pub
+
       - name: Upload build output for inspection
         uses: actions/upload-artifact@v4
         with:

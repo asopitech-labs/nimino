@@ -72,7 +72,7 @@ let verified = verifyPopularPackageRelease(
 )
 ```
 
-`catalog/popular-packages.json`は署名済みreleaseが存在するまで空です。entryはversion付きGitHub Release URL、artifact SHA-256/size、SBOM SHA-256、生成commit/workflow/run ID、および正規化statementのminisign署名を必須とします。公開鍵はcatalogと同じ入力から暗黙採用せず、呼び出し側が別経路で信頼した鍵を渡します。通常のonline build workflowは秘密鍵を扱わず、そのartifactはrelease署名が完了するまでcatalogへ登録しません。
+`catalog/popular-packages.json`はソースツリーの開発用空catalogです。サイトリリースworkflowはrelease assetから`popular-packages.json`と`nimino-popular-packages.pub`を生成します。生成には`NIMINO_POPULAR_CATALOG_SECRET_KEY`、`NIMINO_POPULAR_CATALOG_PUBLIC_KEY`、`NIMINO_POPULAR_CATALOG_KEY_ID`のGitHub Actions secretsが必要で、未設定ならreleaseを成功扱いにしません。online build workflowは秘密鍵を扱いません。
 
 ## 配布メタデータ
 

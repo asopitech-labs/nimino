@@ -9,6 +9,7 @@ Pakeは初心者向け導線として、既成のPopular Packagesをダウンロ
 - `nimino-pack`に、検証済み配布物を指すPopular Packagesカタログを追加する。各エントリは名前、アプリID、対象URLまたはmanifest、対象OS、リリース番号、SHA-256、署名・生成元を明示する。
 - YouTube、Gmail、Google Analyticsのready-made installerは、別の`.github/workflows/nimino-site-release.yml`で各URLから生成する。各アプリのLinux `.deb`/`.rpm`とWindows NSIS `.exe`/MSIを作り、SBOMと`SHA256SUMS`をGitHub Releaseへ添付する。名前付きsite aliasや専用manifestは持たない。
 - `.github/workflows/nimino-pack-online.yml`の`workflow_dispatch`をオンラインビルドの標準入口とする。入力はURLまたはmanifest、対象OS、配布形式、アイコンを受け取り、名前・IDは任意の上書き値とする。省略時は`nimino-pack`がURLから生成する。固定digestのNimino Dockerイメージ内で実行してartifactとchecksum/SBOMを保存する。DockerイメージにはNim、GTK 4、WebKitGTK 6.0、packaging toolchainを含め、利用者へGTK/WebKitGTKの手動導入を要求しない。Windows実機セットアップは`make setup`からWebView2 Evergreen RuntimeのPowerShell導入を呼び出す。
+- `.github/workflows/nimino-site-release.yml`は同じURL生成をrelease assetへ適用し、manifest・installer・SBOMを入力に`tools/ci/generate_popular_catalog.py`で6件（3サイト×Linux deb/Windows NSIS）の署名済みcatalogを生成する。署名用の3 secretsがないreleaseは失敗させる。署名対象はNimの`popularPackageSignaturePayload`と同じcanonical statementである。
 - オンラインビルドはリポジトリ所有者のActions権限とGitHubのartifact保持期間に従う。任意の秘密情報、WSLホスト、ローカルファイル、開発者マシンの資格情報をworkflowへ渡さない。
 - 未実装の配布形式や依存閉包を成功扱いにしない。MSI、署名済み更新、macOS、WebKitGTK依存を閉包したAppImageは、対応条件を満たすまでworkflowで明示的に失敗させる。
 - Popular Packagesは第三者サイトを暗黙に信頼せず、Niminoのrelease metadata、checksum、署名検証を通過したartifactだけを表示する。
@@ -22,6 +23,7 @@ Pakeは初心者向け導線として、既成のPopular Packagesをダウンロ
 - 公開pack APIはcatalogを厳格に読み込み、未知field、重複slug、未対応format、信頼外repository/workflow、不正checksum/signatureを拒否する。release検証ではローカルartifactとSBOMのSHA-256/sizeを照合した後にminisign署名を検証する。
 - 署名検証には、Tauri updaterのminisign公開鍵照合を参考に、Debianの`minisign` packageを固定Docker toolchainへ追加する。minisignはISC licenseで、upstreamとDebian stable packageの保守状況を確認する。[upstream license](https://github.com/jedisct1/minisign/blob/master/LICENSE) [Debian package](https://packages.debian.org/stable/misc/minisign)
 - `sha256sum`または`minisign`が利用できない環境は未対応を明示し、署名検証を省略して成功扱いしない。
+- catalog生成側も同じ条件でfail-closedとし、未署名のrelease assetをPopular Packages入口へ表示しない。
 
 ## Acceptance criteria
 

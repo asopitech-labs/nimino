@@ -51,7 +51,7 @@ var entry = PopularPackageEntry(
   source: PopularSource(
     repository: "https://github.com/asopitech-labs/nimino",
     commit: "c".repeat(40),
-    workflow: ".github/workflows/nimino-pack-online.yml",
+    workflow: ".github/workflows/nimino-site-release.yml",
     runId: "123456789",
     manifestSha256: "a".repeat(64),
     sbomUrl: "https://github.com/asopitech-labs/nimino/releases/download/v1.2.3/Example.cdx.json",

@@ -49,7 +49,7 @@ Download the installer directly from the [Nimino Releases page](https://github.c
 | Fedora/RPM | `youtube-*.rpm`, `gmail-*.rpm`, `google-analytics-*.rpm` |
 | Windows | `youtube-*-setup.exe`, `gmail-*-setup.exe`, `google-analytics-*-setup.exe` (NSIS) or matching `.msi`; the installer checks and installs WebView2 when needed |
 
-The [`Nimino Site Release`](.github/workflows/nimino-site-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The [`v0.1.1` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.1) includes the installer-side WebView2 bootstrap. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
+The [`Nimino Site Release`](.github/workflows/nimino-site-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, `SHA256SUMS`, and the signed `popular-packages.json` catalog to the GitHub Release. Configure the repository secrets `NIMINO_POPULAR_CATALOG_SECRET_KEY`, `NIMINO_POPULAR_CATALOG_PUBLIC_KEY`, and `NIMINO_POPULAR_CATALOG_KEY_ID` before running a release; the workflow fails if signing material is missing. Verify `SHA256SUMS` before installing.
 
 **Windows installer behavior:** NSIS and MSI installers check the WebView2 Evergreen Runtime and download the official Microsoft Bootstrapper only when the runtime is missing. Internet access is required for that first-time download. `WebView2Loader.dll` is bundled with the application.
 
@@ -88,6 +88,10 @@ sudo dnf install ./dist/packages/*.rpm
 The generated Debian package declares `libgtk-4-1` and `libwebkitgtk-6.0-4`; the RPM declares
 `gtk4` and `webkitgtk6.0`, so the package manager resolves the native WebKit dependencies.
 They are not downloaded by the Nimino host and are not bundled into the Debian/RPM archive.
+
+The release catalog is the `popular-packages.json` asset. Download it together with
+`nimino-popular-packages.pub`; applications must pin that public key out-of-band and
+verify the catalog entry, installer, and SBOM before presenting a Popular Package.
 
 For Windows, run the generated `*-setup.exe` or `.msi`. The installer checks WebView2 and bootstraps it when needed. `make setup` is the equivalent developer setup when working from a checkout.
 
