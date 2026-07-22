@@ -92,7 +92,15 @@ proc manifestJson(manifest: PackManifest): JsonNode =
       "description": manifest.package.description,
       "publisher": manifest.package.publisher,
       "homepage": manifest.package.homepage,
-      "categories": manifest.package.categories
+      "categories": manifest.package.categories,
+      "targets": manifest.package.targets,
+      "installerLanguage": manifest.package.installerLanguage,
+      "keepBinary": manifest.package.keepBinary,
+      "bundle": manifest.package.bundle,
+      "iterativeBuild": manifest.package.iterativeBuild,
+      "debug": manifest.package.debug,
+      "multiArch": manifest.package.multiArch,
+      "install": manifest.package.install
     },
     "deepLink": {"schemes": manifest.deepLink.schemes},
     "window": {
@@ -104,21 +112,33 @@ proc manifestJson(manifest: PackManifest): JsonNode =
       "maximized": manifest.window.maximized,
       "alwaysOnTop": manifest.window.alwaysOnTop,
       "hideWindowDecorations": manifest.window.hideWindowDecorations,
-      "enableDragDrop": manifest.window.enableDragDrop
+      "enableDragDrop": manifest.window.enableDragDrop,
+      "minWidth": manifest.window.minWidth,
+      "minHeight": manifest.window.minHeight,
+      "hideTitleBar": manifest.window.hideTitleBar
     },
     "webview": {
       "userAgent": manifest.webview.userAgent,
       "proxyUrl": manifest.webview.proxyUrl,
       "incognito": manifest.webview.incognito,
       "zoom": int(manifest.webview.zoomFactor * 100.0),
-      "ignoreCertificateErrors": manifest.webview.ignoreCertificateErrors
+      "ignoreCertificateErrors": manifest.webview.ignoreCertificateErrors,
+      "darkMode": manifest.webview.darkMode,
+      "disabledWebShortcuts": manifest.webview.disabledWebShortcuts,
+      "enableFind": manifest.webview.enableFind,
+      "wasm": manifest.webview.wasm,
+      "newWindow": manifest.webview.newWindow,
+      "forceInternalNavigation": manifest.webview.forceInternalNavigation,
+      "internalUrlRegex": manifest.webview.internalUrlRegex
     },
     "runtime": {
       "showSystemTray": manifest.runtime.showSystemTray,
       "startToTray": manifest.runtime.startToTray,
       "hideOnClose": manifest.runtime.hideOnClose,
       "multiWindow": manifest.runtime.multiWindow,
-      "multiInstance": manifest.runtime.multiInstance
+      "multiInstance": manifest.runtime.multiInstance,
+      "activationShortcut": manifest.runtime.activationShortcut,
+      "systemTrayIcon": manifest.runtime.systemTrayIcon
     },
     "navigation": {
       "allow": manifest.navigationAllow,
@@ -127,8 +147,11 @@ proc manifestJson(manifest: PackManifest): JsonNode =
     "permissions": {"allow": manifest.permissionsAllow},
     "injection": {
       "css": manifest.css,
-      "javascript": manifest.javascript
-    }
+      "javascript": manifest.javascript,
+      "files": manifest.injectionFiles
+    },
+    "useLocalFile": manifest.useLocalFile,
+    "safeDomains": manifest.safeDomains
   }
 
 proc sbomJson(manifest: PackManifest): JsonNode =

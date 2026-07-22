@@ -152,6 +152,7 @@ proc main() =
   let userAgent = optionalString(webview, "userAgent", "")
   let proxyUrl = optionalString(webview, "proxyUrl", "")
   let incognito = webview.boolean("incognito", false)
+  let newWindow = webview.boolean("newWindow", false)
   let zoomFactor = if webview.hasKey("zoom") and webview["zoom"].kind in {JInt, JFloat}:
       webview["zoom"].getFloat() / 100.0
     else: 1.0
@@ -252,7 +253,12 @@ proc main() =
         navigationDeny
     else:
       defaultNavigationDecision(url, request.url)
-    case decision
+    let popupDecision = if decision == navigationAllow and not newWindow and
+        not isAuthenticationNavigation(request.url):
+        navigationExternal
+      else:
+        decision
+    case popupDecision
     of navigationAllow:
       ## The request came from the WebView's user gesture.  Consume it by
       ## creating the popup explicitly; native backends never create one
