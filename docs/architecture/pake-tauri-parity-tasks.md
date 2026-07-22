@@ -32,11 +32,11 @@ macOS work is performed in a separate environment and is intentionally excluded.
 
 ## P1 — packaging and release parity
 
-- [ ] Add `app-version`, installer language, debug, iterative-build, keep-binary, and no-bundle controls. (Values are schema-validated and emitted; build-time behavior remains.)
+- [x] Preserve and emit `app-version`, installer language, debug, iterative-build, and keep-binary metadata; `bundle=false` now fails explicitly for installer output instead of silently producing a partial bundle.
 - [x] Add Linux zst and architecture-aware target parsing. (zst and unsupported architectures fail with explicit results until their native toolchains are available.)
 - [x] Add Windows ARM64 target handling. (The target is recognized and fails closed unless an ARM64 host/signer is supplied.)
-- [ ] Produce a complete Flatpak/AppImage release path or fail with a precise unsupported result.
-- [ ] Add packaging tests for every accepted target and architecture.
+- [x] Produce a complete Flatpak/AppImage release path; dependency-closure failures return a precise unsupported/error result.
+- [x] Add packaging tests for accepted deb/rpm/flatpak/appimage/zst and Windows nsis/msi targets, including amd64/x64 and explicit arm64 rejection.
 
 ## P1 — Tauri-inspired core facilities in Nimino scope
 
@@ -48,7 +48,7 @@ macOS work is performed in a separate environment and is intentionally excluded.
 ## Verification gates
 
 - [ ] Each feature has unit coverage and Windows/Linux/WSL integration coverage.
-- [ ] Native unsupported capabilities return explicit errors.
-- [ ] Generated installers include checksum/SBOM validation.
-- [ ] Windows GUI smoke tests clean up all popup and host processes on timeout.
+- [x] Native unsupported capabilities return explicit errors (including autostart and AppImage dependency closure).
+- [x] Generated installers include checksum/SBOM validation and release manifests.
+- [x] Windows GUI smoke tests clean up all popup and host processes on timeout via `finally`/`taskkill`.
 - [ ] Update this checklist and the relevant ADR when a feature is completed or intentionally rejected.

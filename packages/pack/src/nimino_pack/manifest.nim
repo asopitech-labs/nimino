@@ -375,7 +375,8 @@ proc parse*(text: string): PackResult[PackManifest] =
     profile: "default",
     window: PackWindowOptions(width: 1200, height: 800, resizable: true),
     webview: PackWebViewOptions(zoomFactor: 1.0),
-    package: PackPackageMetadata(version: "0.1.0", categories: @["Network"]))
+    package: PackPackageMetadata(version: "0.1.0", categories: @["Network"], bundle: true,
+      installerLanguage: "en-US"))
   var section = ""
   for rawLine in text.splitLines():
     var line = rawLine.strip()

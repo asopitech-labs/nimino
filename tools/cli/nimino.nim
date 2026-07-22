@@ -844,6 +844,9 @@ if not validatedLoaded.isOk:
   stderr.writeLine("nimino pack: " & validatedLoaded.error.detail)
   quit(1)
 loaded = validatedLoaded
+if not loaded.value.package.bundle and outputDirectory.len > 0:
+  stderr.writeLine("nimino pack: package.bundle=false is not supported for installer bundles; use --json without --out for metadata only")
+  quit(1)
 if targets.len == 0 and loaded.value.package.targets.len > 0:
   for target in loaded.value.package.targets.split(','):
     if target.strip().len > 0:
