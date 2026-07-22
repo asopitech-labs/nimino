@@ -3,10 +3,10 @@ set -eu
 
 nimino="${1:-/tmp/nimino}"
 root=/tmp/nimino-pack-flatpak-test
-runtime="${NIMINO_FLATPAK_RUNTIME:-org.gnome.Platform}"
-runtime_version="${NIMINO_FLATPAK_RUNTIME_VERSION:-49}"
-sdk="${NIMINO_FLATPAK_SDK:-org.gnome.Sdk}"
-branch="${NIMINO_FLATPAK_BRANCH:-stable}"
+runtime="org.gnome.Platform"
+runtime_version="49"
+sdk="org.gnome.Sdk"
+branch="stable"
 
 rm -rf "$root"
 mkdir -p "$root/out"
