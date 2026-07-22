@@ -935,7 +935,8 @@ else:
           of "appimage": appImagePackage
           else: flatpakPackage
         artifact = buildLinuxPackage(LinuxPackageOptions(bundleDirectory: directory,
-          outputDirectory: packageDirectory, format: format, architecture: "amd64"))
+          outputDirectory: packageDirectory, format: format, architecture: "amd64",
+          maintainer: packaged.package.publisher, license: "Proprietary"))
       of "nsis", "msi":
         let format = if target == "nsis": nsisPackage else: msiPackage
         artifact = buildWindowsPackage(WindowsPackageOptions(bundleDirectory: directory,
