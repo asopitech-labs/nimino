@@ -410,6 +410,18 @@ block navigationRulesAreExplicit:
     "https://support.example.invalid/help") == navigationExternal
   doAssert matchesNavigationPattern("https://*.discord.com/**", "https://canary.discord.com/channels")
   doAssert not matchesNavigationPattern("https://*.discord.com/**", "https://discord.net/channels")
+  doAssert not matchesNavigationPattern("https://example.com/**",
+    "https://example.com.evil.test/")
+  doAssert not matchesNavigationPattern("https://example.com/**",
+    "https://user:password@example.com/private")
+  doAssert matchesNavigationPattern("https://example.com:8443/**",
+    "https://example.com:8443/app")
+  doAssert not matchesNavigationPattern("https://example.com:8443/**",
+    "https://example.com/app")
+  doAssert defaultNavigationDecision("https://app.example.co.uk/",
+    "https://login.example.co.uk/callback") == navigationAllow
+  doAssert defaultNavigationDecision("https://app.example.co.uk/",
+    "https://evil.co.uk/") == navigationExternal
   let created = newApp(id = "tech.asopi.navigation-test", name = "Navigation test")
   doAssert created.isOk
   let window = created.value.newWindow(title = "Navigation").value

@@ -360,22 +360,73 @@ proc fromNativeOf[T](nativeResult: native.NativeResultOf[T]): CoreResultOf[T] =
   else:
     coreFailureOf[T](nativeResult.failure.mapNativeError())
 
-proc navigationPatternMatches(pattern, url: string): bool {.inline.} =
+proc globMatches(pattern, value: string): bool {.inline.} =
   if pattern.len == 0:
-    return false
+    return value.len == 0
   if pattern.find('*') < 0:
-    return pattern == url
+    return pattern == value
   var cursor = 0
   var first = true
   for part in pattern.split('*'):
     if part.len == 0:
       continue
-    let found = url.find(part, cursor)
+    let found = value.find(part, cursor)
     if found < 0 or (first and found != 0):
       return false
     cursor = found + part.len
     first = false
-  pattern.endsWith('*') or cursor == url.len
+  pattern.endsWith('*') or cursor == value.len
+
+proc navigationPatternMatches(pattern, url: string): bool =
+  ## Match URL rules without allowing a path or user-info string to masquerade
+  ## as a host.  Host wildcards are label-boundary aware (`*.example.com`).
+  if pattern.len == 0 or url.len == 0:
+    return false
+  let separator = pattern.find("://")
+  if separator < 0:
+    return globMatches(pattern, url)
+  var requested: Uri
+  try:
+    requested = parseUri(url)
+  except CatchableError:
+    return false
+  if requested.scheme.toLowerAscii() notin ["http", "https"] or
+      requested.hostname.len == 0 or requested.username.len > 0 or
+      requested.password.len > 0:
+    return false
+  let scheme = pattern[0 ..< separator].toLowerAscii()
+  if scheme != requested.scheme.toLowerAscii():
+    return false
+  let rule = pattern[separator + 3 .. ^1]
+  let slash = rule.find('/')
+  let authority = if slash < 0: rule else: rule[0 ..< slash]
+  let pathRule = if slash < 0: "*" else: rule[slash .. ^1]
+  if authority.len == 0 or authority.contains('@'):
+    return false
+  var hostRule = authority
+  var portRule = ""
+  let colon = authority.rfind(':')
+  if colon > 0 and authority[colon + 1 .. ^1].allCharsInSet({'0'..'9'}):
+    hostRule = authority[0 ..< colon]
+    portRule = authority[colon + 1 .. ^1]
+  let host = requested.hostname.toLowerAscii().strip(chars = {'.'})
+  let normalizedRule = hostRule.toLowerAscii().strip(chars = {'.'})
+  if normalizedRule.startsWith("*."):
+    let suffix = normalizedRule[2 .. ^1]
+    if host.len <= suffix.len or not host.endsWith("." & suffix):
+      return false
+  elif normalizedRule != host:
+    return false
+  if portRule.len > 0 and requested.port != portRule:
+    return false
+  var requestedPath = requested.path
+  if requestedPath.len == 0:
+    requestedPath = "/"
+  if requested.query.len > 0:
+    requestedPath &= "?" & requested.query
+  if requested.anchor.len > 0:
+    requestedPath &= "#" & requested.anchor
+  globMatches(pathRule, requestedPath)
 
 proc matchesNavigationPattern*(pattern, url: string): bool =
   ## Pure URL-rule matcher for policy tests and manifest tooling.
@@ -404,6 +455,18 @@ proc navigationSiteKey(host: string): string =
       break
   if numeric:
     return host
+  const multiLabelSuffixes = [
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au",
+    "co.jp", "ne.jp", "com.br", "com.cn", "com.hk", "com.sg", "co.nz"
+  ]
+  for suffix in multiLabelSuffixes:
+    if host == suffix:
+      return host
+    if host.endsWith("." & suffix):
+      let prefix = host[0 ..< host.len - suffix.len - 1]
+      let prefixLabels = prefix.split('.')
+      if prefixLabels.len > 0:
+        return prefixLabels[^1] & "." & suffix
   labels[^2] & "." & labels[^1]
 
 proc isAuthenticationNavigation*(url: string): bool =
