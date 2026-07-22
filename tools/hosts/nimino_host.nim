@@ -46,6 +46,21 @@ proc boolean(node: JsonNode; key: string; fallback: bool): bool =
     return node[key].getBool()
   fallback
 
+proc safeDownloadLabel(value: string): string =
+  ## Notification text is user-visible but must not contain control characters
+  ## or unbounded input from a remote Content-Disposition header.
+  for character in value:
+    if ord(character) >= 0x20 and ord(character) != 0x7f:
+      result.add(character)
+      if result.len >= 128:
+        break
+  if result.len == 0:
+    result = "download"
+
+proc downloadNotificationId(sequence: var int; state: string): string =
+  inc sequence
+  "nimino-download-" & state & "-" & $sequence
+
 proc readInjection(root: string; names: seq[string]): seq[string] =
   for name in names:
     if name.contains('/') or name.contains('\\') or name in [".", ".."]:
@@ -253,6 +268,45 @@ proc main() =
       true)
   if not popupConfigured.isOk:
     fail(popupConfigured.failure.detail)
+  ## Pake accepts browser downloads by default.  Core deliberately denies an
+  ## unhandled request, so the generated host must install an explicit policy
+  ## instead of relying on a native backend default.
+  let downloadPolicy = window.onDownload(proc(request: DownloadRequest): DownloadDecision =
+    discard request
+    downloadAllow)
+  if not downloadPolicy.isOk:
+    fail(downloadPolicy.failure.detail)
+  var downloadNotificationSequence = 0
+  let downloadEvents = window.onDownloadEvent(proc(event: DownloadEvent) =
+    let label = safeDownloadLabel(event.request.suggestedName)
+    var title = "Download"
+    var body = ""
+    var state = "event"
+    case event.state
+    of downloadStarted:
+      title = "Download started"
+      body = label
+      state = "started"
+    of downloadCompleted:
+      title = "Download complete"
+      body = label
+      state = "completed"
+    of downloadFailed:
+      title = "Download failed"
+      body = label
+      state = "failed"
+    of downloadCancelled:
+      title = "Download cancelled"
+      body = label
+      state = "cancelled"
+    of downloadProgress:
+      return
+    discard app.sendNotification(DesktopNotification(
+      id: downloadNotificationId(downloadNotificationSequence, state),
+      title: title,
+      body: body)))
+  if not downloadEvents.isOk:
+    fail(downloadEvents.failure.detail)
   let permissionConfigured = window.onPermission(proc(request: PermissionRequest): PermissionDecision =
     let requested = case request.kind
       of microphone: "microphone"

@@ -5,10 +5,10 @@ macOS work is performed in a separate environment and is intentionally excluded.
 
 ## P0 — generated host correctness
 
-- [ ] Add an explicit download policy to the generated `nimino-host`.
-- [ ] Save accepted downloads into the profile download directory with collision-safe names.
-- [ ] Forward download started/progress/completed/failed/cancelled events to the host policy layer.
-- [ ] Add download status notifications without logging URLs, cookies, or credentials.
+- [x] Add an explicit download policy to the generated `nimino-host`.
+- [x] Save accepted downloads into the profile download directory with collision-safe names.
+- [x] Forward download started/progress/completed/failed/cancelled events to the host policy layer.
+- [x] Add download status notifications without logging URLs, cookies, or credentials.
 - [ ] Add Pake-compatible handling for `target=_blank`, `window.open`, OAuth redirects, and external URLs.
 - [ ] Add generated-host tests for regular, `blob:`, and `data:` downloads.
 
