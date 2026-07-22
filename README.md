@@ -242,7 +242,7 @@ make pack-windows-test
 make clean
 ```
 
-The GitHub Actions CI runs containerized tests, Linux checks, packaging checks, and Windows cross-builds on pushes and pull requests. Windows GUI smoke is an explicit manual job for a self-hosted `wsl2,windows-gui` runner.
+The GitHub Actions CI runs containerized tests, Linux checks, packaging checks, and Windows cross-builds on pushes and pull requests. It also rebuilds and verifies the YouTube, Gmail, and Google Analytics ready-made installers on every CI run; the generated files are retained as a short-lived workflow artifact. Windows GUI smoke is an explicit manual job for a self-hosted `wsl2,windows-gui` runner.
 
 ## Repository layout
 

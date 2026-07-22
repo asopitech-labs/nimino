@@ -40,7 +40,7 @@ jobs:
       - name: Build site installers and checksums
         run: |
           set -eu
-          docker compose run --rm nimino-dev bash -lc 'export PATH=/opt/nim/bin:$PATH; nimble buildSiteRelease'
+          docker compose run --rm nimino-dev bash -lc 'export PATH=/opt/nim/bin:$PATH; nimble testSiteRelease'
           test -s .tmp/site-release/RELEASE-NOTES.txt
           test -s .tmp/site-release/assets/SHA256SUMS
           (cd .tmp/site-release/assets && sha256sum -c SHA256SUMS)

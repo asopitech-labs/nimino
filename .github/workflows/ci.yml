@@ -43,6 +43,7 @@ jobs:
           pack-test
           pack-cli-test
           pack-linux-test
+          pack-site-release-test
           pack-popular-catalog-test
           pack-appimage-guardrails
           pack-appimage-test
@@ -55,6 +56,15 @@ jobs:
           windows-cross
           core-windows-cross
           wsl-host-cross
+
+      - name: Upload ready-made site installer rebuild
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nimino-ready-made-site-rebuild
+          if-no-files-found: ignore
+          retention-days: 7
+          path: .tmp/site-release/
 
       - name: Upload cross-build artifacts for inspection
         if: always()
