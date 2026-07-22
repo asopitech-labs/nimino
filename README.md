@@ -33,7 +33,7 @@ The workflow is defined in [`nimino-pack-online.yml`](.github/workflows/nimino-p
 
 Prepacks are reviewed URL aliases. Nimino derives the application ID, display name, profile, window defaults, package metadata, and navigation behavior from the URL. No site-specific navigation allow-list or credentials are embedded; the normal sign-in page and profile cookie store are used.
 
-| App | Open in browser | Default window | Profile | Generate |
+| App | Open in browser | Default window | Profile | Maintainer rebuild |
 | --- | --- | ---: | --- | --- |
 | **YouTube** | [youtube.com](https://www.youtube.com/) | URL-derived defaults | `default` | `nimino pack prepack youtube` |
 | **Gmail** | [mail.google.com](https://mail.google.com/mail/u/0/) | URL-derived defaults | `default` | `nimino pack prepack gmail` |
@@ -63,7 +63,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 & $p
 ```
 
-The aliases are covered by `make pack-prepack-test`. To create a runnable bundle, provide a compiled Nimino host:
+#### Maintainer/developer rebuild (end users do not need this)
+
+The alias command remains `nimino pack prepack <name>`. It now resolves only the reviewed entry URL and passes it through the same URL-only generator as any other site; it does not load a per-site manifest or authentication allow-list. To create a runnable bundle during development, provide a compiled Nimino host:
 
 ```bash
 nimino pack prepack youtube --out dist/youtube --host nimino-host
