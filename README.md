@@ -52,7 +52,23 @@ When a prepack release is published, download the installer directly from the [N
 
 The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The initial [`v0.1.0` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.0) is available now. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
 
-**Windows prerequisite — mandatory before running the `.exe` or `.msi`:** install and verify the WebView2 Evergreen Runtime first. The following 422-character command is technically one physical line, but it is a SHA-256-verified bootstrap command rather than a short, memorable installer one-liner:
+**Windows prerequisite — mandatory before running the `.exe` or `.msi`:** install and verify the WebView2 Evergreen Runtime first.
+
+If Windows Package Manager (`winget`) is available, this is the shortest supported path. Run it from **Administrator PowerShell**:
+
+```powershell
+winget install --id Microsoft.EdgeWebView2Runtime --exact --silent --accept-source-agreements --accept-package-agreements
+```
+
+If `winget` is unavailable, this is the shortest Nimino URL bootstrap path. It is intentionally equivalent to the concise `irm ... | iex` install patterns used by tools such as uv; it executes the downloaded script without a local SHA-256 check. Use the verified path below when that distinction matters:
+
+```powershell
+irm 'https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1' | iex
+```
+
+This convenience command evaluates the downloaded PowerShell in memory; for security-sensitive or audited environments, use the SHA-256-verified command below instead.
+
+For the strict path, use the following 422-character SHA-256-verified bootstrap command:
 
 ```powershell
 $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1'; $p=Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $p; if ((Get-FileHash -Algorithm SHA256 $p).Hash -ne 'FBB373CC34D49F8B1FBA0792363103455EEE30608D16F7BBD32E78197E1D6F8A') { throw 'WebView2 setup script SHA-256 mismatch' }; Set-ExecutionPolicy -Scope Process Bypass; & $p
@@ -102,7 +118,7 @@ sudo apt install ./dist/packages/*.deb
 sudo dnf install ./dist/packages/*.rpm
 ```
 
-For Windows, complete the WebView2 prerequisite above (the URL one-liner is the complete prerequisite procedure), then run the generated `*-setup.exe`. It is a per-user installer and normally does not require administrator privileges. `make setup` is the equivalent developer setup when working from a checkout.
+For Windows, complete one of the WebView2 prerequisite paths above, then run the generated `*-setup.exe`. It is a per-user installer and normally does not require administrator privileges. `make setup` is the equivalent developer setup when working from a checkout.
 
 For an AppImage, make the file executable and run it:
 

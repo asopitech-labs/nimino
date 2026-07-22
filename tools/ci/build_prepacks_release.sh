@@ -71,9 +71,11 @@ printf '%s\n' \
   'Windows: NSIS (.exe), MSI (.msi)' \
   '' \
   'Windows prerequisite (required before installing):' \
-  '1. Download Nimino-WebView2-Setup.ps1 from this release.' \
-  '2. Run it from elevated Windows PowerShell with:' \
-  '   Set-ExecutionPolicy -Scope Process Bypass; & .\Nimino-WebView2-Setup.ps1' \
-  '3. Install the downloaded NSIS or MSI package.' \
+  'Fast path (if winget is available):' \
+  '  winget install --id Microsoft.EdgeWebView2Runtime --exact --silent --accept-source-agreements --accept-package-agreements' \
+  'Short URL path: run the README irm URL | iex bootstrap (convenience mode; no local SHA-256 check).' \
+  'Strict path: verify SHA256SUMS, then run the downloaded setup script from elevated PowerShell.' \
+  'After the runtime is confirmed, install the downloaded NSIS or MSI package.' \
+  'WebView2Loader.dll is bundled; the Evergreen Runtime itself is not bundled.' \
   'Verify SHA256SUMS before installation.' \
   > "$output/RELEASE-NOTES.txt"
