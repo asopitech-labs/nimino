@@ -155,6 +155,7 @@ type
     nativeMenuTitle: string
     nativeMenuConfigured: bool
     nativeMenuInstalled: bool
+    nativeMenuHandle: pointer
     activateHandler: culong
     startupHandler: culong
     quitRequested: bool
@@ -433,10 +434,10 @@ when defined(windows):
     except CatchableError:
       discard
 
-when defined(linux) and not defined(niminoWsl):
+when defined(windows) or (defined(linux) and not defined(niminoWsl)):
   proc dispatchNativeMenu(app: NativeApp; itemId: uint32) =
-    ## GTK invokes this on its UI thread through a GSimpleAction. User code
-    ## must not unwind through the GObject signal trampoline.
+    ## The native UI thread invokes this through a Win32/GTK callback. User
+    ## code must not unwind through the native callback boundary.
     if app.isNil or app.nativeMenuHandler.isNil:
       return
     try:
@@ -655,10 +656,14 @@ proc configureNativeMenu*(app: NativeApp; title: string;
     copied.add(item)
 
   when defined(windows):
-    ## The existing Win32 implementation owns only a tray command menu. Keep
-    ## one source of validation/ownership rather than inventing a second menu
-    ## model solely for this facade.
-    app.configureSystemTray(copied, handler)
+    if app.nativeMenuConfigured:
+      return failure(nativeError(invalidState, "app.configureNativeMenu",
+        detail = "the native menu can only be configured once"))
+    app.nativeMenuItems = copied
+    app.nativeMenuHandler = handler
+    app.nativeMenuTitle = title
+    app.nativeMenuConfigured = true
+    success()
   elif defined(linux) and not defined(niminoWsl):
     if app.nativeMenuConfigured:
       return failure(nativeError(invalidState, "app.configureNativeMenu",

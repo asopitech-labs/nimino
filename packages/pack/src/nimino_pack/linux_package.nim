@@ -518,7 +518,7 @@ proc buildAppImage(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
       metadata.appImageDesktop())
     let iconExtension = splitFile(metadata.icon).ext
     createDir(appDir / "usr" / "share" / "icons" / "hicolor" / "128x128" / "apps")
-    copyFile(options.bundleDirectory / metadata.icon,
+    copyFile(options.bundleDirectory / extractFilename(metadata.icon),
       appDir / "usr" / "share" / "icons" / "hicolor" / "128x128" / (metadata.id & iconExtension))
   except OSError as error:
     return failure[string](ioFailure,

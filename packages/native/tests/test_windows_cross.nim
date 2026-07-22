@@ -18,6 +18,11 @@ doAssert nativeMenuApp.configureNativeMenu("Nimino", [
   NativeMenuItem(id: 1, title: "Show Nimino", enabled: true),
   NativeMenuItem(id: 2, title: "Quit Nimino", enabled: true)
 ], proc(itemId: uint32) = discard).isOk
+## Native menus and tray menus are independent Win32 surfaces; configuring one
+## must not silently configure the other.
+doAssert nativeMenuApp.configureSystemTray([
+  NativeMenuItem(id: 3, title: "Tray Quit", enabled: true)
+], proc(itemId: uint32) = discard).isOk
 let notification = app.sendNativeNotification(NativeNotification(
   id: "windows-cross", title: "Nimino", body: "not running"))
 doAssert not notification.isOk

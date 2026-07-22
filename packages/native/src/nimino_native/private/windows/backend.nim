@@ -166,6 +166,8 @@ proc windowsRemoveNotificationIcon(app: NativeApp)
 proc windowsCloseWindow(window: NativeWindow): NativeResult
 proc windowsFail(app: NativeApp; error: NativeError)
 proc windowsRemoveTray(app: NativeApp)
+proc windowsInstallNativeMenu(app: NativeApp): NativeResult
+proc windowsRemoveNativeMenu(app: NativeApp)
 proc windowsResize(window: NativeWindow): NativeResult
 proc windowsLoadUrl(view: NativeWebView): NativeResult
 proc windowsFinishWebViewInitialization(view: NativeWebView): NativeResult
@@ -1101,6 +1103,61 @@ proc windowsRemoveTray(app: NativeApp) =
   app.trayVisible = false
   app.trayWindow = nil
 
+proc windowsInstallNativeMenu(app: NativeApp): NativeResult =
+  if app.isNil or not app.nativeMenuConfigured:
+    return success()
+  if app.nativeMenuInstalled:
+    return failure(nativeError(invalidState, "app.configureNativeMenu",
+      detail = "the native menu is already installed"))
+  var owner: NativeWindow
+  for window in app.windows:
+    if not window.isNil and window.platformWindow != nil:
+      owner = window
+      break
+  if owner.isNil:
+    return failure(nativeError(invalidState, "app.configureNativeMenu",
+      detail = "a native owner window is required"))
+
+  let submenu = createPopupMenu()
+  if submenu.isNil:
+    return failure(windowsError("app.configureNativeMenu", getLastError()))
+  for item in app.nativeMenuItems:
+    let flags = MfString or (if item.enabled: 0'u32 else: MfGrayed)
+    let text = newWideCString(item.title)
+    if appendMenuW(submenu, flags, uint(item.id), text) == 0:
+      discard destroyMenu(submenu)
+      return failure(windowsError("app.configureNativeMenu", getLastError()))
+
+  let menubar = createMenu()
+  if menubar.isNil:
+    discard destroyMenu(submenu)
+    return failure(windowsError("app.configureNativeMenu", getLastError()))
+  let title = newWideCString(app.nativeMenuTitle)
+  if appendMenuW(menubar, MfPopup, cast[uint](submenu), title) == 0:
+    discard destroyMenu(menubar)
+    discard destroyMenu(submenu)
+    return failure(windowsError("app.configureNativeMenu", getLastError()))
+  discard setMenu(owner.platformWindow, menubar)
+  if drawMenuBar(owner.platformWindow) == 0:
+    discard setMenu(owner.platformWindow, nil)
+    discard destroyMenu(menubar)
+    return failure(windowsError("app.configureNativeMenu", getLastError()))
+  app.nativeMenuHandle = menubar
+  app.nativeMenuInstalled = true
+  success()
+
+proc windowsRemoveNativeMenu(app: NativeApp) =
+  if app.isNil:
+    return
+  for window in app.windows:
+    if not window.isNil and window.platformWindow != nil:
+      discard setMenu(window.platformWindow, nil)
+      discard drawMenuBar(window.platformWindow)
+  if app.nativeMenuHandle != nil:
+    discard destroyMenu(cast[HMenu](app.nativeMenuHandle))
+  app.nativeMenuHandle = nil
+  app.nativeMenuInstalled = false
+
 proc windowsRemoveNotificationIcon(app: NativeApp) =
   if app.isNil or not app.notificationVisible:
     return
@@ -1759,6 +1816,11 @@ proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;
       window.dispatchResized(int(dimensions and 0xffff'u),
         int((dimensions shr 16) and 0xffff'u))
       return 0
+    of WmCommand:
+      let itemId = uint32(cast[uint](wParam) and 0xffff'u)
+      if itemId != 0:
+        window.app.dispatchNativeMenu(itemId)
+      return 0
     of WmTimer:
       if not window.app.dispatchUiTasks():
         window.app.windowsRequestQuit()
@@ -2060,6 +2122,11 @@ proc windowsRun(app: NativeApp): NativeResult =
         app.windowsFail(created.failure)
         break
 
+  if not app.quitRequested and app.nativeMenuConfigured:
+    let installed = app.windowsInstallNativeMenu()
+    if not installed.isOk:
+      app.windowsFail(installed.failure)
+
   if not app.quitRequested and app.trayMenuItems.len > 0:
     for window in app.windows:
       if window.platformWindow != nil:
@@ -2098,6 +2165,7 @@ proc windowsRun(app: NativeApp): NativeResult =
         discard destroyWindow(window.platformWindow)
       else:
         window.windowsDisposeWindow()
+  app.windowsRemoveNativeMenu()
   app.windowsRemoveTray()
   app.trayMenuItems.setLen(0)
   app.trayMenuHandler = nil

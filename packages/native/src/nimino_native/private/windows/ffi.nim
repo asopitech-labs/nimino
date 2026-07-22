@@ -185,6 +185,7 @@ const
   OfnOverwritePrompt* = 0x00000002'u32
 
   WmSize* = 0x0005'u32
+  WmCommand* = 0x0111'u32
   WmDestroy* = 0x0002'u32
   WmClose* = 0x0010'u32
   WmNcCreate* = 0x0081'u32
@@ -213,6 +214,7 @@ const
   NiifInfo* = 0x00000001'u32
   MfString* = 0x00000000'u32
   MfGrayed* = 0x00000001'u32
+  MfPopup* = 0x00000010'u32
   TpmRightButton* = 0x0002'u32
   TpmReturnCmd* = 0x0100'u32
   IdiApplication* = 32512'u16
@@ -441,9 +443,15 @@ proc loadIconW*(instance: HInstance; iconName: WideCString): HIcon
   {.stdcall, importc: "LoadIconW", dynlib: "user32.dll".}
 proc createPopupMenu*(): HMenu
   {.stdcall, importc: "CreatePopupMenu", dynlib: "user32.dll".}
+proc createMenu*(): HMenu
+  {.stdcall, importc: "CreateMenu", dynlib: "user32.dll".}
 proc appendMenuW*(menu: HMenu; flags: uint32; identifier: uint;
                   text: WideCString): WinBool
   {.stdcall, importc: "AppendMenuW", dynlib: "user32.dll".}
+proc setMenu*(window: HWND; menu: HMenu): HMenu
+  {.stdcall, importc: "SetMenu", dynlib: "user32.dll".}
+proc drawMenuBar*(window: HWND): WinBool
+  {.stdcall, importc: "DrawMenuBar", dynlib: "user32.dll".}
 proc trackPopupMenu*(menu: HMenu; flags: uint32; x, y: int32; reserved: uint32;
                      window: HWND; reservedRectangle: ptr WinRect): uint32
   {.stdcall, importc: "TrackPopupMenu", dynlib: "user32.dll".}
