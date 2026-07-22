@@ -180,6 +180,8 @@ wsl-host-smoke: image ## WSLからWindows hostのWebView2生成・HTML・JavaScr
 
 wsl-prepack-smoke: image ## YouTube/Gmail/Google Analyticsの実サイトWebView2読込を確認する
 
+	@command -v powershell.exe >/dev/null 2>&1 || { echo "ERROR: powershell.exe is unavailable; restore Windows Interop first." >&2; exit 1; }
+	@powershell.exe -NoProfile -Command "exit 0" >/dev/null 2>&1 || { echo "ERROR: Windows Interop is not responding. In elevated Windows PowerShell run: wsl --shutdown; Restart-Service LxssManager; then reopen WSL." >&2; exit 1; }
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
 	@for url in "https://www.youtube.com/" "https://mail.google.com/mail/u/0/" "https://analytics.google.com/analytics/web/"; do \
 		echo "Nimino prepack URL smoke: $$url"; \
