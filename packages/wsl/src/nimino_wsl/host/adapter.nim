@@ -78,6 +78,7 @@ type
     webViews: Table[uint64, NativeWebView]
     webViewWindowIds: Table[uint64, uint64]
     windowViewCounts: Table[uint64, int]
+    windowUserAgents: Table[uint64, string]
     uiStartRequested: bool
     pendingMessages: seq[HostWebMessage]
     pendingErrors: seq[HostNativeError]
@@ -132,6 +133,7 @@ proc forgetWindow(adapter: HostAdapter; windowId: uint64) =
     adapter.navigationRules.del(webViewId)
   adapter.windows.del(windowId)
   adapter.windowViewCounts.del(windowId)
+  adapter.windowUserAgents.del(windowId)
 
 proc errorAction(detail: string): ProtocolResultOf[HostAction] {.inline.} =
   failureOf[HostAction](protocolError(invalidMessage, detail))
@@ -162,6 +164,11 @@ proc requiredBool(node: JsonNode; name: string): ProtocolResultOf[bool] =
   if not node.hasKey(name) or node[name].kind != JBool:
     return failureOf[bool](protocolError(invalidMessage, name & " must be a boolean"))
   successOf(node[name].getBool())
+
+proc optionalBool(node: JsonNode; name: string; fallback: bool): ProtocolResultOf[bool] =
+  if not node.hasKey(name):
+    return successOf(fallback)
+  node.requiredBool(name)
 
 proc requiredMenuItems(node: JsonNode; name: string): ProtocolResultOf[seq[NativeMenuItem]] =
   if not node.hasKey(name) or node[name].kind != JArray:
@@ -288,6 +295,16 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
   let height = payload.requiredPositiveInt("height")
   let appId = payload.requiredString("appId")
   let profile = payload.requiredString("profile")
+  let fullscreen = payload.optionalBool("fullscreen", false)
+  let maximized = payload.optionalBool("maximized", false)
+  let alwaysOnTop = payload.optionalBool("alwaysOnTop", false)
+  let hideWindowDecorations = payload.optionalBool("hideWindowDecorations", false)
+  let userAgent = if payload.hasKey("userAgent") and payload["userAgent"].kind == JString:
+      successOf(payload["userAgent"].getStr())
+    else:
+      successOf("")
+  let multiWindow = payload.optionalBool("multiWindow", true)
+  let hideOnClose = payload.optionalBool("hideOnClose", false)
   if not title.isOk:
     return failureOf[HostAction](title.failure)
   if not width.isOk:
@@ -298,6 +315,20 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
     return failureOf[HostAction](appId.failure)
   if not profile.isOk:
     return failureOf[HostAction](profile.failure)
+  if not fullscreen.isOk:
+    return failureOf[HostAction](fullscreen.failure)
+  if not maximized.isOk:
+    return failureOf[HostAction](maximized.failure)
+  if not alwaysOnTop.isOk:
+    return failureOf[HostAction](alwaysOnTop.failure)
+  if not hideWindowDecorations.isOk:
+    return failureOf[HostAction](hideWindowDecorations.failure)
+  if not userAgent.isOk:
+    return failureOf[HostAction](userAgent.failure)
+  if not multiWindow.isOk:
+    return failureOf[HostAction](multiWindow.failure)
+  if not hideOnClose.isOk:
+    return failureOf[HostAction](hideOnClose.failure)
   if not safeWindowsPathComponent(appId.value) or not safeWindowsPathComponent(profile.value):
     return errorAction("appId/profile contains an unsafe path component")
 
@@ -309,11 +340,35 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
   if not created.isOk:
     return nativeFailure("native.window.create", created)
 
+  if hideWindowDecorations.value:
+    let configured = created.value.setDecorated(false)
+    if not configured.isOk:
+      discard created.value.close()
+      return nativeFailure("native.window.setDecorated", configured)
+  if fullscreen.value:
+    let configured = created.value.setFullscreen(true)
+    if not configured.isOk:
+      discard created.value.close()
+      return nativeFailure("native.window.setFullscreen", configured)
+  if maximized.value:
+    let configured = created.value.maximize()
+    if not configured.isOk:
+      discard created.value.close()
+      return nativeFailure("native.window.maximize", configured)
+  if alwaysOnTop.value:
+    let configured = created.value.setAlwaysOnTop(true)
+    if not configured.isOk:
+      discard created.value.close()
+      return nativeFailure("native.window.setAlwaysOnTop", configured)
+
   let windowId = adapter.nextWindowId
   inc adapter.nextWindowId
   let adapterPointer = cast[pointer](adapter)
   let closeConfigured = created.value.onCloseRequested(proc(): bool =
     let owner = cast[HostAdapter](adapterPointer)
+    if hideOnClose.value:
+      discard created.value.hide()
+      return false
     if owner.isNil or owner.policyDecision.isNil:
       return true
     owner.policyDecision(PolicyRequest(kind: closePolicy, windowId: windowId)))
@@ -334,6 +389,7 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
     return nativeFailure("native.window.onResize", resizeConfigured)
   adapter.windows[windowId] = created.value
   adapter.windowViewCounts[windowId] = 0
+  adapter.windowUserAgents[windowId] = userAgent.value
   successOf(HostAction(kind: noHostAction, payload: encodedId("windowId", windowId)))
 
 proc handleWindowSetTitle(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
@@ -415,6 +471,36 @@ proc handleWindowState(adapter: HostAdapter; payload: JsonNode; operation: strin
     else: adapter.windows[windowId.value].restore()
   if not updated.isOk:
     return nativeFailure("native.window." & operation, updated)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
+proc handleWindowSetFullscreen(adapter: HostAdapter;
+                               payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  let enabled = payload.requiredBool("enabled")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not enabled.isOk:
+    return failureOf[HostAction](enabled.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  let updated = adapter.windows[windowId.value].setFullscreen(enabled.value)
+  if not updated.isOk:
+    return nativeFailure("native.window.setFullscreen", updated)
+  successOf(HostAction(kind: noHostAction, payload: "{}"))
+
+proc handleWindowSetAlwaysOnTop(adapter: HostAdapter;
+                                payload: JsonNode): ProtocolResultOf[HostAction] =
+  let windowId = payload.requiredId("windowId")
+  let enabled = payload.requiredBool("enabled")
+  if not windowId.isOk:
+    return failureOf[HostAction](windowId.failure)
+  if not enabled.isOk:
+    return failureOf[HostAction](enabled.failure)
+  if not adapter.windows.hasKey(windowId.value):
+    return errorAction("unknown windowId")
+  let updated = adapter.windows[windowId.value].setAlwaysOnTop(enabled.value)
+  if not updated.isOk:
+    return nativeFailure("native.window.setAlwaysOnTop", updated)
   successOf(HostAction(kind: noHostAction, payload: "{}"))
 
 proc handleWindowSetResizable(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
@@ -544,6 +630,12 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   let created = adapter.windows[windowId.value].newWebView()
   if not created.isOk:
     return nativeFailure("native.webview.create", created)
+  let userAgent = adapter.windowUserAgents.getOrDefault(windowId.value, "")
+  if userAgent.len > 0:
+    let configuredUserAgent = created.value.setUserAgent(userAgent)
+    if not configuredUserAgent.isOk:
+      discard created.value.close()
+      return nativeFailure("native.webview.setUserAgent", configuredUserAgent)
 
   let webViewId = adapter.nextWebViewId
   inc adapter.nextWebViewId
@@ -1051,6 +1143,10 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleWindowState(payload.value, "minimize")
   of "native.window.maximize":
     adapter.handleWindowState(payload.value, "maximize")
+  of "native.window.setFullscreen":
+    adapter.handleWindowSetFullscreen(payload.value)
+  of "native.window.setAlwaysOnTop":
+    adapter.handleWindowSetAlwaysOnTop(payload.value)
   of "native.window.restore":
     adapter.handleWindowState(payload.value, "restore")
   of "native.window.setResizable":

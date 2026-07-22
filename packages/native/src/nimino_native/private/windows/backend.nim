@@ -1134,6 +1134,27 @@ proc windowsSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
     return failure(hresultError("webview.setDevToolsEnabled", status))
   success()
 
+proc windowsSetUserAgent(view: NativeWebView; value: string): NativeResult =
+  if view.isNil or view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.setUserAgent"))
+  var settings: pointer
+  let getStatus = coreGetSettings(view.platformView, addr settings)
+  if not succeeded(getStatus) or settings.isNil:
+    return failure(hresultError("webview.getSettings", getStatus))
+  var settings2: pointer
+  let queryStatus = comQueryInterface(settings, addr IidCoreWebView2Settings2,
+    addr settings2)
+  discard comRelease(settings)
+  if not succeeded(queryStatus) or settings2.isNil:
+    return failure(nativeError(unsupported, "webview.setUserAgent",
+      detail = "WebView2 Runtime does not expose ICoreWebView2Settings2"))
+  let userAgent = newWideCString(value)
+  let status = settings2PutUserAgent(settings2, userAgent)
+  discard comRelease(settings2)
+  if not succeeded(status):
+    return failure(hresultError("webview.setUserAgent", status))
+  success()
+
 proc windowsSetResizable(window: NativeWindow; resizable: bool): NativeResult =
   if window.platformWindow == nil:
     return failure(nativeError(invalidState, "window.setResizable"))
@@ -2142,6 +2163,86 @@ proc windowsRestoreWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     discard showWindow(window.platformWindow, SwRestore)
 
+proc windowsSetFullscreen(window: NativeWindow; enabled: bool): NativeResult =
+  let hwnd = window.platformWindow
+  if hwnd == nil:
+    return success()
+  if enabled == window.fullscreenActive:
+    return success()
+  if enabled:
+    var previous: WinRect
+    if getWindowRect(hwnd, addr previous) == 0:
+      return failure(windowsError("window.setFullscreen", getLastError()))
+    let monitor = monitorFromWindow(hwnd, MonitorDefaultToNearest)
+    if monitor == nil:
+      return failure(nativeError(osError, "window.setFullscreen",
+        detail = "the window is not associated with a monitor"))
+    var info: MonitorInfo
+    info.cbSize = uint32(sizeof(MonitorInfo))
+    if getMonitorInfoW(monitor, addr info) == 0:
+      return failure(windowsError("window.setFullscreen", getLastError()))
+    window.fullscreenStyle = getWindowLongPtrW(hwnd, GwlStyle)
+    window.fullscreenExStyle = getWindowLongPtrW(hwnd, GwlExStyle)
+    window.fullscreenLeft = previous.left
+    window.fullscreenTop = previous.top
+    window.fullscreenRight = previous.right
+    window.fullscreenBottom = previous.bottom
+    discard setWindowLongPtrW(hwnd, GwlStyle, int(WsPopup))
+    discard setWindowLongPtrW(hwnd, GwlExStyle, 0)
+    let positioned = setWindowPos(hwnd, nil,
+      info.monitor.left, info.monitor.top,
+      info.monitor.right - info.monitor.left,
+      info.monitor.bottom - info.monitor.top,
+      SwpNoOwnerZOrder or SwpNoActivate or SwpFrameChanged)
+    if positioned == 0:
+      discard setWindowLongPtrW(hwnd, GwlStyle, window.fullscreenStyle)
+      discard setWindowLongPtrW(hwnd, GwlExStyle, window.fullscreenExStyle)
+      return failure(windowsError("window.setFullscreen", getLastError()))
+    discard showWindow(hwnd, SwShow)
+    discard updateWindow(hwnd)
+    window.fullscreenActive = true
+    return success()
+
+  discard setWindowLongPtrW(hwnd, GwlStyle, window.fullscreenStyle)
+  discard setWindowLongPtrW(hwnd, GwlExStyle, window.fullscreenExStyle)
+  let restored = setWindowPos(hwnd, nil,
+    window.fullscreenLeft, window.fullscreenTop,
+    window.fullscreenRight - window.fullscreenLeft,
+    window.fullscreenBottom - window.fullscreenTop,
+    SwpNoOwnerZOrder or SwpNoActivate or SwpFrameChanged)
+  if restored == 0:
+    return failure(windowsError("window.setFullscreen", getLastError()))
+  discard showWindow(hwnd, SwShow)
+  discard updateWindow(hwnd)
+  window.fullscreenActive = false
+  success()
+
+proc windowsSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult =
+  let hwnd = window.platformWindow
+  if hwnd == nil:
+    return success()
+  let insertAfter = cast[HWND](cast[int](if enabled: -1 else: -2))
+  if setWindowPos(hwnd, insertAfter, 0, 0, 0, 0,
+      SwpNoMove or SwpNoSize or SwpNoActivate) == 0:
+    return failure(windowsError("window.setAlwaysOnTop", getLastError()))
+  window.alwaysOnTop = enabled
+  success()
+
+proc windowsSetDecorated(window: NativeWindow; enabled: bool): NativeResult =
+  if window.isNil or window.platformWindow.isNil:
+    return failure(nativeError(invalidState, "window.setDecorated"))
+  var style = uint32(getWindowLongPtrW(window.platformWindow, GwlStyle))
+  if enabled:
+    style = style or WsCaption or WsSysMenu
+  else:
+    style = style and not (WsCaption or WsSysMenu or WsThickFrame or
+      WsMinimizeBox or WsMaximizeBox)
+  discard setWindowLongPtrW(window.platformWindow, GwlStyle, int(style))
+  if setWindowPos(window.platformWindow, nil, 0, 0, 0, 0,
+      SwpNoMove or SwpNoSize or SwpNoZOrder or SwpNoActivate or SwpFrameChanged) == 0:
+    return failure(windowsError("window.setDecorated", getLastError()))
+  success()
+
 proc windowsFocusWindow(window: NativeWindow): NativeResult =
   if window.platformWindow == nil:
     return failure(nativeError(invalidState, "window.focus"))
@@ -2298,6 +2399,11 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
   if not devTools.isOk:
     view.window.app.windowsFail(devTools.failure)
     return S_OK
+  if view.userAgent.len > 0:
+    let userAgent = view.windowsSetUserAgent(view.userAgent)
+    if not userAgent.isOk:
+      view.window.app.windowsFail(userAgent.failure)
+      return S_OK
   let navigationStarting = view.windowsConfigureNavigationStarting()
   if not navigationStarting.isOk:
     view.window.app.windowsFail(navigationStarting.failure)

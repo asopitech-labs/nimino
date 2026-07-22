@@ -123,6 +123,8 @@ proc gtk_window_set_title*(window: ptr GtkWindow; title: cstring)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_set_default_size*(window: ptr GtkWindow; width: cint; height: cint)
   {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_window_set_decorated*(window: ptr GtkWindow; setting: cint)
+  {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_set_resizable*(window: ptr GtkWindow; resizable: cint)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_set_child*(window: ptr GtkWindow; child: pointer)
@@ -140,6 +142,10 @@ proc gtk_window_minimize*(window: ptr GtkWindow)
 proc gtk_window_maximize*(window: ptr GtkWindow)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_unmaximize*(window: ptr GtkWindow)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_window_fullscreen*(window: ptr GtkWindow)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_window_unfullscreen*(window: ptr GtkWindow)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_widget_hide*(widget: pointer)
   {.cdecl, importc, dynlib: LibGtk.}
@@ -387,6 +393,8 @@ proc webkit_web_view_get_settings*(view: ptr WebKitWebView): ptr WebKitSettings
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_settings_set_enable_developer_extras*(settings: ptr WebKitSettings;
                                                    enabled: cint)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_settings_set_user_agent*(settings: ptr WebKitSettings; userAgent: cstring)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_get_type*(): culong
   {.cdecl, importc, dynlib: LibWebKit.}

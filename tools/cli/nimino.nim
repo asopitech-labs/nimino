@@ -4,7 +4,7 @@ import nimino_pack
 
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino pack <url> [--name <name>] [--id <id>] [--profile <name>] [--width <px>] [--height <px>] [--resizable <true|false>] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack <url> [--name <name>] [--id <id>] [--profile <name>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
   quit(2)
@@ -96,7 +96,23 @@ proc manifestJson(manifest: PackManifest): JsonNode =
     "window": {
       "width": manifest.window.width,
       "height": manifest.window.height,
-      "resizable": manifest.window.resizable
+      "resizable": manifest.window.resizable,
+      "fullscreen": manifest.window.fullscreen,
+      "maximized": manifest.window.maximized,
+      "alwaysOnTop": manifest.window.alwaysOnTop,
+      "hideWindowDecorations": manifest.window.hideWindowDecorations
+    },
+    "webview": {
+      "userAgent": manifest.webview.userAgent,
+      "proxyUrl": manifest.webview.proxyUrl,
+      "incognito": manifest.webview.incognito
+    },
+    "runtime": {
+      "showSystemTray": manifest.runtime.showSystemTray,
+      "startToTray": manifest.runtime.startToTray,
+      "hideOnClose": manifest.runtime.hideOnClose,
+      "multiWindow": manifest.runtime.multiWindow,
+      "multiInstance": manifest.runtime.multiInstance
     },
     "navigation": {
       "allow": manifest.navigationAllow,
@@ -466,6 +482,12 @@ proc parseCliBool(value: string): bool =
   of "false", "0", "no": result = false
   else: usage()
 
+proc packBooleanFlag(flag: string): bool =
+  flag in ["--resizable", "--fullscreen", "--maximize", "--always-on-top",
+           "--hide-window-decorations", "--incognito", "--show-system-tray",
+           "--start-to-tray", "--hide-on-close", "--multi-window",
+           "--multi-instance"]
+
 if paramCount() >= 1 and paramStr(1) == "package-linux":
   runPackageLinux()
 if paramCount() >= 1 and paramStr(1) == "package-windows":
@@ -484,6 +506,18 @@ if sourceIsUrl:
   var width = 1200
   var height = 800
   var resizable = true
+  var fullscreen = false
+  var maximized = false
+  var alwaysOnTop = false
+  var hideWindowDecorations = false
+  var userAgent = ""
+  var proxyUrl = ""
+  var incognito = false
+  var showSystemTray = false
+  var startToTray = false
+  var hideOnClose = false
+  var multiWindow = true
+  var multiInstance = false
   var permissionsAllow: seq[string]
   var css: seq[string]
   var javascript: seq[string]
@@ -492,10 +526,11 @@ if sourceIsUrl:
   var deepLinkSchemes: seq[string]
   var index = 3
   while index <= paramCount():
-    if index == paramCount():
-      usage()
     let flag = paramStr(index)
-    let value = paramStr(index + 1)
+    let hasValue = index < paramCount() and not paramStr(index + 1).startsWith("--")
+    if not hasValue and not packBooleanFlag(flag):
+      usage()
+    let value = if hasValue: paramStr(index + 1) else: "true"
     case flag
     of "--name": name = value
     of "--id": id = value
@@ -507,6 +542,18 @@ if sourceIsUrl:
       try: height = parseInt(value)
       except ValueError: usage()
     of "--resizable": resizable = parseCliBool(value)
+    of "--fullscreen": fullscreen = parseCliBool(value)
+    of "--maximize": maximized = parseCliBool(value)
+    of "--always-on-top": alwaysOnTop = parseCliBool(value)
+    of "--hide-window-decorations": hideWindowDecorations = parseCliBool(value)
+    of "--user-agent": userAgent = value
+    of "--proxy-url": proxyUrl = value
+    of "--incognito": incognito = parseCliBool(value)
+    of "--show-system-tray": showSystemTray = parseCliBool(value)
+    of "--start-to-tray": startToTray = parseCliBool(value)
+    of "--hide-on-close": hideOnClose = parseCliBool(value)
+    of "--multi-window": multiWindow = parseCliBool(value)
+    of "--multi-instance": multiInstance = parseCliBool(value)
     of "--icon": icon = value
     of "--deep-link": deepLinkSchemes.add(value)
     of "--allow-permission": permissionsAllow.add(value)
@@ -516,10 +563,16 @@ if sourceIsUrl:
     of "--external-url": navigationExternal.add(value)
     of "--out", "--host": discard
     else: usage()
-    index += 2
+    if hasValue: index += 2 else: inc index
   loaded = generateManifest(source, name = name, id = id, profile = profile,
     icon = icon, deepLinkSchemes = deepLinkSchemes, width = width,
-    height = height, resizable = resizable, permissionsAllow = permissionsAllow,
+    height = height, resizable = resizable, fullscreen = fullscreen,
+    maximized = maximized, alwaysOnTop = alwaysOnTop,
+    hideWindowDecorations = hideWindowDecorations, userAgent = userAgent,
+    proxyUrl = proxyUrl, incognito = incognito,
+    showSystemTray = showSystemTray, startToTray = startToTray,
+    hideOnClose = hideOnClose, multiWindow = multiWindow,
+    multiInstance = multiInstance, permissionsAllow = permissionsAllow,
     css = css, javascript = javascript, navigationAllow = navigationAllow,
     navigationExternal = navigationExternal)
 else:
@@ -532,20 +585,33 @@ var outputDirectory = ""
 var hostPath = ""
 var index = 3
 while index <= paramCount():
-  if index == paramCount(): usage()
-  case paramStr(index)
-  of "--out": outputDirectory = paramStr(index + 1)
-  of "--host": hostPath = paramStr(index + 1)
-  of "--name", "--id", "--profile", "--width", "--height", "--resizable", "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--external-url":
+  let flag = paramStr(index)
+  let hasValue = index < paramCount() and not paramStr(index + 1).startsWith("--")
+  if not hasValue and not packBooleanFlag(flag): usage()
+  case flag
+  of "--out":
+    if not hasValue: usage()
+    outputDirectory = paramStr(index + 1)
+  of "--host":
+    if not hasValue: usage()
+    hostPath = paramStr(index + 1)
+  of "--name", "--id", "--profile", "--width", "--height", "--resizable",
+     "--fullscreen", "--maximize", "--always-on-top", "--hide-window-decorations",
+     "--user-agent", "--proxy-url", "--incognito", "--show-system-tray",
+     "--start-to-tray", "--hide-on-close", "--multi-window", "--multi-instance",
+     "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--external-url":
     if not sourceIsUrl: usage()
   else: usage()
-  index += 2
+  if hasValue: index += 2 else: inc index
 if hostPath.len > 0 and not fileExists(hostPath):
   stderr.writeLine("nimino pack: host executable does not exist")
   quit(1)
 if outputDirectory.len == 0:
   echo output
 else:
+  if hostPath.len == 0:
+    stderr.writeLine("nimino pack: --host is required when --out is used; bundles must carry their host executable")
+    quit(1)
   let directory = outputDirectory
   if directory.len == 0:
     usage()

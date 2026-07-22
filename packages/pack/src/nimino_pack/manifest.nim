@@ -22,6 +22,22 @@ type
     width*: int
     height*: int
     resizable*: bool
+    fullscreen*: bool
+    maximized*: bool
+    alwaysOnTop*: bool
+    hideWindowDecorations*: bool
+
+  PackWebViewOptions* = object
+    userAgent*: string
+    proxyUrl*: string
+    incognito*: bool
+
+  PackRuntimeOptions* = object
+    showSystemTray*: bool
+    startToTray*: bool
+    hideOnClose*: bool
+    multiWindow*: bool
+    multiInstance*: bool
 
   PackPackageMetadata* = object
     ## Distribution-facing fields. They remain separate from the URL and
@@ -45,6 +61,8 @@ type
     icon*: string
     profile*: string
     window*: PackWindowOptions
+    webview*: PackWebViewOptions
+    runtime*: PackRuntimeOptions
     package*: PackPackageMetadata
     deepLink*: PackDeepLinkOptions
     navigationAllow*: seq[string]
@@ -112,6 +130,8 @@ proc parsePositiveInt(value, field: string): PackResult[int] =
   except ValueError:
     failure[int](invalidManifest, field & " must be an integer")
 
+proc validMetadataText(value: string): bool
+
 proc validateUrl(value: string): bool =
   try:
     let parsed = parseUri(value)
@@ -126,6 +146,17 @@ proc validateUrl(value: string): bool =
     if scheme == "file":
       return parsed.path.len > 0
     scheme == "data" and parsed.path.len > 0
+  except CatchableError:
+    false
+
+proc validateProxyUrl(value: string): bool =
+  if value.len == 0:
+    return true
+  try:
+    let parsed = parseUri(value)
+    parsed.scheme.toLowerAscii() in ["http", "https", "socks5"] and
+      parsed.hostname.len > 0 and parsed.username.len == 0 and
+      parsed.password.len == 0 and validMetadataText(value)
   except CatchableError:
     false
 
@@ -256,8 +287,14 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
     return failure[PackManifest](invalidManifest,
       "package description and publisher must not contain control characters")
   if not validHomepage(normalized.package.homepage):
+      return failure[PackManifest](invalidManifest,
+        "package.homepage must be an http or https URL")
+  if not validMetadataText(normalized.webview.userAgent):
     return failure[PackManifest](invalidManifest,
-      "package.homepage must be an http or https URL")
+      "webview.userAgent must not contain control characters")
+  if not validateProxyUrl(normalized.webview.proxyUrl):
+    return failure[PackManifest](invalidManifest,
+      "webview.proxyUrl must be an http, https, or socks5 URL without credentials")
   for category in normalized.package.categories:
     if category notin DesktopCategories:
       return failure[PackManifest](invalidManifest,
@@ -329,7 +366,42 @@ proc parse*(text: string): PackResult[PackManifest] =
         let parsed = parseBool(value)
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
         manifest.window.resizable = parsed.value
+      of "fullscreen":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.window.fullscreen = parsed.value
+      of "maximized":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.window.maximized = parsed.value
+      of "always-on-top", "alwaysontop":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.window.alwaysOnTop = parsed.value
+      of "hide-window-decorations", "hidewindowdecorations":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.window.hideWindowDecorations = parsed.value
       else: return failure[PackManifest](invalidManifest, "unknown window key: " & key)
+    of "webview":
+      case key
+      of "user-agent", "useragent": manifest.webview.userAgent = unquote(value)
+      of "proxy-url", "proxyurl": manifest.webview.proxyUrl = unquote(value)
+      of "incognito":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.webview.incognito = parsed.value
+      else: return failure[PackManifest](invalidManifest, "unknown webview key: " & key)
+    of "runtime":
+      let parsed = parseBool(value)
+      if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+      case key
+      of "show-system-tray": manifest.runtime.showSystemTray = parsed.value
+      of "start-to-tray": manifest.runtime.startToTray = parsed.value
+      of "hide-on-close": manifest.runtime.hideOnClose = parsed.value
+      of "multi-window": manifest.runtime.multiWindow = parsed.value
+      of "multi-instance": manifest.runtime.multiInstance = parsed.value
+      else: return failure[PackManifest](invalidManifest, "unknown runtime key: " & key)
     of "package":
       case key
       of "version": manifest.package.version = unquote(value)

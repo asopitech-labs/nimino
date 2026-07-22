@@ -141,6 +141,15 @@ type
     width*: int
     height*: int
     profile*: string
+    fullscreen*: bool
+    maximized*: bool
+    alwaysOnTop*: bool
+    hideWindowDecorations*: bool
+    userAgent*: string
+    proxyUrl*: string
+    incognito*: bool
+    multiWindow*: bool
+    hideOnClose*: bool
     inlineRemoteAssets*: bool
     injectionCss*: seq[string]
     injectionJavaScript*: seq[string]
@@ -260,6 +269,8 @@ type
     webViewId: uint64
     profilePath*: string
     profileName: string
+    multiWindow*: bool
+    hideOnClose*: bool
     lastUrl: string
     rpc*: RpcRegistry
     documentStartBridgeScript: string
@@ -290,6 +301,10 @@ type
     webViewId: uint64
     messageHandler: proc(message: string)
     closed: bool
+
+proc setFullscreen*(window: Window; enabled: bool): CoreResult
+proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult
+proc maximize*(window: Window): CoreResult
 
 proc mapNativeError(error: native.NativeError): CoreError =
   let kind = case error.kind
@@ -1267,6 +1282,12 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if options.width <= 0 or options.height <= 0:
     return coreFailureOf[Window](coreError(invalidArgument, "window.create",
       detail = "size must be positive"))
+  if options.proxyUrl.len > 0:
+    return coreFailureOf[Window](coreError(platformUnavailable, "window.create",
+      detail = "proxyUrl is not implemented by the native backends yet"))
+  if options.incognito:
+    return coreFailureOf[Window](coreError(platformUnavailable, "window.create",
+      detail = "incognito is not implemented by the native backends yet"))
   let profileName = if options.profile.len == 0: "default" else: options.profile
   let profile = ensureProfileLayout(app.id, profileName)
   if not profile.isOk:
@@ -1281,7 +1302,14 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         "width": options.width,
         "height": options.height,
         "appId": app.id,
-        "profile": profileName
+        "profile": profileName,
+        "fullscreen": options.fullscreen,
+        "maximized": options.maximized,
+        "alwaysOnTop": options.alwaysOnTop,
+        "hideWindowDecorations": options.hideWindowDecorations,
+        "userAgent": options.userAgent,
+        "multiWindow": options.multiWindow,
+        "hideOnClose": options.hideOnClose
       }))
       if not remoteWindow.isOk:
         return coreFailureOf[Window](remoteWindow.failure)
@@ -1298,6 +1326,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         return coreFailureOf[Window](webViewId.failure)
       let window = Window(app: app, windowId: windowId.value, webViewId: webViewId.value,
                           profilePath: profile.value, profileName: profileName,
+                          multiWindow: options.multiWindow,
+                          hideOnClose: options.hideOnClose,
                           inlineRemoteAssets: options.inlineRemoteAssets,
                           injectionCss: options.injectionCss,
                           injectionJavaScript: options.injectionJavaScript,
@@ -1321,10 +1351,22 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   let nativeView = native.newWebView(nativeWindow.value)
   if not nativeView.isOk:
     return coreFailureOf[Window](nativeView.failure.mapNativeError())
+  if options.userAgent.len > 0:
+    let userAgent = nativeView.value.setUserAgent(options.userAgent)
+    if not userAgent.isOk:
+      discard nativeWindow.value.close()
+      return coreFailureOf[Window](userAgent.failure.mapNativeError())
+  if options.hideWindowDecorations:
+    let decorations = nativeWindow.value.setDecorated(false)
+    if not decorations.isOk:
+      discard nativeWindow.value.close()
+      return coreFailureOf[Window](decorations.failure.mapNativeError())
 
   let window = Window(app: app, nativeWindow: nativeWindow.value,
                       nativeView: nativeView.value, profilePath: profile.value,
                       profileName: profileName,
+                      multiWindow: options.multiWindow,
+                      hideOnClose: options.hideOnClose,
                       inlineRemoteAssets: options.inlineRemoteAssets,
                       injectionCss: options.injectionCss,
                       injectionJavaScript: options.injectionJavaScript,
@@ -1340,13 +1382,28 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if not configured.isOk:
     window.rpc.close()
     return coreFailureOf[Window](configured.failure)
+  if options.fullscreen:
+    let fullscreen = window.setFullscreen(true)
+    if not fullscreen.isOk:
+      window.rpc.close()
+      return coreFailureOf[Window](fullscreen.failure)
+  if options.maximized:
+    let maximized = window.maximize()
+    if not maximized.isOk:
+      window.rpc.close()
+      return coreFailureOf[Window](maximized.failure)
+  if options.alwaysOnTop:
+    let alwaysOnTop = window.setAlwaysOnTop(true)
+    if not alwaysOnTop.isOk:
+      window.rpc.close()
+      return coreFailureOf[Window](alwaysOnTop.failure)
   app.windows.add(window)
   coreSuccessOf(window)
 
 proc newWindow*(app: App; title = ""; width = 1200; height = 800;
                 profile = "default"): CoreResultOf[Window] =
   app.newWindow(CoreWindowOptions(title: title, width: width, height: height,
-    profile: profile))
+    profile: profile, multiWindow: true))
 
 proc newWebView*(window: Window): CoreResultOf[WebView] =
   if window.isNil or window.closed or window.app.isNil:
@@ -2288,12 +2345,40 @@ proc maximize*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.maximize"))
   case window.app.backend
-  of nativeBackend: native.maximize(window.nativeWindow).fromNative()
+  of nativeBackend: window.nativeWindow.maximize().fromNative()
   of wslBackend:
     when defined(linux):
       let response = window.app.wslCall("native.window.maximize", $(%*{"windowId": $window.windowId}))
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else: coreFailure(coreError(platformUnavailable, "window.maximize"))
+
+proc setFullscreen*(window: Window; enabled: bool): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setFullscreen"))
+  case window.app.backend
+  of nativeBackend:
+    native.setFullscreen(window.nativeWindow, enabled).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let response = window.app.wslCall("native.window.setFullscreen", $(%*{
+        "windowId": $window.windowId, "enabled": enabled
+      }))
+      if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else: coreFailure(coreError(platformUnavailable, "window.setFullscreen"))
+
+proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.setAlwaysOnTop"))
+  case window.app.backend
+  of nativeBackend:
+    native.setAlwaysOnTop(window.nativeWindow, enabled).fromNative()
+  of wslBackend:
+    when defined(linux):
+      let response = window.app.wslCall("native.window.setAlwaysOnTop", $(%*{
+        "windowId": $window.windowId, "enabled": enabled
+      }))
+      if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else: coreFailure(coreError(platformUnavailable, "window.setAlwaysOnTop"))
 
 proc restore*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -2503,11 +2588,16 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
   if request.url.len == 0:
     return coreFailureOf[Window](coreError(invalidArgument, "window.openPopup",
       detail = "popup URL must not be empty"))
+  if not window.multiWindow:
+    return coreFailureOf[Window](coreError(permissionDenied, "window.openPopup",
+      detail = "multi-window support is disabled for this window"))
   if not window.applyNavigationDecision(NavigationRequest(url: request.url)):
     return coreFailureOf[Window](coreError(permissionDenied, "window.openPopup",
       detail = "popup URL was rejected by navigation policy"))
   let popup = window.app.newWindow(CoreWindowOptions(
     title: title, width: width, height: height, profile: profile,
+    multiWindow: window.multiWindow,
+    hideOnClose: window.hideOnClose,
     injectionCss: window.injectionCss,
     injectionJavaScript: window.injectionJavaScript,
     injectionEnabled: window.injectionEnabled,

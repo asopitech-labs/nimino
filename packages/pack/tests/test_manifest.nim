@@ -11,6 +11,22 @@ profile = "default"
 width = 1280
 height = 900
 resizable = true
+fullscreen = true
+maximized = true
+always-on-top = true
+hide-window-decorations = true
+
+[webview]
+user-agent = "NiminoTest/1.0"
+proxy-url = "socks5://proxy.example:1080"
+incognito = false
+
+[runtime]
+show-system-tray = true
+start-to-tray = true
+hide-on-close = true
+multi-window = true
+multi-instance = false
 
 [package]
 version = "1.2.3"
@@ -37,6 +53,11 @@ doAssert parsed.isOk
 doAssert parsed.value.name == "Discord"
 doAssert parsed.value.icon == "https://discord.com/icon.png"
 doAssert parsed.value.window.width == 1280
+doAssert parsed.value.window.fullscreen
+doAssert parsed.value.window.maximized
+doAssert parsed.value.webview.userAgent == "NiminoTest/1.0"
+doAssert parsed.value.webview.proxyUrl == "socks5://proxy.example:1080"
+doAssert parsed.value.runtime.startToTray
 doAssert parsed.value.navigationAllow.len == 2
 doAssert parsed.value.permissionsAllow == @["microphone", "notifications"]
 doAssert parsed.value.package.version == "1.2.3"
@@ -57,6 +78,8 @@ let invalidCategory = parse("name = \"Category\"\nid = \"app.category\"\nurl = \
 doAssert not invalidCategory.isOk
 let invalidHomepage = parse("name = \"Homepage\"\nid = \"app.homepage\"\nurl = \"https://example.com\"\n[package]\nhomepage = \"file:///tmp/app\"")
 doAssert not invalidHomepage.isOk
+let invalidProxy = parse("name = \"Proxy\"\nid = \"app.proxy\"\nurl = \"https://example.com\"\n[webview]\nproxy-url = \"http://user:pass@proxy.example\"")
+doAssert not invalidProxy.isOk
 
 let commaValue = parse("name = \"Comma\"\nid = \"app.comma\"\nurl = \"https://example.com\"\n[navigation]\nallow = [\"https://example.com/a,b\", \"https://example.com/c\"]")
 doAssert commaValue.isOk

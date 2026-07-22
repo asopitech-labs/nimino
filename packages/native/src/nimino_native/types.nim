@@ -215,6 +215,15 @@ type
     profilePath*: string
     platformWindow: pointer
     platformContainer: pointer
+    fullscreenActive: bool
+    fullscreenStyle: int
+    fullscreenExStyle: int
+    fullscreenLeft: int32
+    fullscreenTop: int32
+    fullscreenRight: int32
+    fullscreenBottom: int32
+    alwaysOnTop: bool
+    decorated: bool
     views: seq[NativeWebView]
     closeRequestedHandler: NativeCloseRequestedHandler
     closeSignalHandler: culong
@@ -232,6 +241,7 @@ type
     pendingHtmlBaseUrl: string
     documentStartScript: string
     devToolsEnabled: bool
+    userAgent: string
     documentStartScriptId: string
     documentStartScriptUpdatePending: bool
     platformView: pointer
@@ -290,6 +300,10 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxSizeNotify(window, pspec, userData: pointer) {.cdecl.}
   proc linuxCreateWindow(window: NativeWindow): NativeResult
   proc linuxSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
+  proc linuxSetUserAgent(view: NativeWebView; value: string): NativeResult
+  proc linuxSetFullscreen(window: NativeWindow; enabled: bool): NativeResult
+  proc linuxSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult
+  proc linuxSetDecorated(window: NativeWindow; enabled: bool): NativeResult
   proc linuxDisposeView(view: NativeWebView)
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc linuxClearBrowsingData(view: NativeWebView;
@@ -318,6 +332,10 @@ elif defined(windows):
   proc windowsMutateCookie(view: NativeWebView;
                            request: NativeCookieMutationRequest): NativeResult
   proc windowsSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
+  proc windowsSetUserAgent(view: NativeWebView; value: string): NativeResult
+  proc windowsSetFullscreen(window: NativeWindow; enabled: bool): NativeResult
+  proc windowsSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult
+  proc windowsSetDecorated(window: NativeWindow; enabled: bool): NativeResult
   proc windowsReplaceDocumentStartScript(view: NativeWebView;
                                           script: string): NativeResult
   proc windowsDisposeView(view: NativeWebView)
@@ -684,6 +702,19 @@ proc newNativeApp*(): NativeApp =
 proc supports*(app: NativeApp; capability: Capability): bool {.inline.} =
   app.capabilities.supports(capability)
 
+proc supports*(window: NativeWindow; capability: WindowCapability): bool =
+  ## Reports controls that the concrete native Window backend can execute.
+  ## GTK4 has no portable always-on-top setter, so that feature remains
+  ## explicitly unavailable on Linux rather than silently doing nothing.
+  if window.isNil or window.state in {closing, closed}:
+    return false
+  when defined(windows):
+    capability in {fullscreen, maximize, alwaysOnTop}
+  elif defined(linux) and not defined(niminoWsl):
+    capability in {fullscreen, maximize}
+  else:
+    false
+
 proc systemTraySupportDetail*(app: NativeApp): string =
   ## Returns the concrete reason `systemTray` is unavailable.  Linux probes
   ## the session D-Bus StatusNotifierWatcher; all other unsupported targets
@@ -906,7 +937,8 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
     title: title,
     width: width,
     height: height,
-    profilePath: profilePath
+    profilePath: profilePath,
+    decorated: true
   )
   app.windows.add(window)
   successOf(window)
@@ -928,6 +960,35 @@ proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView] =
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
   successOf(view)
+
+proc setUserAgent*(view: NativeWebView; value: string): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.setUserAgent"))
+  if value.contains('\x00') or value.contains('\r') or value.contains('\n'):
+    return failure(nativeError(invalidArgument, "webview.setUserAgent",
+      detail = "user agent must not contain NUL or line breaks"))
+  view.userAgent = value
+  if view.state == pending:
+    return success()
+  when defined(linux) and not defined(niminoWsl):
+    view.linuxSetUserAgent(value)
+  elif defined(windows):
+    view.windowsSetUserAgent(value)
+  else:
+    failure(nativeError(unsupported, "webview.setUserAgent"))
+
+proc setDecorated*(window: NativeWindow; enabled: bool): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.setDecorated"))
+  window.decorated = enabled
+  if window.state == pending:
+    return success()
+  when defined(linux) and not defined(niminoWsl):
+    window.linuxSetDecorated(enabled)
+  elif defined(windows):
+    window.windowsSetDecorated(enabled)
+  else:
+    failure(nativeError(unsupported, "window.setDecorated"))
 
 proc close*(view: NativeWebView): NativeResult =
   if view.isNil or view.window.isNil or view.state in {closing, closed}:
@@ -1076,6 +1137,32 @@ proc restore*(window: NativeWindow): NativeResult =
     success()
   else:
     failure(nativeError(unsupported, "window.restore"))
+
+proc setFullscreen*(window: NativeWindow; enabled: bool): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.setFullscreen"))
+  if not window.supports(fullscreen):
+    return failure(nativeError(unsupported, "window.setFullscreen",
+      detail = "the current native backend cannot control fullscreen state"))
+  when defined(linux) and not defined(niminoWsl):
+    window.linuxSetFullscreen(enabled)
+  elif defined(windows):
+    window.windowsSetFullscreen(enabled)
+  else:
+    failure(nativeError(unsupported, "window.setFullscreen"))
+
+proc setAlwaysOnTop*(window: NativeWindow; enabled: bool): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.setAlwaysOnTop"))
+  if not window.supports(alwaysOnTop):
+    return failure(nativeError(unsupported, "window.setAlwaysOnTop",
+      detail = "the current native backend cannot control always-on-top state"))
+  when defined(linux) and not defined(niminoWsl):
+    window.linuxSetAlwaysOnTop(enabled)
+  elif defined(windows):
+    window.windowsSetAlwaysOnTop(enabled)
+  else:
+    failure(nativeError(unsupported, "window.setAlwaysOnTop"))
 
 proc setResizable*(window: NativeWindow; resizable: bool): NativeResult =
   if window.isNil or window.state in {closing, closed}:

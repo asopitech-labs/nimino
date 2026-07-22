@@ -42,6 +42,12 @@ proc generatedId(host: string): string =
 proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
                       icon = ""; deepLinkSchemes: seq[string] = @[];
                       width = 1200; height = 800; resizable = true;
+                      fullscreen = false; maximized = false;
+                      alwaysOnTop = false; hideWindowDecorations = false;
+                      userAgent = ""; proxyUrl = ""; incognito = false;
+                      showSystemTray = false; startToTray = false;
+                      hideOnClose = false; multiWindow = true;
+                      multiInstance = false;
                       permissionsAllow: seq[string] = @[];
                       css: seq[string] = @[]; javascript: seq[string] = @[];
                       navigationAllow: seq[string] = @[];
@@ -72,7 +78,14 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
       url: url,
       icon: icon,
       profile: if profile.strip().len > 0: profile.strip() else: "default",
-      window: PackWindowOptions(width: width, height: height, resizable: resizable),
+      window: PackWindowOptions(width: width, height: height, resizable: resizable,
+        fullscreen: fullscreen, maximized: maximized, alwaysOnTop: alwaysOnTop,
+        hideWindowDecorations: hideWindowDecorations),
+      webview: PackWebViewOptions(userAgent: userAgent, proxyUrl: proxyUrl,
+        incognito: incognito),
+      runtime: PackRuntimeOptions(showSystemTray: showSystemTray,
+        startToTray: startToTray, hideOnClose: hideOnClose,
+        multiWindow: multiWindow, multiInstance: multiInstance),
       package: metadata,
       deepLink: PackDeepLinkOptions(schemes: deepLinkSchemes),
       navigationAllow: navigationAllow,

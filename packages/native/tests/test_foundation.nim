@@ -144,6 +144,26 @@ block lifecycleStateQueriesAreExplicit:
   doAssert not view.value.isReady()
   doAssert not view.value.isClosed()
 
+block nativeWindowControlCapabilitiesAreExplicit:
+  let app = newNativeApp()
+  let window = app.newWindow("Window controls", 320, 200)
+  doAssert window.isOk
+  when defined(windows):
+    doAssert window.value.supports(maximize)
+    doAssert window.value.supports(fullscreen)
+    doAssert window.value.supports(alwaysOnTop)
+  elif defined(linux) and not defined(niminoWsl):
+    doAssert window.value.supports(maximize)
+    doAssert window.value.supports(fullscreen)
+    doAssert not window.value.supports(alwaysOnTop)
+    let topmost = window.value.setAlwaysOnTop(true)
+    doAssert not topmost.isOk
+    doAssert topmost.failure.kind == unsupported
+  else:
+    doAssert not window.value.supports(maximize)
+    doAssert not window.value.supports(fullscreen)
+    doAssert not window.value.supports(alwaysOnTop)
+
 block uiDispatchContractIsExplicit:
   let app = newNativeApp()
   doAssert not app.postToUi(nil).isOk

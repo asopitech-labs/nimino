@@ -14,14 +14,14 @@ nimino pack https://discord.com/app \
 
 `--name`、`--id`、`--profile`は任意です。省略するとURLから安定した名前・IDを生成し、Window設定、既定プロファイル、パッケージメタデータも同じ生成器で補います。
 
-URL指定でも`--width`、`--height`、`--resizable`、`--allow-permission`、`--inject-css`、
-`--inject-js`、`--allow-url`、`--external-url`を指定できます。複雑な設定はTOMLへ移せます。
+URL指定でも`--width`、`--height`、`--resizable`、`--fullscreen`、`--maximize`、
+`--always-on-top`、`--hide-window-decorations`、`--user-agent`、`--allow-permission`、
+`--inject-css`、`--inject-js`、`--allow-url`、`--external-url`を指定できます。複雑な設定はTOMLへ移せます。
 
-Pake固有の`--proxy-url`、`--user-agent`、`--incognito`、`--multi-instance`、
-`--multi-window`、`--start-to-tray`などは、対応する`nimino-core`の公開APIがないため
-CLIで受け付けません。未知のオプションはエラー終了し、設定を黙って捨てることはありません。
-Niminoで利用できる同等制御は、明示的なnavigation/permission policy、profile、injection、
-Window APIとして提供します。
+`--user-agent`はWindows WebView2の`ICoreWebView2Settings2`とLinux WebKitGTKの
+`WebKitSettings`へ適用します。`--proxy-url`、`--incognito`、`--multi-instance`は、
+まだ全ターゲットで同一の実装を提供できないため、マニフェストに指定するとhostが明示的に失敗します。
+未知のオプションもエラー終了し、設定を黙って捨てることはありません。
 
 既存のTOMLマニフェストも利用できます。
 
@@ -46,7 +46,8 @@ $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.1/Nimino-Web
 ```
 
 
-`--out`を省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`は不要です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定やパッケージ情報はURLから生成され、ナビゲーションの既定値はコアの同一サイト＋認証遷移ポリシーです。サイト固有のルールが必要な場合だけTOMLマニフェストで上書きします。
+`--out`を使う場合は、実行可能hostを同梱して独立bundleにするため`--host <nimino-host>`が必須です。
+省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`は不要です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定やパッケージ情報はURLから生成され、ナビゲーションの既定値はコアの同一サイト＋認証遷移ポリシーです。サイト固有のルールが必要な場合だけTOMLマニフェストで上書きします。
 
 PakeのCLI包装フローを参考にしているが、生成物はNimino hostと`nimino-core`を使用し、Pake/Tauriを実行時依存にしません。
 

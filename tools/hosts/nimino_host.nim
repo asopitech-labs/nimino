@@ -103,6 +103,10 @@ proc main() =
   let profile = optionalString(manifest, "profile", "default")
   let windowNode = if manifest.hasKey("window") and manifest["window"].kind == JObject:
       manifest["window"] else: newJObject()
+  let runtime = if manifest.hasKey("runtime") and manifest["runtime"].kind == JObject:
+      manifest["runtime"] else: newJObject()
+  let webview = if manifest.hasKey("webview") and manifest["webview"].kind == JObject:
+      manifest["webview"] else: newJObject()
   let navigation = if manifest.hasKey("navigation") and manifest["navigation"].kind == JObject:
       manifest["navigation"] else: newJObject()
   let permissions = if manifest.hasKey("permissions") and manifest["permissions"].kind == JObject:
@@ -113,6 +117,23 @@ proc main() =
       manifest["deepLink"] else: newJObject()
   let allowedDeepLinkSchemes = deepLinkNode.stringArray("schemes")
   let allowedPermissions = permissions.stringArray("allow")
+  let showSystemTray = runtime.boolean("showSystemTray", false)
+  let startToTray = runtime.boolean("startToTray", false)
+  let hideOnClose = runtime.boolean("hideOnClose", false)
+  let multiWindow = runtime.boolean("multiWindow", true)
+  let multiInstance = runtime.boolean("multiInstance", false)
+  let userAgent = optionalString(webview, "userAgent", "")
+  let proxyUrl = optionalString(webview, "proxyUrl", "")
+  let incognito = webview.boolean("incognito", false)
+  if multiInstance:
+    ## The generic host does not yet own a cross-platform single-instance
+    ## broker. Reject this option instead of claiming a policy we cannot
+    ## enforce on Windows, Linux, and WSL alike.
+    fail("runtime.multiInstance is not supported by this host")
+  if proxyUrl.len > 0:
+    fail("webview.proxyUrl is not supported by this host")
+  if incognito:
+    fail("webview.incognito is not supported by this host")
   for permission in allowedPermissions:
     if permission notin ["microphone", "camera", "notifications", "geolocation",
                          "clipboard", "screenCapture"]:
@@ -136,11 +157,43 @@ proc main() =
     width: windowNode.integer("width", 1200),
     height: windowNode.integer("height", 800),
     profile: profile,
+    fullscreen: windowNode.boolean("fullscreen", false),
+    maximized: windowNode.boolean("maximized", false),
+    alwaysOnTop: windowNode.boolean("alwaysOnTop", false),
+    hideWindowDecorations: windowNode.boolean("hideWindowDecorations", false),
+    userAgent: userAgent,
+    proxyUrl: proxyUrl,
+    incognito: incognito,
+    multiWindow: multiWindow,
+    hideOnClose: hideOnClose,
     injectionCss: root.readInjection(injection.stringArray("css")),
     injectionJavaScript: root.readInjection(injection.stringArray("javascript"))))
   if not windowCreated.isOk:
     fail(windowCreated.failure.detail)
   let window = windowCreated.value
+  if hideOnClose:
+    let closeConfigured = window.onCloseRequested(proc(): bool =
+      discard window.hide()
+      false)
+    if not closeConfigured.isOk:
+      fail(closeConfigured.failure.detail)
+  if showSystemTray:
+    let trayConfigured = app.configureSystemTray([
+      DesktopMenuItem(id: 1, title: "Show", enabled: true),
+      DesktopMenuItem(id: 2, title: "Quit", enabled: true)
+    ], proc(itemId: uint32) =
+      case itemId
+      of 1: discard window.show()
+      of 2: discard app.quit()
+      else: discard)
+    if not trayConfigured.isOk:
+      fail(trayConfigured.failure.detail)
+  if startToTray:
+    if not showSystemTray:
+      fail("runtime.startToTray requires runtime.showSystemTray")
+    let hidden = window.hide()
+    if not hidden.isOk:
+      fail(hidden.failure.detail)
   let allowPatterns = navigation.stringArray("allow")
   let externalPatterns = navigation.stringArray("external")
   ## URL-only bundles do not carry a site-specific allow-list.  Use the core

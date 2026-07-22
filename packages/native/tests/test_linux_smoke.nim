@@ -22,6 +22,8 @@ var urlRequested: bool
 var uiTaskExecuted: bool
 var resizeReceived: bool
 var resizeRequested: bool
+var fullscreenRequested: bool
+var fullscreenRestored: bool
 
 const BaseUrl = "https://example.invalid/assets/"
 const BaseUrlMessage = "Nimino Linux base:https://example.invalid/assets/images/logo.svg"
@@ -32,7 +34,8 @@ proc quitWhenComplete() =
       navigationStarted and navigationCompleted and browsingDataFinished and
       cookieMutationFinished and
       notificationRequested and baseDocumentCompleted and baseUrlResolved and
-      urlRequested and uiTaskExecuted and (resizeReceived or idleTicks > 200):
+      urlRequested and uiTaskExecuted and fullscreenRestored and
+      (resizeReceived or idleTicks > 200):
     doAssert cast[NativeApp](callbackApp).quit().isOk
 
 proc completeEvaluation(completed: Future[NativeResultOf[string]]) {.gcsafe.} =
@@ -102,6 +105,13 @@ proc receiveMessage(message: string) =
 
 proc receiveIdle() =
   inc idleTicks
+  if not fullscreenRequested:
+    doAssert cast[NativeWindow](callbackWindow).supports(fullscreen)
+    doAssert cast[NativeWindow](callbackWindow).setFullscreen(true).isOk
+    fullscreenRequested = true
+  elif not fullscreenRestored:
+    doAssert cast[NativeWindow](callbackWindow).setFullscreen(false).isOk
+    fullscreenRestored = true
   if not resizeRequested:
     doAssert cast[NativeWindow](callbackWindow).setSize(700, 500).isOk
     resizeRequested = true
@@ -196,4 +206,6 @@ doAssert baseDocumentCompleted
 doAssert baseUrlResolved
 doAssert urlRequested
 doAssert resizeReceived
+doAssert fullscreenRequested
+doAssert fullscreenRestored
 echo "Linux native smoke passed"

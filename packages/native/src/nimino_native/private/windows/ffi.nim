@@ -37,6 +37,12 @@ type
     right*: int32
     bottom*: int32
 
+  MonitorInfo* {.bycopy.} = object
+    cbSize*: uint32
+    monitor*: WinRect
+    work*: WinRect
+    flags*: uint32
+
   ## OPENFILENAMEW layout from the Windows SDK.  The dialog backend uses the
   ## common-dialog API directly and keeps this binding private.
   OpenFileNameW* {.bycopy.} = object
@@ -147,6 +153,7 @@ when defined(windows) and defined(amd64):
     ## verify-windows-tray-abi target.
     doAssert sizeof(NotifyIconDataW) == 976
     doAssert sizeof(OpenFileNameW) == 152
+    doAssert sizeof(MonitorInfo) == 40
 
 const
   S_OK* = 0'i32
@@ -170,10 +177,14 @@ const
   WebView2PermissionKindNotifications* = 4'i32
   WebView2PermissionKindClipboardRead* = 6'i32
   WsOverlappedWindow* = 0x00CF0000'u32
+  WsPopup* = 0x80000000'u32
+  WsCaption* = 0x00C00000'u32
+  WsSysMenu* = 0x00080000'u32
   WsThickFrame* = 0x00040000'u32
   WsMaximizeBox* = 0x00010000'u32
   WsMinimizeBox* = 0x00020000'u32
   GwlStyle* = -16'i32
+  GwlExStyle* = -20'i32
   SwHide* = 0'i32
   SwMinimize* = 6'i32
   SwMaximize* = 3'i32
@@ -182,6 +193,10 @@ const
   SwpNoSize* = 0x0001'u32
   SwpNoMove* = 0x0002'u32
   SwpNoZOrder* = 0x0004'u32
+  SwpNoActivate* = 0x0010'u32
+  SwpFrameChanged* = 0x0020'u32
+  SwpNoOwnerZOrder* = 0x0200'u32
+  MonitorDefaultToNearest* = 0x00000002'u32
   OfnAllowMultiSelect* = 0x00000200'u32
   OfnExplorer* = 0x00080000'u32
   OfnFileMustExist* = 0x00001000'u32
@@ -274,6 +289,10 @@ const
   IidCoreWebView2_4* = WinGuid(
     data1: 0x20d02d59'u32, data2: 0x6df2'u16, data3: 0x42dc'u16,
     data4: [0xbd'u8, 0x06'u8, 0xf9'u8, 0x8a'u8, 0x69'u8, 0x4b'u8, 0x13'u8, 0x02'u8]
+  )
+  IidCoreWebView2Settings2* = WinGuid(
+    data1: 0xee9a0f68'u32, data2: 0xf46c'u16, data3: 0x4e32'u16,
+    data4: [0xac'u8, 0x23'u8, 0xef'u8, 0x8c'u8, 0xac'u8, 0x22'u8, 0x4d'u8, 0x2a'u8]
   )
   ## These interfaces are retained for the M4 WebView2 profile-data spike.
   ## Every IID and vtable slot below was checked against the SDK version
@@ -475,6 +494,12 @@ proc setWindowTextW*(window: HWND; text: WideCString): WinBool
   {.stdcall, importc: "SetWindowTextW", dynlib: "user32.dll".}
 proc setWindowPos*(window, insertAfter: HWND; x, y, width, height: int32; flags: uint32): WinBool
   {.stdcall, importc: "SetWindowPos", dynlib: "user32.dll".}
+proc getWindowRect*(window: HWND; rectangle: ptr WinRect): WinBool
+  {.stdcall, importc: "GetWindowRect", dynlib: "user32.dll".}
+proc monitorFromWindow*(window: HWND; flags: uint32): HWND
+  {.stdcall, importc: "MonitorFromWindow", dynlib: "user32.dll".}
+proc getMonitorInfoW*(monitor: HWND; info: ptr MonitorInfo): WinBool
+  {.stdcall, importc: "GetMonitorInfoW", dynlib: "user32.dll".}
 proc showWindow*(window: HWND; command: int32): WinBool
   {.stdcall, importc: "ShowWindow", dynlib: "user32.dll".}
 proc updateWindow*(window: HWND): WinBool
@@ -768,6 +793,17 @@ proc settingsPutAreDevToolsEnabled*(settings: pointer;
     cast[ptr ComInterface](settings).vtable[12]
   )
   dispatch(settings, enabled)
+
+proc settings2PutUserAgent*(settings2: pointer; value: WideCString): HResult {.inline.} =
+  ## ICoreWebView2Settings2::put_UserAgent.  The interface extends the base
+  ## settings vtable: IUnknown (0..2), base settings (3..20), then
+  ## get_UserAgent (21) and put_UserAgent (22).
+  if settings2.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer; value: WideCString): HResult {.stdcall.}](
+    cast[ptr ComInterface](settings2).vtable[22]
+  )
+  dispatch(settings2, value)
 
 proc coreNavigate*(core: pointer; uri: WideCString): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer; uri: WideCString): HResult {.stdcall.}](

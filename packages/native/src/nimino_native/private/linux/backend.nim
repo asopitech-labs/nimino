@@ -632,6 +632,17 @@ proc linuxSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult =
   webkit_settings_set_enable_developer_extras(settings, if enabled: 1 else: 0)
   success()
 
+proc linuxSetUserAgent(view: NativeWebView; value: string): NativeResult =
+  if view.isNil or view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.setUserAgent"))
+  let settings = webkit_web_view_get_settings(
+    cast[ptr WebKitWebView](view.platformView))
+  if settings.isNil:
+    return failure(nativeError(webViewError, "webview.setUserAgent",
+      detail = "WebKitSettings is unavailable"))
+  webkit_settings_set_user_agent(settings, cstring(value))
+  success()
+
 proc linuxBrowsingDataTypes(kinds: set[NativeBrowsingDataKind]): uint32 =
   ## Keep this mapping deliberately narrow: WebKitGTK exposes IndexedDB and
   ## service-worker registrations as independent WebsiteDataTypes, while
@@ -905,6 +916,29 @@ proc linuxMaximizeWindow(window: NativeWindow) =
 proc linuxRestoreWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     gtk_window_unmaximize(cast[ptr GtkWindow](window.platformWindow))
+
+proc linuxSetFullscreen(window: NativeWindow; enabled: bool): NativeResult =
+  if window.platformWindow == nil:
+    return success()
+  if enabled:
+    gtk_window_fullscreen(cast[ptr GtkWindow](window.platformWindow))
+  else:
+    gtk_window_unfullscreen(cast[ptr GtkWindow](window.platformWindow))
+  window.fullscreenActive = enabled
+  success()
+
+proc linuxSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult =
+  discard window
+  discard enabled
+  failure(nativeError(unsupported, "window.setAlwaysOnTop",
+    detail = "GTK4 has no portable always-on-top window operation"))
+
+proc linuxSetDecorated(window: NativeWindow; enabled: bool): NativeResult =
+  if window.isNil or window.platformWindow.isNil:
+    return failure(nativeError(invalidState, "window.setDecorated"))
+  gtk_window_set_decorated(cast[ptr GtkWindow](window.platformWindow),
+    if enabled: 1 else: 0)
+  success()
 
 proc linuxLoadUrl(view: NativeWebView) =
   if view.platformView != nil and view.pendingUrl.len > 0:
@@ -1435,6 +1469,9 @@ proc linuxCreateView(view: NativeWebView): NativeResult =
   view.state = ready
   let devTools = view.linuxSetDevToolsEnabled(view.devToolsEnabled)
   if not devTools.isOk: return devTools
+  if view.userAgent.len > 0:
+    let userAgent = view.linuxSetUserAgent(view.userAgent)
+    if not userAgent.isOk: return userAgent
   let messaging = view.linuxConfigureMessageBridge()
   if not messaging.isOk: return messaging
   let documentStartScript = view.linuxConfigureDocumentStartScript()
@@ -1461,6 +1498,7 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let title = window.title
   gtk_window_set_title(gtkWindow, cstring(title))
   gtk_window_set_default_size(gtkWindow, cint(window.width), cint(window.height))
+  gtk_window_set_decorated(gtkWindow, if window.decorated: 1 else: 0)
   if window.closeRequestedHandler != nil:
     let closeSignal = g_signal_connect_data(window.platformWindow, "close-request",
       cast[pointer](linuxCloseRequested), cast[pointer](window), nil, 0)
@@ -1519,6 +1557,10 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let devTools = view.linuxSetDevToolsEnabled(view.devToolsEnabled)
   if not devTools.isOk:
     return devTools
+  if view.userAgent.len > 0:
+    let userAgent = view.linuxSetUserAgent(view.userAgent)
+    if not userAgent.isOk:
+      return userAgent
   let messaging = view.linuxConfigureMessageBridge()
   if not messaging.isOk:
     return messaging

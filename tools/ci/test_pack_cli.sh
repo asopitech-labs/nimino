@@ -67,8 +67,12 @@ printf '#!/bin/sh\n' > "$root/host&name"
   --out "$root/cmd-escape-out" --host "$root/host&name"
 grep -q 'host^&name' "$root/cmd-escape-out/run-nimino.cmd"
 
+! "$nimino" pack https://example.com --name MissingHost --id app.nimino.missing-host \
+  --out "$root/missing-host-no-flag-out"
+test ! -e "$root/missing-host-no-flag-out"
+
 "$nimino" pack https://example.com --name DemoUrl --id app.nimino.demo-url \
-  --icon https://example.com/icon.png --out "$root/url-out"
+  --icon https://example.com/icon.png --out "$root/url-out" --host "$root/host"
 grep -q 'DemoUrl' "$root/url-out/nimino-manifest.json"
 grep -q 'https://example.com' "$root/url-out/nimino-manifest.json"
 grep -q 'icon.png' "$root/url-out/nimino-manifest.json"
@@ -76,13 +80,13 @@ test -s "$root/url-out/app.nimino.demo-url.desktop"
 ! grep -q '^Icon=' "$root/url-out/app.nimino.demo-url.desktop"
 
 "$nimino" pack https://example.com --name DemoUrlDeep --id app.nimino.demo-url-deep \
-  --deep-link "DEMO" --out "$root/url-deep-out"
+  --deep-link "DEMO" --out "$root/url-deep-out" --host "$root/host"
 grep -Fq '"schemes": [' "$root/url-deep-out/nimino-manifest.json"
 grep -Fq '"demo"' "$root/url-deep-out/nimino-manifest.json"
 grep -Fq 'MimeType=x-scheme-handler/demo;' "$root/url-deep-out/app.nimino.demo-url-deep.desktop"
 
 "$nimino" pack HTTPS://example.com --name DemoUpperUrl --id app.nimino.demo-upper-url \
-  --out "$root/upper-url-out"
+  --out "$root/upper-url-out" --host "$root/host"
 grep -q 'DemoUpperUrl' "$root/upper-url-out/nimino-manifest.json"
 
 ! "$nimino" pack https://example.com --name MissingHost --id app.nimino.missing-host \
@@ -90,7 +94,7 @@ grep -q 'DemoUpperUrl' "$root/upper-url-out/nimino-manifest.json"
 test ! -e "$root/missing-host-out"
 
 "$nimino" pack https://example.com --name DemoLocalIcon --id app.nimino.demo-local-icon \
-  --icon "$root/icon.png" --out "$root/local-icon-out"
+  --icon "$root/icon.png" --out "$root/local-icon-out" --host "$root/host"
 test -s "$root/local-icon-out/icon.png"
 grep -q '"icon": "icon.png"' "$root/local-icon-out/nimino-manifest.json"
 
@@ -107,7 +111,7 @@ printf '%s\n' \
   'css = ["/tmp/nimino-pack-cli-test/custom.css"]' \
   'javascript = ["/tmp/nimino-pack-cli-test/custom.js"]' \
   > "$root/inject.toml"
-"$nimino" pack "$root/inject.toml" --out "$root/inject-out"
+"$nimino" pack "$root/inject.toml" --out "$root/inject-out" --host "$root/host"
 test -s "$root/inject-out/custom.css"
 test -s "$root/inject-out/custom.js"
 grep -q 'custom.css' "$root/inject-out/nimino-manifest.json"
@@ -121,14 +125,15 @@ printf '%s\n' \
   '[injection]' \
   'css = ["/tmp/nimino-pack-cli-test/no-such.css"]' \
   > "$root/missing-inject.toml"
-! "$nimino" pack "$root/missing-inject.toml" --out "$root/missing-inject-out"
+! "$nimino" pack "$root/missing-inject.toml" --out "$root/missing-inject-out" --host "$root/host"
 test ! -e "$root/missing-inject-out"
 
 "$nimino" pack https://example.com --name DemoOptions --id app.nimino.demo-options \
-  --width 1440 --height 900 --resizable false \
+  --width 1440 --height 900 --resizable false --fullscreen --maximize \
+  --hide-window-decorations --incognito false --multi-window \
   --allow-permission notifications --inject-css "$root/custom.css" \
   --inject-js "$root/custom.js" --allow-url 'https://example.com/**' \
-  --external-url 'https://support.example.com/**' --out "$root/options-out"
+  --external-url 'https://support.example.com/**' --out "$root/options-out" --host "$root/host"
 grep -q '"width": 1440' "$root/options-out/nimino-manifest.json"
 grep -q '"height": 900' "$root/options-out/nimino-manifest.json"
 grep -q '"resizable": false' "$root/options-out/nimino-manifest.json"
@@ -136,3 +141,5 @@ grep -q '"notifications"' "$root/options-out/nimino-manifest.json"
 grep -q 'custom.css' "$root/options-out/nimino-manifest.json"
 grep -q 'custom.js' "$root/options-out/nimino-manifest.json"
 grep -q 'support.example.com' "$root/options-out/nimino-manifest.json"
+grep -q '"fullscreen": true' "$root/options-out/nimino-manifest.json"
+grep -q '"maximized": true' "$root/options-out/nimino-manifest.json"
