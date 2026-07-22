@@ -60,7 +60,7 @@ Restart-Service LxssManager
 wsl -d Ubuntu-22.04 -- bash -lc 'echo interop-ok'
 ```
 
-`echo interop-ok`が成功した後、Windows PowerShellでWebView2 Evergreen Runtimeを導入します。RuntimeはDocker内のSDK DLLとは別物です。
+`echo interop-ok`が成功した後も、利用者がWebView2やGTKを個別に導入する必要はありません。`make setup`がDocker内のGTK/WebKitGTK開発依存を検証し、WSL Interop経由で次のPowerShellスクリプトを呼び出してWebView2 Evergreen Runtimeを自動導入します。RuntimeはDocker内のSDK DLLとは別物です。
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
