@@ -1459,7 +1459,7 @@ proc linuxCreateView(view: NativeWebView): NativeResult =
     return failure(nativeError(invalidState, "webview.create"))
   var webView: ptr WebKitWebView
   var session: ptr WebKitNetworkSession
-  if view.incognito or view.proxyUrl.len > 0:
+  if view.incognito:
     session = webkit_network_session_new_ephemeral()
   elif view.window.profilePath.len > 0:
     let dataDir = view.window.profilePath / "webkit-data"
@@ -1482,6 +1482,8 @@ proc linuxCreateView(view: NativeWebView): NativeResult =
         detail = "WebKit proxy settings could not be created"))
     webkit_network_session_set_proxy_settings(session, 2, settings)
     webkit_network_proxy_settings_free(settings)
+  elif view.proxyUrl.len > 0:
+    session = webkit_network_session_new_ephemeral()
   if session != nil:
     webView = cast[ptr WebKitWebView](g_object_new(webkit_web_view_get_type(),
       "network-session", cast[pointer](session), nil))
@@ -1558,7 +1560,7 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let view = window.views[0]
   var webView: ptr WebKitWebView
   var session: ptr WebKitNetworkSession
-  if view.incognito or view.proxyUrl.len > 0:
+  if view.incognito:
     session = webkit_network_session_new_ephemeral()
   elif view.window.profilePath.len > 0:
     let dataDir = view.window.profilePath / "webkit-data"
@@ -1581,6 +1583,8 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
         detail = "WebKit proxy settings could not be created"))
     webkit_network_session_set_proxy_settings(session, 2, settings)
     webkit_network_proxy_settings_free(settings)
+  elif view.proxyUrl.len > 0:
+    session = webkit_network_session_new_ephemeral()
   if session != nil:
     webView = cast[ptr WebKitWebView](g_object_new(webkit_web_view_get_type(),
       "network-session", cast[pointer](session), nil))
