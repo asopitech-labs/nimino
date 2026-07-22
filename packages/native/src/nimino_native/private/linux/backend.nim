@@ -64,6 +64,59 @@ proc linuxNativeMenuActionActivated(action, parameter, userData: pointer) {.cdec
   if menuAction != nil:
     menuAction.app.dispatchNativeMenu(menuAction.itemId)
 
+proc linuxSystemTraySupportDetail*(): string =
+  ## GTK4 removed GtkStatusIcon and does not define a tray API.  A Linux
+  ## desktop may still expose the freedesktop StatusNotifierWatcher on the
+  ## session bus, but Nimino deliberately does not claim support until an
+  ## SNI object/menu implementation is present.  Probe the concrete runtime
+  ## prerequisites so callers receive an actionable, fail-closed reason
+  ## instead of a generic "unsupported" result.
+  let busAddress = getEnv("DBUS_SESSION_BUS_ADDRESS")
+  if busAddress.len == 0:
+    return "session D-Bus is unavailable (DBUS_SESSION_BUS_ADDRESS is not set)"
+
+  var error: ptr GError
+  let connection = g_bus_get_sync(GBusTypeSession, nil, addr error)
+  if connection.isNil:
+    let detail = if error.isNil or error.message.isNil:
+      "unable to connect to the session D-Bus"
+    else:
+      "unable to connect to the session D-Bus: " & $error.message
+    if error != nil:
+      g_error_free(error)
+    return detail
+
+  let proxy = g_dbus_proxy_new_sync(
+    connection,
+    GDBusProxyFlagsNone,
+    nil,
+    "org.kde.StatusNotifierWatcher",
+    "/StatusNotifierWatcher",
+    "org.kde.StatusNotifierWatcher",
+    nil,
+    addr error)
+  if proxy.isNil:
+    let detail = if error.isNil or error.message.isNil:
+      "session D-Bus has no org.kde.StatusNotifierWatcher"
+    else:
+      "session D-Bus StatusNotifierWatcher probe failed: " & $error.message
+    if error != nil:
+      g_error_free(error)
+    g_object_unref(connection)
+    return detail
+
+  let owner = g_dbus_proxy_get_name_owner(proxy)
+  if owner.isNil or ($owner).len == 0:
+    g_object_unref(proxy)
+    g_object_unref(connection)
+    return "session D-Bus has no active org.kde.StatusNotifierWatcher"
+
+  let ownerName = $owner
+  g_free(cast[pointer](owner))
+  g_object_unref(proxy)
+  g_object_unref(connection)
+  "StatusNotifierWatcher is available (owner " & ownerName & "), but the direct Nimino StatusNotifierItem/menu backend is not implemented"
+
 proc linuxRemoveNativeMenuActions(app: NativeApp; actionNames: openArray[string]) =
   if app.isNil or app.platformApp.isNil:
     return

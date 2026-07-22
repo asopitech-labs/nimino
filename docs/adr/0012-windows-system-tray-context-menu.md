@@ -46,6 +46,11 @@ notification event であることも同ドキュメントで確認した。
 ## Consequences
 
 - `systemTray` と `nativeMenu` capability は Windows build だけで true になる。
+  Linux は GTK4 に status-icon API がないため fail-closed とし、
+  `app.systemTraySupportDetail()` で session D-Bus と
+  `org.kde.StatusNotifierWatcher` の有無を検査する。watcher が存在しても、
+  Nimino が直接 StatusNotifierItem/dbusmenu を所有していない限り capability は
+  true にしない。
 - M1 で複数 native Window が作られた場合も、tray owner は最初の live Window
   一つである。その Window を閉じると icon は削除される。別 Window への再関連付け
   は将来の multi-window tray policy で設計する。

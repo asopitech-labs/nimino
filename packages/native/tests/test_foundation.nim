@@ -1,4 +1,4 @@
-import std/asyncfutures
+import std/[asyncfutures, strutils]
 
 import nimino_native
 
@@ -46,7 +46,11 @@ block systemTrayIsExplicitlyUnsupportedOffWindows:
   elif defined(linux) and not defined(niminoWsl):
     doAssert not configured.isOk
     doAssert configured.failure.kind == unsupported
-    doAssert configured.failure.detail == "GTK4/GLib provide no supported system-tray or status-icon API; use configureNativeMenu or sendNativeNotification"
+    doAssert configured.failure.detail == app.systemTraySupportDetail()
+    doAssert configured.failure.detail.len > 0
+    let detail = configured.failure.detail.toLowerAscii()
+    doAssert detail.contains("bus") or detail.contains("backend") or
+      detail.contains("watcher")
   else:
     doAssert not configured.isOk
     doAssert configured.failure.kind == unsupported

@@ -296,6 +296,7 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxOpenFileDialog*(window: NativeWindow;
                             options: NativeFileDialogOptions):
                             Future[NativeResultOf[seq[string]]]
+  proc linuxSystemTraySupportDetail*(): string
 elif defined(windows):
   proc windowsCreateWindow(window: NativeWindow): NativeResult
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
@@ -668,6 +669,22 @@ proc newNativeApp*(): NativeApp =
 proc supports*(app: NativeApp; capability: Capability): bool {.inline.} =
   app.capabilities.supports(capability)
 
+proc systemTraySupportDetail*(app: NativeApp): string =
+  ## Returns the concrete reason `systemTray` is unavailable.  Linux probes
+  ## the session D-Bus StatusNotifierWatcher; all other unsupported targets
+  ## report their backend boundary without pretending that tray configuration
+  ## succeeded.
+  if app.isNil:
+    return "application is nil"
+  if app.supports(systemTray):
+    return "system tray is supported by the native backend"
+  when defined(linux) and not defined(niminoWsl):
+    return linuxSystemTraySupportDetail()
+  elif defined(niminoWsl):
+    return "WSL uses the Windows host adapter; system tray support must be configured by that host"
+  else:
+    return "native backend does not expose a system-tray implementation"
+
 proc isReady*(window: NativeWindow): bool {.inline.} =
   not window.isNil and window.state == ready
 
@@ -690,7 +707,7 @@ proc configureSystemTray*(app: NativeApp; items: openArray[NativeMenuItem];
   if not app.supports(systemTray):
     when defined(linux) and not defined(niminoWsl):
       return failure(nativeError(unsupported, "app.configureSystemTray",
-        detail = "GTK4/GLib provide no supported system-tray or status-icon API; use configureNativeMenu or sendNativeNotification"))
+        detail = app.systemTraySupportDetail()))
     else:
       return failure(nativeError(unsupported, "app.configureSystemTray"))
   if app.trayConfigured:

@@ -11,6 +11,8 @@ const
 
 type
   GApplication* {.incompleteStruct.} = object
+  GDBusConnection* {.incompleteStruct.} = object
+  GDBusProxy* {.incompleteStruct.} = object
   GtkApplication* {.incompleteStruct.} = object
   GtkWindow* {.incompleteStruct.} = object
   GtkApplicationWindow* {.incompleteStruct.} = object
@@ -63,10 +65,16 @@ type
                                          userData: pointer) {.cdecl.}
   GType* = csize_t
 
+  ## Values mirror Gio's GBusType enum.  The session bus is the only bus on
+  ## which a desktop StatusNotifierWatcher is expected to be exported.
+  GBusType* = cint
+
   WebKitUserContentInjectedFrames* = cint
   WebKitUserScriptInjectionTime* = cint
 
 const
+  GBusTypeSession* = 2.cint
+  GDBusProxyFlagsNone* = 0.cint
   WebKitUserContentInjectAllFrames* = 0.cint
   WebKitUserScriptInjectAtDocumentStart* = 0.cint
   GtkDialogErrorCancelled* = 1.cint
@@ -157,6 +165,17 @@ proc g_application_quit*(application: ptr GApplication)
   {.cdecl, importc, dynlib: LibGio.}
 proc g_application_send_notification*(application: ptr GApplication; id: cstring;
                                       notification: ptr GNotification)
+  {.cdecl, importc, dynlib: LibGio.}
+
+proc g_bus_get_sync*(busType: GBusType; cancellable: pointer;
+                     error: ptr ptr GError): ptr GDBusConnection
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_proxy_new_sync*(connection: ptr GDBusConnection; flags: cint;
+                            interfaceInfo: pointer; name, objectPath,
+                            interfaceName: cstring; cancellable: pointer;
+                            error: ptr ptr GError): ptr GDBusProxy
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_proxy_get_name_owner*(proxy: ptr GDBusProxy): cstring
   {.cdecl, importc, dynlib: LibGio.}
 
 proc g_menu_new*(): ptr GMenu
