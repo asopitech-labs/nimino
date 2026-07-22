@@ -29,19 +29,19 @@ No Nim, Docker, or local GUI SDK installation is required for the online path.
 
 The workflow is defined in [`nimino-pack-online.yml`](.github/workflows/nimino-pack-online.yml). It uses the pinned Docker toolchain and produces a bundle, package, checksum file, and SBOM. Supported targets are Linux `.deb`, Linux `.rpm`, and Windows NSIS.
 
-### Prepack Gallery
+### Ready-made site installers
 
-Prepacks are reviewed URL aliases. Nimino derives the application ID, display name, profile, window defaults, package metadata, and navigation behavior from the URL. No site-specific navigation allow-list or credentials are embedded; the normal sign-in page and profile cookie store are used.
+The release workflow packages YouTube, Gmail, and Google Analytics from their URLs. Nimino derives the application ID, display name, profile, window defaults, package metadata, and navigation behavior from each URL. No site-specific navigation allow-list or credentials are embedded; the normal sign-in page and profile cookie store are used.
 
 | App | Open in browser | Default window | Profile | Maintainer rebuild |
 | --- | --- | ---: | --- | --- |
-| **YouTube** | [youtube.com](https://www.youtube.com/) | URL-derived defaults | `default` | `nimino pack prepack youtube` |
-| **Gmail** | [mail.google.com](https://mail.google.com/mail/u/0/) | URL-derived defaults | `default` | `nimino pack prepack gmail` |
-| **Google Analytics** | [analytics.google.com](https://analytics.google.com/analytics/web/) | URL-derived defaults | `default` | `nimino pack prepack google-analytics` |
+| **YouTube** | [youtube.com](https://www.youtube.com/) | URL-derived defaults | `default` | Release installer |
+| **Gmail** | [mail.google.com](https://mail.google.com/mail/u/0/) | URL-derived defaults | `default` | Release installer |
+| **Google Analytics** | [analytics.google.com](https://analytics.google.com/analytics/web/) | URL-derived defaults | `default` | Release installer |
 
 #### Download ready-made installers
 
-When a prepack release is published, download the installer directly from the [Nimino Releases page](https://github.com/asopitech-labs/nimino/releases):
+Download the installer directly from the [Nimino Releases page](https://github.com/asopitech-labs/nimino/releases):
 
 | Target | Release assets |
 | --- | --- |
@@ -49,7 +49,7 @@ When a prepack release is published, download the installer directly from the [N
 | Fedora/RPM | `youtube-*.rpm`, `gmail-*.rpm`, `google-analytics-*.rpm` |
 | Windows | `youtube-*-setup.exe`, `gmail-*-setup.exe`, `google-analytics-*-setup.exe` (NSIS) or matching `.msi`; the installer checks and installs WebView2 when needed |
 
-The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The [`v0.1.1` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.1) includes the installer-side WebView2 bootstrap. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
+The [`Nimino Site Release`](.github/workflows/nimino-site-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The [`v0.1.1` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.1) includes the installer-side WebView2 bootstrap. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
 
 **Windows installer behavior:** NSIS and MSI installers check the WebView2 Evergreen Runtime and download the official Microsoft Bootstrapper only when the runtime is missing. Internet access is required for that first-time download. `WebView2Loader.dll` is bundled with the application.
 
@@ -63,19 +63,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 & $p
 ```
 
-#### Maintainer/developer rebuild (end users do not need this)
-
-The alias command remains `nimino pack prepack <name>`. It now resolves only the reviewed entry URL and passes it through the same URL-only generator as any other site; it does not load a per-site manifest or authentication allow-list. To create a runnable bundle during development, provide a compiled Nimino host:
-
-```bash
-nimino pack prepack youtube --out dist/youtube --host nimino-host
-nimino pack prepack gmail --out dist/gmail --host nimino-host
-nimino pack prepack google-analytics --out dist/google-analytics --host nimino-host
-```
-
-Then launch the generated bundle's `run-nimino.sh` (Linux) or generated Windows launcher. The first launch opens the service sign-in page; credentials and cookies are stored by the selected Nimino profile.
-
-The commands above are for maintainers and developers who need to regenerate a bundle. End users should download the corresponding installer from Releases instead. These source-controlled definitions are not signed release binaries. The official Popular Packages catalog remains empty until an artifact has independently verified checksums, SBOM, provenance, and signature.
+To rebuild a site bundle during development, pass its URL directly to `nimino pack`. End users should download the corresponding installer from Releases. No named site alias or site-specific definition is required.
 
 ### Installing a generated package
 
@@ -117,8 +105,7 @@ Nim, Nimble, C compilers, GTK/WebKitGTK headers, and packaging tools are provide
 ```bash
 make setup       # verify the container and prepare Windows WebView2 when WSL Interop is available
 make test        # unit and protocol tests
-make pack-prepack-test
-make pack-prepacks-test
+make pack-sites-test
 ```
 
 ## A minimal application
@@ -196,10 +183,10 @@ WSL GUI tests require WSL 2, Windows Interop (`powershell.exe`, `cmd.exe`, and `
 make setup
 make wsl-host-cross
 make wsl-host-smoke
-make wsl-prepack-smoke
+make wsl-site-smoke
 ```
 
-`make wsl-prepack-smoke` opens YouTube, Gmail, and Google Analytics sequentially, validates WebView2 navigation/JavaScript/message handling, and closes the test host automatically. It does not perform account login.
+`make wsl-site-smoke` opens YouTube, Gmail, and Google Analytics sequentially, validates WebView2 navigation/JavaScript/message handling, and closes the test host automatically. It does not perform account login.
 
 If `powershell.exe` reports `UtilBindVsockAnyPort: socket failed`, repair Windows Interop from an elevated Windows PowerShell and reopen WSL:
 

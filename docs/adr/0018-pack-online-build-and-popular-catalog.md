@@ -7,7 +7,7 @@ Pakeは初心者向け導線として、既成のPopular Packagesをダウンロ
 ## Decision
 
 - `nimino-pack`に、検証済み配布物を指すPopular Packagesカタログを追加する。各エントリは名前、アプリID、対象URLまたはmanifest、対象OS、リリース番号、SHA-256、署名・生成元を明示する。
-- 組み込みprepackの利用者向けinstallerは、別の`.github/workflows/nimino-prepack-release.yml`で生成する。`youtube`、`gmail`、`google-analytics`ごとにLinux `.deb`/`.rpm`とWindows NSIS `.exe`/MSIを作り、SBOMと`SHA256SUMS`をGitHub Releaseへ添付する。`nimino pack prepack`はmaintainer向けの再生成手順であり、利用者へ要求しない。
+- YouTube、Gmail、Google Analyticsのready-made installerは、別の`.github/workflows/nimino-site-release.yml`で各URLから生成する。各アプリのLinux `.deb`/`.rpm`とWindows NSIS `.exe`/MSIを作り、SBOMと`SHA256SUMS`をGitHub Releaseへ添付する。名前付きsite aliasや専用manifestは持たない。
 - `.github/workflows/nimino-pack-online.yml`の`workflow_dispatch`をオンラインビルドの標準入口とする。入力はURLまたはmanifest、対象OS、配布形式、アイコンを受け取り、名前・IDは任意の上書き値とする。省略時は`nimino-pack`がURLから生成する。固定digestのNimino Dockerイメージ内で実行してartifactとchecksum/SBOMを保存する。DockerイメージにはNim、GTK 4、WebKitGTK 6.0、packaging toolchainを含め、利用者へGTK/WebKitGTKの手動導入を要求しない。Windows実機セットアップは`make setup`からWebView2 Evergreen RuntimeのPowerShell導入を呼び出す。
 - オンラインビルドはリポジトリ所有者のActions権限とGitHubのartifact保持期間に従う。任意の秘密情報、WSLホスト、ローカルファイル、開発者マシンの資格情報をworkflowへ渡さない。
 - 未実装の配布形式や依存閉包を成功扱いにしない。MSI、署名済み更新、macOS、WebKitGTK依存を閉包したAppImageは、対応条件を満たすまでworkflowで明示的に失敗させる。

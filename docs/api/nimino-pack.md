@@ -20,23 +20,11 @@ nimino pack https://discord.com/app \
 nimino pack discord.toml --out dist/discord --host nimino-host
 ```
 
-レビュー済みの組み込みprepackは、URLや許可リストを手入力せずに生成できます。prepack自身もURLエイリアスだけを持ち、通常のURL包装と同じ生成器を通ります。コマンド名は従来どおりですが、これはmaintainer/developerがbundleを再生成するための低水準手順です。利用者はReleasesのinstallerを使用します。
-
-```bash
-nimino pack prepack youtube --out dist/youtube --host nimino-host
-nimino pack prepack gmail --out dist/gmail --host nimino-host
-nimino pack prepack google-analytics --out dist/google-analytics --host nimino-host
-```
-
-prepackは`YouTube`、`Gmail`、`Google Analytics`の3つです。認証はコアの汎用OAuth/SSO
-遷移判定と同一サイト判定で処理し、サービス固有の`googleusercontent.com`などを
-マニフェストへ列挙しません。未知の名前は失敗します。
-
-利用者向けのprepackは、`v*`タグで起動する
-[`Nimino Prepack Release`](../../.github/workflows/nimino-prepack-release.yml)が
-3アプリ分のLinux `.deb`/`.rpm`とWindows NSIS `.exe`/`.msi`を生成し、GitHub
-Releaseへ添付します。READMEのGalleryまたは[Releases](https://github.com/asopitech-labs/nimino/releases)
-からinstallerを取得してください。
+YouTube、Gmail、Google Analyticsのready-made installerは、`v*`タグで起動する
+[`Nimino Site Release`](../../.github/workflows/nimino-site-release.yml)が3アプリ分の
+Linux `.deb`/`.rpm`とWindows NSIS `.exe`/`.msi`を生成し、GitHub Releaseへ添付します。
+READMEのGalleryまたは[Releases](https://github.com/asopitech-labs/nimino/releases)
+からinstallerを取得してください。名前付きsite aliasやsite-specific manifestは提供しません。
 
 Windows NSIS/MSI installerは、WebView2 Evergreen Runtimeの有無を確認します。未導入の場合だけ
 Microsoft Bootstrapperをダウンロードして導入するため、利用者はinstallerを1回実行するだけです。

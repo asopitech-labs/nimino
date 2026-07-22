@@ -1,4 +1,4 @@
-name: Nimino Prepack Release
+name: Nimino Site Release
 
 on:
   push:
@@ -15,12 +15,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: nimino-prepack-release-${{ github.ref }}
+  group: nimino-site-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build-and-release:
-    name: Build and publish prepack installers
+    name: Build and publish site installers
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -29,8 +29,6 @@ jobs:
       - name: Check out the release tag
         uses: actions/checkout@v4
         with:
-          # Tag pushes build the tagged commit. Manual dispatches build the
-          # selected branch while publishing to the existing release tag.
           ref: ${{ github.ref }}
 
       - name: Set up Docker Buildx
@@ -39,20 +37,20 @@ jobs:
       - name: Build pinned Docker toolchain
         run: docker compose build nimino-dev
 
-      - name: Build prepack installers and checksums
+      - name: Build site installers and checksums
         run: |
           set -eu
-          docker compose run --rm nimino-dev bash -lc 'export PATH=/opt/nim/bin:$PATH; nimble buildPrepackRelease'
-          test -s .tmp/prepack-release/RELEASE-NOTES.txt
-          test -s .tmp/prepack-release/assets/SHA256SUMS
-          (cd .tmp/prepack-release/assets && sha256sum -c SHA256SUMS)
+          docker compose run --rm nimino-dev bash -lc 'export PATH=/opt/nim/bin:$PATH; nimble buildSiteRelease'
+          test -s .tmp/site-release/RELEASE-NOTES.txt
+          test -s .tmp/site-release/assets/SHA256SUMS
+          (cd .tmp/site-release/assets && sha256sum -c SHA256SUMS)
 
       - name: Upload build output for inspection
         uses: actions/upload-artifact@v4
         with:
-          name: nimino-prepacks-${{ env.RELEASE_TAG }}
+          name: nimino-sites-${{ env.RELEASE_TAG }}
           if-no-files-found: error
-          path: .tmp/prepack-release/
+          path: .tmp/site-release/
 
       - name: Publish GitHub Release
         env:
@@ -62,8 +60,8 @@ jobs:
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
             gh release create "$RELEASE_TAG" \
               --title "Nimino $RELEASE_TAG" \
-              --notes-file .tmp/prepack-release/RELEASE-NOTES.txt \
+              --notes-file .tmp/site-release/RELEASE-NOTES.txt \
               --verify-tag
           gh release upload "$RELEASE_TAG" \
-            .tmp/prepack-release/RELEASE-NOTES.txt \
-            .tmp/prepack-release/assets/* --clobber
+            .tmp/site-release/RELEASE-NOTES.txt \
+            .tmp/site-release/assets/* --clobber

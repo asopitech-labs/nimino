@@ -46,9 +46,6 @@ task testCoreLinuxRpcSmoke, "Run the Linux core RPC smoke test under Xvfb":
 task testPackManifest, "Run nimino-pack manifest tests":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-manifest-nimcache --path:packages/pack packages/pack/tests/test_manifest.nim"
 
-task testPackPrepack, "Run built-in URL prepack tests":
-  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-prepack-nimcache --out:/tmp/nimino-test-prepack --path:packages/pack packages/pack/tests/test_prepack.nim"
-
 task buildPackCli, "Build the nimino-pack validation CLI":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"
 
@@ -59,17 +56,17 @@ task buildNiminoHostWindows, "Cross-compile the generic Windows Nimino host":
   exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-host-windows-nimcache --out:/tmp/nimino-host.exe --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
   exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-host.exe | grep -q 'file format pei-x86-64'"
 
-task buildPrepackRelease, "Build downloadable installers for the built-in prepacks":
+task buildSiteRelease, "Build downloadable installers for the reviewed web sites":
   exec "nimble buildPackCli"
   exec "nimble buildNiminoHost"
   exec "nimble buildNiminoHostWindows"
-  exec "bash tools/ci/build_prepacks_release.sh /tmp/nimino /tmp/nimino-host /tmp/nimino-host.exe /workspace/.tmp/prepack-release"
+  exec "bash tools/ci/build_site_release.sh /tmp/nimino /tmp/nimino-host /tmp/nimino-host.exe /workspace/.tmp/site-release"
 
 task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "bash tools/ci/test_pack_cli.sh /tmp/nimino"
 
-task testPackPrepacks, "Verify YouTube, Gmail, and Google Analytics prepacks":
-  exec "bash tools/ci/test_pack_prepacks.sh /tmp/nimino"
+task testPackSites, "Verify YouTube, Gmail, and Google Analytics URL bundles":
+  exec "bash tools/ci/test_pack_sites.sh /tmp/nimino"
 
 task testPackLinux, "Build Debian/RPM archives from nimino-pack Linux metadata":
   exec "bash tools/ci/test_pack_linux.sh /tmp/nimino"

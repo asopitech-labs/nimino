@@ -5,7 +5,6 @@ import nimino_pack
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino pack <url> [--name <name>] [--id <id>] [--profile <name>] [--icon <path-or-url>] [--deep-link <scheme>]... [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino pack prepack <youtube|gmail|google-analytics> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
   quit(2)
@@ -469,14 +468,9 @@ if paramCount() < 2 or paramStr(1) != "pack":
   usage()
 var loaded: PackResult[PackManifest]
 let source = paramStr(2)
-let isPrepack = source.toLowerAscii() == "prepack"
 let sourceIsUrl = source.toLowerAscii().startsWith("http://") or
   source.toLowerAscii().startsWith("https://")
-if isPrepack:
-  if paramCount() < 3:
-    usage()
-  loaded = loadPrepack(paramStr(3))
-elif sourceIsUrl:
+if sourceIsUrl:
   var name = ""
   var id = ""
   var profile = "default"
@@ -507,7 +501,7 @@ if not loaded.isOk:
 var output = manifestJson(loaded.value).pretty()
 var outputDirectory = ""
 var hostPath = ""
-var index = if isPrepack: 4 else: 3
+var index = 3
 while index <= paramCount():
   if index == paramCount(): usage()
   case paramStr(index)
