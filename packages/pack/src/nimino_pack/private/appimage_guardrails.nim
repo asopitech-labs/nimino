@@ -108,6 +108,15 @@ proc requirePkgConfigVariable(pkgConfig, module, variable: string): PackResult[s
       module & "." & variable)
   success(inspected.output)
 
+proc appImagePkgConfigVariable*(module, variable: string): PackResult[string] =
+  ## Expose only the validated absolute pkg-config paths needed by the closure
+  ## stage.  Distribution-specific fallback paths remain deliberately absent.
+  let pkgConfig = findExe("pkg-config")
+  if pkgConfig.len == 0:
+    return failure[string](unsupportedFeature,
+      "AppImage package generation is unavailable: pkg-config is missing")
+  pkgConfig.requirePkgConfigVariable(module, variable)
+
 proc missingRuntimeAssets(assets: openArray[AppImageRuntimeAsset]): seq[string] =
   for asset in assets:
     let present =

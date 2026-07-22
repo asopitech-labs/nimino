@@ -344,15 +344,84 @@ proc buildRpm(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
   except OSError:
     failure[string](ioFailure, "unable to copy RPM package output")
 
+proc copyAppImageFile(source, destination: string): PackResult[bool] =
+  if not fileExists(source):
+    return failure[bool](ioFailure, "AppImage dependency source is missing: " & source)
+  try:
+    let parent = parentDir(destination)
+    if parent.len > 0 and not dirExists(parent):
+      createDir(parent)
+    copyFile(source, destination)
+    setFilePermissions(destination, getFilePermissions(source))
+    success(true)
+  except OSError:
+    failure[bool](ioFailure, "unable to copy AppImage dependency: " & source)
+
+proc copyAppImageDirectory(source, destination: string): PackResult[bool] =
+  if not dirExists(source):
+    return failure[bool](ioFailure, "AppImage dependency directory is missing: " & source)
+  try:
+    createDir(destination)
+    for path in walkDirRec(source):
+      let relative = relativePath(path, source)
+      let target = destination / relative
+      if dirExists(path):
+        createDir(target)
+      else:
+        let copied = copyAppImageFile(path, target)
+        if not copied.isOk:
+          return copied
+    success(true)
+  except OSError:
+    failure[bool](ioFailure, "unable to copy AppImage dependency directory: " & source)
+
+proc appImageCommandOutput(command: string; arguments: openArray[string]): PackResult[string] =
+  var commandLine = command.shellQuote()
+  for argument in arguments:
+    commandLine.add(" " & argument.shellQuote())
+  let executed = execCmdEx(commandLine)
+  if executed.exitCode != 0:
+    return failure[string](ioFailure,
+      "AppImage dependency tool failed: " & extractFilename(command))
+  success(executed.output.strip())
+
+proc appImageCopyTree(lddtree, seed, destination: string): PackResult[bool] =
+  let output = appImageCommandOutput(lddtree, ["--copy-to-tree", destination, seed])
+  if not output.isOk:
+    return failure[bool](output.error.kind, output.error.detail)
+  success(true)
+
+proc appImageSetRPath(patchelf, target, value: string): PackResult[bool] =
+  let applied = patchelf.executeTool(["--set-rpath", value, target])
+  if not applied.isOk:
+    return failure[bool](applied.error.kind, applied.error.detail)
+  success(true)
+
+proc appImageAppRun(metadata: LinuxBundleMetadata): string =
+  """#!/bin/sh
+set -eu
+APPDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export GSETTINGS_SCHEMA_DIR="$APPDIR/usr/share/glib-2.0/schemas"
+export GIO_MODULE_DIR="$APPDIR/usr/lib/gio/modules"
+export GDK_PIXBUF_MODULEDIR="$APPDIR/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders"
+export GDK_PIXBUF_MODULE_FILE="$APPDIR/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+export WEBKIT_EXEC_PATH="$APPDIR/usr/lib/webkitgtk-6.0"
+exec "$APPDIR/usr/lib/nimino/""" & metadata.id & """/run-nimino.sh" "$@"
+"""
+
+proc appImageDesktop(metadata: LinuxBundleMetadata): string =
+  "[Desktop Entry]\n" &
+    "Type=Application\n" &
+    "Name=" & metadata.name & "\n" &
+    "Comment=" & metadata.description & "\n" &
+    "Exec=run-nimino.sh\n" &
+    "Icon=" & metadata.id & "\n" &
+    "Terminal=false\n" &
+    "Categories=Network;\n"
+
 proc buildAppImage(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
                    workDirectory, debArchitecture: string): PackResult[string] =
-  ## Do not reinstate the former appimagetool-only path here.  An AppDir that
-  ## merely contains the Nimino host is structurally valid but cannot launch
-  ## on a system without GTK/WebKitGTK.  The dependency closure and WebKitGTK
-  ## helper relocation must be implemented and verified as one unit before
-  ## this branch is allowed to return success.
-  discard options
-  discard workDirectory
   if debArchitecture != "amd64":
     return failure[string](unsupportedFeature,
       "AppImage package generation currently supports amd64 only")
@@ -362,7 +431,122 @@ proc buildAppImage(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
   let environment = validateAppImageBuildEnvironment()
   if not environment.isOk:
     return failure[string](environment.error.kind, environment.error.detail)
-  failure[string](unsupportedFeature, AppImageIncompleteClosureError)
+  let appImageTool = findExe("appimagetool")
+  let linuxDeploy = findExe("linuxdeploy")
+  let patchelf = findExe("patchelf")
+  let lddtree = findExe("lddtree")
+  let appDir = workDirectory / (metadata.id & ".AppDir")
+  let bundleRoot = appDir / "usr" / "lib" / "nimino" / metadata.id
+  let hostValidation = options.bundleDirectory.validateLinuxHost()
+  if not hostValidation.isOk:
+    return failure[string](hostValidation.error.kind, hostValidation.error.detail)
+  let launcher = options.bundleDirectory / "run-nimino.sh"
+  let launcherText = try: readFile(launcher)
+  except OSError:
+    return failure[string](ioFailure, "Linux AppImage launcher cannot be read")
+  let marker = "exec \"$(dirname \"$0\")/"
+  let markerStart = launcherText.find(marker)
+  if markerStart < 0:
+    return failure[string](invalidManifest, "Linux AppImage launcher host path is malformed")
+  let hostStart = markerStart + marker.len
+  let hostEnd = launcherText.find('"', hostStart)
+  if hostEnd <= hostStart:
+    return failure[string](invalidManifest, "Linux AppImage launcher host path is malformed")
+  let hostName = launcherText[hostStart ..< hostEnd]
+  let appHost = bundleRoot / hostName
+  try:
+    createDir(appDir / "usr" / "lib" / "nimino")
+    copyDir(options.bundleDirectory, bundleRoot)
+    discard options.bundleDirectory.preserveBundlePermissions(bundleRoot)
+  except OSError:
+    return failure[string](ioFailure, "unable to stage AppImage bundle")
+
+  let copiedTree = appImageCopyTree(lddtree, appHost, appDir / "usr")
+  if not copiedTree.isOk:
+    return failure[string](copiedTree.error.kind, copiedTree.error.detail)
+  let gtkLib = appImagePkgConfigVariable("gtk4", "libdir")
+  let webKitLib = appImagePkgConfigVariable("webkitgtk-6.0", "libdir")
+  let schemas = appImagePkgConfigVariable("gio-2.0", "schemasdir")
+  let gioModules = appImagePkgConfigVariable("gio-2.0", "giomoduledir")
+  let pixbufModules = appImagePkgConfigVariable("gdk-pixbuf-2.0", "gdk_pixbuf_moduledir")
+  for inspected in [gtkLib, webKitLib, schemas, gioModules, pixbufModules]:
+    if not inspected.isOk:
+      return failure[string](inspected.error.kind, inspected.error.detail)
+  for library in AppImageRequiredRuntimeLibraries:
+    let source = (if library == AppImageRequiredRuntimeLibraries[0]: gtkLib.value else: webKitLib.value) / library
+    let copied = copyAppImageFile(source, appDir / "usr" / "lib" / library)
+    if not copied.isOk:
+      return failure[string](copied.error.kind, copied.error.detail)
+    let deployed = linuxDeploy.executeTool(["--appdir", appDir, "--library", source])
+    if not deployed.isOk:
+      return failure[string](deployed.error.kind, deployed.error.detail)
+  let webKitRoot = webKitLib.value / "webkitgtk-6.0"
+  let webKitDestination = appDir / "usr" / "lib" / "webkitgtk-6.0"
+  for relative in AppImageRequiredWebKitAssets:
+    let copied = copyAppImageFile(webKitRoot / relative, webKitDestination / relative)
+    if not copied.isOk:
+      return failure[string](copied.error.kind, copied.error.detail)
+  let schemaCopy = copyAppImageDirectory(schemas.value, appDir / "usr" / "share" / "glib-2.0" / "schemas")
+  let gioCopy = copyAppImageDirectory(gioModules.value, appDir / "usr" / "lib" / "gio" / "modules")
+  let pixbufCopy = copyAppImageDirectory(pixbufModules.value,
+    appDir / "usr" / "lib" / "gdk-pixbuf-2.0" / "2.10.0" / "loaders")
+  for copied in [schemaCopy, gioCopy, pixbufCopy]:
+    if not copied.isOk:
+      return failure[string](copied.error.kind, copied.error.detail)
+  let compiledSchemas = findExe("glib-compile-schemas").executeTool([
+    appDir / "usr" / "share" / "glib-2.0" / "schemas"])
+  let queriedGio = findExe("gio-querymodules").executeTool([
+    appDir / "usr" / "lib" / "gio" / "modules"])
+  if not compiledSchemas.isOk or not queriedGio.isOk:
+    return failure[string](ioFailure, "AppImage runtime metadata compilation failed")
+  var loaders: seq[string]
+  for path in walkDirRec(appDir / "usr" / "lib" / "gdk-pixbuf-2.0" / "2.10.0" / "loaders"):
+    if fileExists(path): loaders.add(path)
+  if loaders.len == 0:
+    return failure[string](ioFailure, "AppImage GdkPixbuf loader closure is empty")
+  let loaderOutput = appImageCommandOutput(findExe("gdk-pixbuf-query-loaders"), loaders)
+  if not loaderOutput.isOk:
+    return failure[string](loaderOutput.error.kind, loaderOutput.error.detail)
+  try:
+    writeFile(appDir / "usr" / "lib" / "gdk-pixbuf-2.0" / "2.10.0" / "loaders.cache",
+      loaderOutput.value)
+    writeFile(appDir / "AppRun", metadata.appImageAppRun())
+    setFilePermissions(appDir / "AppRun", {fpUserExec, fpUserRead, fpUserWrite,
+      fpGroupExec, fpGroupRead, fpOthersExec, fpOthersRead})
+    createDir(appDir / "usr" / "share" / "applications")
+    writeFile(appDir / "usr" / "share" / "applications" / metadata.desktopFile,
+      metadata.appImageDesktop())
+    let iconExtension = splitFile(metadata.icon).ext
+    createDir(appDir / "usr" / "share" / "icons" / "hicolor" / "128x128" / "apps")
+    copyFile(options.bundleDirectory / metadata.icon,
+      appDir / "usr" / "share" / "icons" / "hicolor" / "128x128" / (metadata.id & iconExtension))
+  except OSError:
+    return failure[string](ioFailure, "unable to write AppImage runtime metadata")
+  let hostRPath = appImageSetRPath(patchelf, appHost, "$ORIGIN/../..:$ORIGIN/../../lib")
+  if not hostRPath.isOk:
+    return failure[string](hostRPath.error.kind, hostRPath.error.detail)
+  for relative in AppImageRequiredWebKitAssets:
+    if not relative.endsWith(".so"):
+      let helperRPath = appImageSetRPath(patchelf, webKitDestination / relative, "$ORIGIN/..")
+      if not helperRPath.isOk:
+        return failure[string](helperRPath.error.kind, helperRPath.error.detail)
+  for relative in AppImageRequiredWebKitAssets:
+    let seed = webKitDestination / relative
+    let report = appImageCommandOutput(lddtree, ["-l", seed])
+    if not report.isOk:
+      return failure[string](report.error.kind, report.error.detail)
+    let checked = validateAppImageDependencyReport(report.value, 0,
+      [extractFilename(seed)])
+    if not checked.isOk:
+      return failure[string](checked.error.kind,
+        checked.error.detail & " (copied seed: " & relative & ")")
+  let outputPath = options.outputDirectory / (metadata.id & "-" & metadata.version & "-x86_64.AppImage")
+  let built = appImageTool.executeTool([appDir, outputPath])
+  if not built.isOk:
+    return failure[string](built.error.kind, built.error.detail)
+  if not fileExists(outputPath) or getFileSize(outputPath) == 0:
+    return failure[string](ioFailure, "appimagetool did not produce the expected AppImage")
+  success(outputPath)
 
 proc buildLinuxPackage*(options: LinuxPackageOptions): PackResult[string] =
   let metadata = options.bundleDirectory.readLinuxBundleMetadata()
