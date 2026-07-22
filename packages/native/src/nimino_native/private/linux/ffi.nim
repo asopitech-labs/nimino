@@ -31,6 +31,7 @@ type
   WebKitWebView* {.incompleteStruct.} = object
   WebKitSettings* {.incompleteStruct.} = object
   WebKitNetworkSession* {.incompleteStruct.} = object
+  WebKitNetworkProxySettings* {.incompleteStruct.} = object
   WebKitWebContext* {.incompleteStruct.} = object
   WebKitURISchemeRequest* {.incompleteStruct.} = object
   WebKitURISchemeResponse* {.incompleteStruct.} = object
@@ -400,6 +401,17 @@ proc webkit_web_view_get_type*(): culong
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_network_session_new*(dataDirectory, cacheDirectory: cstring):
     ptr WebKitNetworkSession
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_network_session_new_ephemeral*(): ptr WebKitNetworkSession
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_network_session_set_proxy_settings*(session: ptr WebKitNetworkSession;
+                                                mode: cint;
+                                                settings: ptr WebKitNetworkProxySettings)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_network_proxy_settings_new*(defaultProxy: cstring;
+                                        ignoreHosts: ptr cstring): ptr WebKitNetworkProxySettings
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_network_proxy_settings_free*(settings: ptr WebKitNetworkProxySettings)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_network_session_get_website_data_manager*(session: ptr WebKitNetworkSession):
     ptr WebKitWebsiteDataManager

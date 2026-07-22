@@ -627,15 +627,10 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   if not adapter.windows.hasKey(windowId.value):
     return errorAction("unknown windowId")
 
-  let created = adapter.windows[windowId.value].newWebView()
+  let created = adapter.windows[windowId.value].newWebView(
+    userAgent = adapter.windowUserAgents.getOrDefault(windowId.value, ""))
   if not created.isOk:
     return nativeFailure("native.webview.create", created)
-  let userAgent = adapter.windowUserAgents.getOrDefault(windowId.value, "")
-  if userAgent.len > 0:
-    let configuredUserAgent = created.value.setUserAgent(userAgent)
-    if not configuredUserAgent.isOk:
-      discard created.value.close()
-      return nativeFailure("native.webview.setUserAgent", configuredUserAgent)
 
   let webViewId = adapter.nextWebViewId
   inc adapter.nextWebViewId

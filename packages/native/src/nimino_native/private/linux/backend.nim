@@ -643,6 +643,22 @@ proc linuxSetUserAgent(view: NativeWebView; value: string): NativeResult =
   webkit_settings_set_user_agent(settings, cstring(value))
   success()
 
+proc linuxSetProxy(view: NativeWebView; value: string): NativeResult =
+  if view.isNil or view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.setProxy"))
+  let session = webkit_web_view_get_network_session(
+    cast[ptr WebKitWebView](view.platformView))
+  if session.isNil:
+    return failure(nativeError(webViewError, "webview.setProxy",
+      detail = "WebKitNetworkSession is unavailable"))
+  let settings = webkit_network_proxy_settings_new(cstring(value), nil)
+  if settings.isNil:
+    return failure(nativeError(invalidArgument, "webview.setProxy",
+      detail = "WebKit proxy settings could not be created"))
+  webkit_network_session_set_proxy_settings(session, 2, settings)
+  webkit_network_proxy_settings_free(settings)
+  success()
+
 proc linuxBrowsingDataTypes(kinds: set[NativeBrowsingDataKind]): uint32 =
   ## Keep this mapping deliberately narrow: WebKitGTK exposes IndexedDB and
   ## service-worker registrations as independent WebsiteDataTypes, while
@@ -1443,7 +1459,9 @@ proc linuxCreateView(view: NativeWebView): NativeResult =
     return failure(nativeError(invalidState, "webview.create"))
   var webView: ptr WebKitWebView
   var session: ptr WebKitNetworkSession
-  if view.window.profilePath.len > 0:
+  if view.incognito or view.proxyUrl.len > 0:
+    session = webkit_network_session_new_ephemeral()
+  elif view.window.profilePath.len > 0:
     let dataDir = view.window.profilePath / "webkit-data"
     let cacheDir = view.window.profilePath / "cache"
     try:
@@ -1456,6 +1474,15 @@ proc linuxCreateView(view: NativeWebView): NativeResult =
     if session.isNil:
       return failure(nativeError(webViewError, "webview.profile",
         detail = "WebKitNetworkSession creation failed"))
+  if session != nil and view.proxyUrl.len > 0:
+    let settings = webkit_network_proxy_settings_new(cstring(view.proxyUrl), nil)
+    if settings.isNil:
+      g_object_unref(cast[pointer](session))
+      return failure(nativeError(invalidArgument, "webview.setProxy",
+        detail = "WebKit proxy settings could not be created"))
+    webkit_network_session_set_proxy_settings(session, 2, settings)
+    webkit_network_proxy_settings_free(settings)
+  if session != nil:
     webView = cast[ptr WebKitWebView](g_object_new(webkit_web_view_get_type(),
       "network-session", cast[pointer](session), nil))
     g_object_unref(cast[pointer](session))
@@ -1531,7 +1558,9 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   let view = window.views[0]
   var webView: ptr WebKitWebView
   var session: ptr WebKitNetworkSession
-  if view.window.profilePath.len > 0:
+  if view.incognito or view.proxyUrl.len > 0:
+    session = webkit_network_session_new_ephemeral()
+  elif view.window.profilePath.len > 0:
     let dataDir = view.window.profilePath / "webkit-data"
     let cacheDir = view.window.profilePath / "cache"
     try:
@@ -1544,6 +1573,15 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
     if session.isNil:
       return failure(nativeError(webViewError, "webview.profile",
         detail = "WebKitNetworkSession creation failed"))
+  if session != nil and view.proxyUrl.len > 0:
+    let settings = webkit_network_proxy_settings_new(cstring(view.proxyUrl), nil)
+    if settings.isNil:
+      g_object_unref(cast[pointer](session))
+      return failure(nativeError(invalidArgument, "webview.setProxy",
+        detail = "WebKit proxy settings could not be created"))
+    webkit_network_session_set_proxy_settings(session, 2, settings)
+    webkit_network_proxy_settings_free(settings)
+  if session != nil:
     webView = cast[ptr WebKitWebView](g_object_new(webkit_web_view_get_type(),
       "network-session", cast[pointer](session), nil))
     g_object_unref(cast[pointer](session))

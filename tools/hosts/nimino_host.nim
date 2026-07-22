@@ -130,10 +130,11 @@ proc main() =
     ## broker. Reject this option instead of claiming a policy we cannot
     ## enforce on Windows, Linux, and WSL alike.
     fail("runtime.multiInstance is not supported by this host")
-  if proxyUrl.len > 0:
-    fail("webview.proxyUrl is not supported by this host")
-  if incognito:
-    fail("webview.incognito is not supported by this host")
+  when defined(windows):
+    if proxyUrl.len > 0:
+      fail("webview.proxyUrl is not supported by this Windows host")
+    if incognito:
+      fail("webview.incognito is not supported by this Windows host")
   for permission in allowedPermissions:
     if permission notin ["microphone", "camera", "notifications", "geolocation",
                          "clipboard", "screenCapture"]:

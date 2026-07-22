@@ -1282,12 +1282,14 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if options.width <= 0 or options.height <= 0:
     return coreFailureOf[Window](coreError(invalidArgument, "window.create",
       detail = "size must be positive"))
-  if options.proxyUrl.len > 0:
-    return coreFailureOf[Window](coreError(platformUnavailable, "window.create",
-      detail = "proxyUrl is not implemented by the native backends yet"))
-  if options.incognito:
-    return coreFailureOf[Window](coreError(platformUnavailable, "window.create",
-      detail = "incognito is not implemented by the native backends yet"))
+  when defined(linux):
+    if app.backend == wslBackend and (options.proxyUrl.len > 0 or options.incognito):
+      return coreFailureOf[Window](coreError(platformUnavailable, "window.create",
+        detail = "proxyUrl/incognito are not available through the Windows WSL host"))
+  else:
+    if options.proxyUrl.len > 0 or options.incognito:
+      return coreFailureOf[Window](coreError(platformUnavailable, "window.create",
+        detail = "proxyUrl/incognito are not implemented by this native backend"))
   let profileName = if options.profile.len == 0: "default" else: options.profile
   let profile = ensureProfileLayout(app.id, profileName)
   if not profile.isOk:
@@ -1348,14 +1350,11 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     profile.value)
   if not nativeWindow.isOk:
     return coreFailureOf[Window](nativeWindow.failure.mapNativeError())
-  let nativeView = native.newWebView(nativeWindow.value)
+  let nativeView = native.newWebView(nativeWindow.value,
+    userAgent = options.userAgent, proxyUrl = options.proxyUrl,
+    incognito = options.incognito)
   if not nativeView.isOk:
     return coreFailureOf[Window](nativeView.failure.mapNativeError())
-  if options.userAgent.len > 0:
-    let userAgent = nativeView.value.setUserAgent(options.userAgent)
-    if not userAgent.isOk:
-      discard nativeWindow.value.close()
-      return coreFailureOf[Window](userAgent.failure.mapNativeError())
   if options.hideWindowDecorations:
     let decorations = nativeWindow.value.setDecorated(false)
     if not decorations.isOk:

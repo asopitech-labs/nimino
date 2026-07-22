@@ -242,6 +242,8 @@ type
     documentStartScript: string
     devToolsEnabled: bool
     userAgent: string
+    proxyUrl: string
+    incognito: bool
     documentStartScriptId: string
     documentStartScriptUpdatePending: bool
     platformView: pointer
@@ -301,6 +303,7 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxCreateWindow(window: NativeWindow): NativeResult
   proc linuxSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
   proc linuxSetUserAgent(view: NativeWebView; value: string): NativeResult
+  proc linuxSetProxy(view: NativeWebView; value: string): NativeResult
   proc linuxSetFullscreen(window: NativeWindow; enabled: bool): NativeResult
   proc linuxSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult
   proc linuxSetDecorated(window: NativeWindow; enabled: bool): NativeResult
@@ -943,10 +946,12 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
   app.windows.add(window)
   successOf(window)
 
-proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView] =
+proc newWebView*(window: NativeWindow; userAgent = ""; proxyUrl = "";
+                 incognito = false): NativeResultOf[NativeWebView] =
   if window.isNil or window.state in {closing, closed}:
     return failureOf[NativeWebView](nativeError(invalidState, "webview.create"))
-  let view = NativeWebView(window: window, state: pending, devToolsEnabled: true)
+  let view = NativeWebView(window: window, state: pending, devToolsEnabled: true,
+    userAgent: userAgent, proxyUrl: proxyUrl, incognito: incognito)
   window.views.add(view)
   if window.app.state == running:
     when defined(linux) and not defined(niminoWsl):
@@ -976,6 +981,29 @@ proc setUserAgent*(view: NativeWebView; value: string): NativeResult =
     view.windowsSetUserAgent(value)
   else:
     failure(nativeError(unsupported, "webview.setUserAgent"))
+
+proc setProxy*(view: NativeWebView; value: string): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.setProxy"))
+  if value.contains('\x00') or value.contains('\r') or value.contains('\n'):
+    return failure(nativeError(invalidArgument, "webview.setProxy",
+      detail = "proxy URL must not contain NUL or line breaks"))
+  view.proxyUrl = value
+  if view.state == pending:
+    return success()
+  when defined(linux) and not defined(niminoWsl):
+    view.linuxSetProxy(value)
+  else:
+    failure(nativeError(unsupported, "webview.setProxy"))
+
+proc setIncognito*(view: NativeWebView; enabled: bool): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.setIncognito"))
+  view.incognito = enabled
+  if view.state == pending:
+    return success()
+  failure(nativeError(invalidState, "webview.setIncognito",
+    detail = "incognito is a construct-only WebView session option"))
 
 proc setDecorated*(window: NativeWindow; enabled: bool): NativeResult =
   if window.isNil or window.state in {closing, closed}:

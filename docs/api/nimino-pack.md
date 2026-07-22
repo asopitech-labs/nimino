@@ -19,8 +19,10 @@ URL指定でも`--width`、`--height`、`--resizable`、`--fullscreen`、`--maxi
 `--inject-css`、`--inject-js`、`--allow-url`、`--external-url`を指定できます。複雑な設定はTOMLへ移せます。
 
 `--user-agent`はWindows WebView2の`ICoreWebView2Settings2`とLinux WebKitGTKの
-`WebKitSettings`へ適用します。`--proxy-url`、`--incognito`、`--multi-instance`は、
-まだ全ターゲットで同一の実装を提供できないため、マニフェストに指定するとhostが明示的に失敗します。
+`WebKitSettings`へ適用します。Linux native hostでは`--proxy-url`（WebKitNetworkSession）と
+`--incognito`（ephemeral NetworkSession）も使用できます。Windows/WSL hostでは同じ設定を
+まだ提供できないため、指定するとhostが明示的に失敗します。`--multi-instance`も同様に、
+全ターゲットで同じ単一インスタンス制御を提供するまで明示エラーです。
 未知のオプションもエラー終了し、設定を黙って捨てることはありません。
 
 既存のTOMLマニフェストも利用できます。
