@@ -107,7 +107,7 @@ Windows通知のAUMIDはmanifestの`id`と同一に固定し、NSISおよび`ins
 nimino package-windows dist/discord --format msi --out dist/packages
 ```
 
-`<id>-<version>.msi`をDocker内のDebian `wixl`（msitools）で生成します。per-userの`%LOCALAPPDATA%\\Nimino\\<id>`へbundleのトップレベルファイルを配置するWindows Installer databaseで、同じbundleを`msiextract`/`msiinfo`で検査できます。WiX互換サブセットのため、管理者導入、UI、コード署名、Windows実機のinstall/upgrade/uninstallは含みません。
+`<id>-<version>.msi`をDocker内のDebian `wixl`（msitools）で生成します。per-userの`%LOCALAPPDATA%\\Nimino\\<id>`へbundleのトップレベルファイルを配置し、Start Menu shortcut、HKCUのARP情報、deep-link registry、Toast COM LocalServerを含むWindows Installer databaseです。安定したUpgradeCodeと`MajorUpgrade`を生成するため同じ製品IDの上書き更新・ダウングレード拒否を定義します。生成物は`msiextract`/`msiinfo`で検査できます。WiX互換サブセットのため、管理者導入、UI、コード署名、Windows実機のinstall/upgrade/uninstallは別release gateです。
 deep link指定時はMSIにも同じHKCU URL Protocol registry rowsを含めます。
 
 ### Linux archive

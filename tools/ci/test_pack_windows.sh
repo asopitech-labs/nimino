@@ -73,6 +73,10 @@ test -s "$msi"
 test ! -e "$root/out/msi/app.nimino.windows-demo-1.2.3.wxs"
 msiinfo tables "$msi" | grep -Fx 'File'
 msiinfo tables "$msi" | grep -Fx 'Registry'
+msiinfo tables "$msi" | grep -Fx 'Shortcut'
+msiinfo tables "$msi" | grep -Fx 'Upgrade'
+msiinfo export "$msi" Registry | grep -F 'Windows\CurrentVersion\Uninstall\app.nimino.windows-demo'
+msiinfo export "$msi" Shortcut | grep -F 'run-nimino.cmd'
 msiextract -l "$msi" | grep -F 'nimino-manifest.json'
 msiextract -l "$msi" | grep -F 'run-nimino.cmd'
 msiextract -l "$msi" | grep -F 'nimino-host.exe'

@@ -380,6 +380,8 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
       "' Manufacturer='" & metadata.publisher.xmlAttribute() &
       "' InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252'\n" &
     "             InstallPrivileges='limited' InstallScope='perUser' />\n" &
+    "    <MajorUpgrade Schedule='afterInstallInitialize' AllowDowngrades='no'\n" &
+    "                  DowngradeErrorMessage='A newer version of this application is already installed.' />\n" &
     "    <Media Id='1' Cabinet='nimino.cab' EmbedCab='yes' />\n" &
     "    <Directory Id='TARGETDIR' Name='SourceDir'>\n" &
     "      <Directory Id='LocalAppDataFolder' Name='LocalAppData'>\n" &
@@ -421,12 +423,46 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
     "              </RegistryKey>\n" &
     "            </Component>\n")
   references.add("        <ComponentRef Id='" & toastComponentId & "' />\n")
+  let shortcutComponentId = "cmpStartMenuShortcut"
+  let shortcutComponentGuid = stableMsiGuid("start-menu:" & metadata.id)
+  let shortcutName = metadata.displayName.xmlAttribute()
+  let uninstallKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" & metadata.id
   result.add("          </Directory>\n" &
+    "        </Directory>\n" &
+    "      </Directory>\n" &
+    "      <Directory Id='ProgramMenuFolder'>\n" &
+    "        <Directory Id='NiminoProgramsFolder' Name='Nimino'>\n" &
+    "          <Component Id='" & shortcutComponentId & "' Guid='{" & shortcutComponentGuid & "}'>\n" &
+    "            <Shortcut Id='StartMenuShortcut' Name='" & shortcutName &
+      "' Target='[INSTALLDIR]" & metadata.entryPoint.xmlAttribute() &
+      "' WorkingDirectory='INSTALLDIR' />\n" &
+    "            <RemoveFolder Id='RemoveNiminoProgramsFolder' On='uninstall' />\n" &
+    "            <RegistryValue Root='HKCU' Key='" & uninstallKey &
+      "' Name='DisplayName' Type='string' Value='" & shortcutName & "' KeyPath='yes' />\n" &
+    "            <RegistryValue Root='HKCU' Key='" & uninstallKey &
+      "' Name='DisplayVersion' Type='string' Value='" & metadata.version.xmlAttribute() & "' />\n" &
+    "            <RegistryValue Root='HKCU' Key='" & uninstallKey &
+      "' Name='InstallLocation' Type='string' Value='[INSTALLDIR]' />\n" &
+    "            <RegistryValue Root='HKCU' Key='" & uninstallKey &
+      "' Name='UninstallString' Type='string' Value='&quot;[SystemFolder]msiexec.exe&quot; /x [ProductCode]' />\n" &
+    "            <RegistryValue Root='HKCU' Key='" & uninstallKey &
+      "' Name='NoModify' Type='integer' Value='1' />\n" &
+    "            <RegistryValue Root='HKCU' Key='" & uninstallKey &
+      "' Name='NoRepair' Type='integer' Value='1' />\n"
+  )
+  if metadata.publisher.len > 0:
+    result.add("            <RegistryValue Root='HKCU' Key='" & uninstallKey &
+      "' Name='Publisher' Type='string' Value='" & metadata.publisher.xmlAttribute() & "' />\n")
+  if metadata.homepage.len > 0:
+    result.add("            <RegistryValue Root='HKCU' Key='" & uninstallKey &
+      "' Name='URLInfoAbout' Type='string' Value='" & metadata.homepage.xmlAttribute() & "' />\n")
+  result.add("          </Component>\n" &
     "        </Directory>\n" &
     "      </Directory>\n" &
     "    </Directory>\n" &
     "    <Feature Id='Complete' Level='1' Title='" & metadata.displayName.xmlAttribute() & "'>\n" &
     references &
+    "        <ComponentRef Id='" & shortcutComponentId & "' />\n" &
     "    </Feature>\n" &
     "  </Product>\n" &
     "</Wix>\n")

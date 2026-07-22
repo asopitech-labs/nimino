@@ -25,9 +25,9 @@ MSIにはWiX等のtoolchainに加え、Windows Installer databaseとICEによる
   COM callbackと実行中WinRT `Activated` callbackは同じcore APIへ届ける。
 - bundle外からのscript注入を避けるため、Windows metadataのschema、per-user layout、launcher、manifest、任意iconのファイル名を検証する。表示文字列はNSISのquoted stringとしてescapeする。
 - `nimino package-windows <bundle> --format msi --out <directory>`は、bundleトップレベルのファイル、per-user directory tree、安定したProduct/Component GUIDを含むWix descriptorを生成し、Docker内の`wixl --arch x64`でMSIへ変換する。descriptorは成果物として残さず、生成後は`msiinfo`/`msiextract`で構造を検査する。
-- MSIはWiX互換サブセットのper-user databaseに限定する。管理者導入、インストーラーUI、コード署名、Windows Installer ICE、Windows実機のinstall/upgrade/uninstall testは別のWindows実機CIが整うまでリリース条件に含めない。
+- MSIはWiX互換サブセットのper-user databaseに限定し、Start Menu shortcut、ARP registry、stable UpgradeCode/MajorUpgrade、deep-link/Toast registryを含める。管理者導入、インストーラーUI、コード署名、Windows Installer ICE、Windows実機のinstall/upgrade/uninstall testは別のWindows実機CIが整うまでリリース条件に含めない。
 
 ## Consequences
 
-- `make pack-windows-test`はLinux Docker上でNSIS scriptとMSIを生成し、NSIS出力がPE (`MZ`) であること、per-user install/shortcut/ARP/uninstaller記述、MSIのFile tableとbundleファイル一覧を検証する。
+- `make pack-windows-test`はLinux Docker上でNSIS scriptとMSIを生成し、NSIS出力がPE (`MZ`) であること、per-user install/shortcut/ARP/uninstaller記述、MSIのFile/Registry/Shortcut/Upgrade tableとbundleファイル一覧を検証する。
 - Docker testはWindows setupを実行しない。実際のWindowsでのinstall、uninstall、upgrade、shortcut起動、WebView2 runtime検出、Defender/SmartScreen挙動、code signingは未検証であり、リリース前にWindows実機CIと署名手順を追加する必要がある。
