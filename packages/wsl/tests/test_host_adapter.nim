@@ -176,6 +176,39 @@ block htmlLoadStartsTheUiLoop:
   doAssert not clearResult.isOk
   doAssert $clearResult.failure.kind == "unsupported"
 
+  let queriedCookies = adapter.handleRequest(requestMessage(
+    "native.webview.getCookies", $(%*{
+      "webViewId": webViewId, "url": "https://example.com/"
+    })))
+  doAssert queriedCookies.isOk
+  doAssert queriedCookies.value.kind == deferredCookieQuery
+  doAssert queriedCookies.value.cookieQuery.finished
+  doAssert not queriedCookies.value.cookieQuery.read().isOk
+
+  let cookie = %*{
+    "name": "sid", "value": "abc", "domain": "example.com", "path": "/",
+    "secure": true, "httpOnly": true, "expires": 0
+  }
+  let setCookie = adapter.handleRequest(requestMessage(
+    "native.webview.setCookie", $(%*{
+      "webViewId": webViewId, "cookie": cookie
+    })))
+  doAssert setCookie.isOk
+  doAssert setCookie.value.kind == deferredCookieMutation
+  doAssert setCookie.value.cookieMutation.finished
+  doAssert not setCookie.value.cookieMutation.read().isOk
+  let deleteCookie = adapter.handleRequest(requestMessage(
+    "native.webview.deleteCookie", $(%*{
+      "webViewId": webViewId, "cookie": cookie
+    })))
+  doAssert deleteCookie.isOk
+  doAssert deleteCookie.value.kind == deferredCookieMutation
+  let malformedCookie = adapter.handleRequest(requestMessage(
+    "native.webview.setCookie", $(%*{
+      "webViewId": webViewId, "cookie": {"name": "sid"}
+    })))
+  doAssert not malformedCookie.isOk
+
   let evaluated = adapter.handleRequest(requestMessage("native.webview.evalJavaScript",
     $(%*{"webViewId": webViewId, "script": "document.title"})))
   doAssert evaluated.isOk

@@ -1,6 +1,6 @@
 # `nimino-native` 公開API案
 
-**状態: M2部分実装。`evalJavaScript`、文字列 `onMessage`、`onNavigationStarting`/`onNavigationCompleted`、基本`onError`、`onNewWindowRequested` は native Windows/Linux と WSL host adapter に実装済みです。Windows/Linuxの開始callbackは同期中止を実装し、新規Windowは暗黙生成せず拒否します。WSL host/client間のpermission/download/navigation decision relayは同期request/response、5秒timeout、deny defaultまで実装済みです。Linuxの通常実WebView経路と、導入済みWindows WebView2 Runtime上のhost経路（HTML/URL/評価/message/title/resize）は確認済みです。実ユーザー操作での新規Window要求と通常Windows GUI CIは未完了です。その他の M2 以降の操作は設計案です。**
+**状態: M2部分実装。`evalJavaScript`、文字列 `onMessage`、`onNavigationStarting`/`onNavigationCompleted`、基本`onError`、`onNewWindowRequested`、CookieManagerの取得・設定・削除は native Windows/Linux と WSL host adapter に実装済みです。Windows/Linuxの開始callbackは同期中止を実装し、新規Windowは暗黙生成せず拒否します。WSL host/client間のpermission/download/navigation decision relayは同期request/response、5秒timeout、deny defaultまで実装済みです。Linuxの通常実WebView経路と、導入済みWindows WebView2 Runtime上のhost経路（HTML/URL/評価/message/title/resize）は確認済みです。CookieManagerはLinux実WebViewで往復確認し、Windowsは公式SDK ABIとの照合とx64クロスコンパイルを確認済みです。実Windows Runtime上のCookieManager往復、実ユーザー操作での新規Window要求、通常Windows GUI CIは未完了です。その他の M2 以降の操作は設計案です。**
 
 このAPIはWindow/WebViewと低水準イベントだけを提供します。RPC、プロファイル、権限ポリシー、アセット配信、URL包装、WSL通信を含めません。
 
@@ -95,6 +95,9 @@ proc loadUrl*(view: NativeWebView, url: string): NativeResult
 proc loadHtml*(view: NativeWebView, html: string, baseUrl = ""): NativeResult
 proc setDocumentStartScript*(view: NativeWebView, script: string): NativeResult
 proc evalJavaScript*(view: NativeWebView, script: string): Future[NativeResultOf[string]]
+proc getCookies*(view: NativeWebView, url = ""): Future[NativeResultOf[seq[NativeCookie]]]
+proc setCookie*(view: NativeWebView, cookie: NativeCookie): Future[NativeResult]
+proc deleteCookie*(view: NativeWebView, cookie: NativeCookie): Future[NativeResult]
 proc onMessage*(view: NativeWebView, callback: proc(message: string) {.gcsafe.})
 proc onNavigationStarting*(view: NativeWebView,
   callback: proc(request: NavigationRequest): bool {.gcsafe.})
@@ -183,6 +186,8 @@ discard app.sendNativeNotification(NativeNotification(
 `setDocumentStartScript`は`pending`のViewに一つだけscriptを設定・置換する低水準操作です。ready後の追加・変更は`invalidState`で拒否し、次のナビゲーションへ黙って適用しません。WindowsはWebView2の非同期`AddScriptToExecuteOnDocumentCreated`完了を待ってから保留中の最初の読込を開始し、LinuxはWebKitGTKの`WebKitUserScript`をdocument-startで登録します。どちらも以後のframe/ナビゲーションへ影響し得るため、URL・origin・注入ポリシーはこの層で判断しません。`nimino-core`がその制約を用いてRPC bridgeを限定します。
 
 `evalJavaScript` は pending の View へも要求でき、ready 後に一度だけ実行します。成功値は JavaScript の評価値を JSON 化した UTF-8 文字列です（文字列値なら JSON の引用符を含みます）。Linux は WebKitGTK の `evaluate_javascript`、Windows は WebView2 の `ExecuteScript` で UI thread 上の完了 callback から Future を完了します。WSL host は完了済み Future を Win32 timer 上で polling し、同じ request ID の response として `{"result":"…"}` を返します。Linux実行スモーク、Windows Runtime上のhost実行、WSLの評価往復を確認済みです。
+
+`NativeCookie`はname、value、domain、path、Secure、HttpOnly、UNIX秒のexpiryを、ネイティブオブジェクトからコピーしたNim値として保持します。`getCookies` / `setCookie` / `deleteCookie`はreadyなWebViewだけで使えるFuture APIです。Windowsは公式WebView2 SDKの`ICoreWebView2CookieManager` / `ICoreWebView2CookieList`を直接呼び、LinuxはWebKitGTK 6.0の`WebKitCookieManager`とlibsoup 3の`SoupCookie`を直接呼びます。COM interface/callbackの参照数、WebKitのtransfer-full list、SoupCookieの寿命はNim GCへ委ねず各完了経路で明示管理します。WSL buildのnative型自身はIPCを内包せず、`nimino-wsl` host adapterが同じ操作を認証済みrequestとして中継します。
 
 `onMessage` は文字列だけを受け入れます。Windows の Web コンテンツは `window.chrome.webview.postMessage("…")`、Linux の Web コンテンツは `window.webkit.messageHandlers.nimino.postMessage("…")` を使用します。非文字列メッセージは native 層で破棄します。Linux の実 WebView スモークは handler の登録、文字列受信、signal 切断まで確認しています。WSL host は `native.webview.message` event として中継し、client は response を待つ間に受けた event を `takeEvents()` で取得できます。Windows Runtime と WSL host経由の実行確認済みです。
 

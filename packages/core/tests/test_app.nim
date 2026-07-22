@@ -80,13 +80,39 @@ block profilePathsAreContainedAndSafe:
     "example.com", "sid")
   doAssert loadedCookie.isOk
   doAssert loadedCookie.value.value == "abc"
+  let cookieDirectory = profileDirectoryPath("tech.asopi.profile-test", "work", cookies)
+  doAssert cookieDirectory.isOk
+  let cookieFile = cookieDirectory.value / "example.com__sid.json"
+  writeFile(cookieFile, $(%*{
+    "name": "sid", "value": "legacy", "domain": "example.com",
+    "path": "/", "secure": true, "expires": int64(epochTime()) + 3600
+  }))
+  let legacyCookie = readProfileCookie("tech.asopi.profile-test", "work",
+    "example.com", "sid")
+  doAssert legacyCookie.isOk
+  doAssert legacyCookie.value.value == "legacy"
+  doAssert not legacyCookie.value.httpOnly
+  doAssert writeProfileCookie("tech.asopi.profile-test", "work", cookie).isOk
+  let scopedCookie = ProfileCookie(name: "sid", value: "scoped",
+    domain: "example.com", path: "/account", secure: true,
+    httpOnly: true, expires: int64(epochTime()) + 3600)
+  doAssert writeProfileCookie("tech.asopi.profile-test", "work", scopedCookie).isOk
+  let loadedScopedCookie = readProfileCookie("tech.asopi.profile-test", "work",
+    "example.com", "sid", "/account")
+  doAssert loadedScopedCookie.isOk
+  doAssert loadedScopedCookie.value.value == "scoped"
+  doAssert loadedScopedCookie.value.httpOnly
   let matchingCookies = profileCookiesForDomain("tech.asopi.profile-test", "work", "sub.example.com")
   doAssert matchingCookies.isOk
-  doAssert matchingCookies.value.len == 1
+  doAssert matchingCookies.value.len == 2
   let matchingUrl = profileCookiesForUrl("tech.asopi.profile-test", "work",
     "https://sub.example.com/app/page")
   doAssert matchingUrl.isOk
   doAssert matchingUrl.value.len == 1
+  let scopedUrl = profileCookiesForUrl("tech.asopi.profile-test", "work",
+    "https://sub.example.com/account/settings")
+  doAssert scopedUrl.isOk
+  doAssert scopedUrl.value.len == 2
   let insecureUrl = profileCookiesForUrl("tech.asopi.profile-test", "work",
     "http://sub.example.com/app/page")
   doAssert insecureUrl.isOk
@@ -95,7 +121,12 @@ block profilePathsAreContainedAndSafe:
     "HTTPS://sub.example.com/app/page")
   doAssert uppercaseScheme.isOk
   doAssert uppercaseScheme.value.len == 1
-  doAssert listProfileCookies("tech.asopi.profile-test", "work").value == "example.com__sid"
+  let cookieKeys = listProfileCookies("tech.asopi.profile-test", "work")
+  doAssert cookieKeys.isOk
+  doAssert cookieKeys.value.splitLines().len == 2
+  doAssert "example.com__sid" in cookieKeys.value.splitLines()
+  doAssert deleteProfileCookie("tech.asopi.profile-test", "work", "example.com",
+    "sid", "/account").isOk
   doAssert deleteProfileCookie("tech.asopi.profile-test", "work", "example.com", "sid").isOk
   doAssert clearProfilePermissions("tech.asopi.profile-test", "work").isOk
   let permissionOrigin = normalizePermissionOrigin("HTTPS://Example.COM:443/private?q=1")
@@ -289,6 +320,15 @@ block windowsCanSelectIndependentProfiles:
   doAssert direct.value.listCookies().value.len >= 1
   doAssert direct.value.deleteCookie("example.com", "sid").isOk
   doAssert direct.value.writeCookie(sessionCookie).isOk
+  let engineCookies = direct.value.webViewCookies("https://example.com/")
+  doAssert engineCookies.finished
+  doAssert not engineCookies.read().isOk
+  let engineSet = direct.value.setWebViewCookie(sessionCookie)
+  doAssert engineSet.finished
+  doAssert not engineSet.read().isOk
+  let engineDelete = direct.value.deleteWebViewCookie(sessionCookie)
+  doAssert engineDelete.finished
+  doAssert not engineDelete.read().isOk
   doAssert direct.value.clearCookies().isOk
   doAssert direct.value.listCookies().value.len == 0
 

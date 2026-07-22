@@ -86,6 +86,10 @@ block readyCapabilitiesAreVersionedAndFailClosed:
   let decoded = valid.parseNativeCapabilities()
   doAssert decoded.isOk
   doAssert decoded.value == @["multipleWebViews", "webPermissionEvents"]
+  let cookieManager = parseNativeCapabilities(
+    nativeCapabilitiesPayload([WebViewCookieManagerCapability]))
+  doAssert cookieManager.isOk
+  doAssert cookieManager.value == @[WebViewCookieManagerCapability]
 
   let duplicate = parseNativeCapabilities("{\"capabilities\":[\"webPermissionEvents\",\"webPermissionEvents\"]}")
   doAssert not duplicate.isOk

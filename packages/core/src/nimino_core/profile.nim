@@ -29,6 +29,7 @@ type
     domain*: string
     path*: string
     secure*: bool
+    httpOnly*: bool
     expires*: int64
 
   ProfilePermission* = object
@@ -515,7 +516,21 @@ proc clearAllProfileData*(appId, profile: string): ProfilePathResult =
     profileFailure("unable to clear profile data")
 
 proc cookieFileKey(cookie: ProfileCookie): string =
-  cookie.domain & "__" & cookie.name
+  let normalizedPath = if cookie.path.len == 0: "/" else: cookie.path
+  if normalizedPath == "/":
+    ## Preserve the original root-path filename so existing profiles and the
+    ## public listing remain compatible.
+    return cookie.domain & "__" & cookie.name
+  var domainHex, nameHex, pathHex: string
+  for character in cookie.domain:
+    domainHex.add(toHex(ord(character), 2))
+  for character in cookie.name:
+    nameHex.add(toHex(ord(character), 2))
+  for character in normalizedPath:
+    pathHex.add(toHex(ord(character), 2))
+  ## Cookie identity is (name, domain, path). Hex-encoded length-independent
+  ## components avoid path traversal and delimiter collisions.
+  "v2_" & domainHex & "_" & nameHex & "_" & pathHex
 
 proc cookiePath(appId, profile: string; cookie: ProfileCookie): ProfilePathResult =
   if not validCookieName(cookie.name) or not validSettingKey(cookie.domain):
@@ -548,10 +563,64 @@ proc readProfileCookie*(appId, profile, domain, name: string):
   if not fileExists(path.value):
     return ProfileResult[ProfileCookie](isOk: false, error: "profile cookie does not exist")
   try:
-    let cookie = to(parseJson(readFile(path.value)), ProfileCookie)
+    var document = parseJson(readFile(path.value))
+    ## `httpOnly` was added when Core gained a direct browser CookieManager.
+    ## Keep profiles written by the earlier document.cookie implementation
+    ## readable; absence meant a script-visible, non-HttpOnly cookie.
+    if document.kind == JObject and not document.hasKey("httpOnly"):
+      document["httpOnly"] = %false
+    let cookie = to(document, ProfileCookie)
     ProfileResult[ProfileCookie](isOk: true, value: cookie)
   except CatchableError:
     ProfileResult[ProfileCookie](isOk: false, error: "profile cookie is not valid JSON")
+
+proc readProfileCookie*(appId, profile, domain, name, path: string):
+    ProfileResult[ProfileCookie] =
+  ## Path-aware overload for the complete RFC cookie identity. The four-
+  ## argument overload remains the root-path compatibility API.
+  let cookie = ProfileCookie(domain: domain, name: name, path: path)
+  let file = cookiePath(appId, profile, cookie)
+  if not file.isOk:
+    return ProfileResult[ProfileCookie](isOk: false, error: file.error)
+  if not fileExists(file.value):
+    return ProfileResult[ProfileCookie](isOk: false,
+      error: "profile cookie does not exist")
+  try:
+    var document = parseJson(readFile(file.value))
+    if document.kind == JObject and not document.hasKey("httpOnly"):
+      document["httpOnly"] = %false
+    let loaded = to(document, ProfileCookie)
+    ProfileResult[ProfileCookie](isOk: true, value: loaded)
+  except CatchableError:
+    ProfileResult[ProfileCookie](isOk: false,
+      error: "profile cookie is not valid JSON")
+
+proc profileCookieFiles(appId, profile: string): ProfileResult[seq[string]] =
+  let directory = profileDirectoryPath(appId, profile, cookies)
+  if not directory.isOk:
+    return ProfileResult[seq[string]](isOk: false, error: directory.error)
+  if not dirExists(directory.value):
+    return ProfileResult[seq[string]](isOk: true, value: @[])
+  try:
+    var files: seq[string]
+    for path in walkFiles(directory.value / "*.json"):
+      files.add(path)
+    files.sort()
+    ProfileResult[seq[string]](isOk: true, value: files)
+  except OSError:
+    ProfileResult[seq[string]](isOk: false,
+      error: "unable to list profile cookies")
+
+proc readProfileCookieFile(path: string): ProfileResult[ProfileCookie] =
+  try:
+    var document = parseJson(readFile(path))
+    if document.kind == JObject and not document.hasKey("httpOnly"):
+      document["httpOnly"] = %false
+    ProfileResult[ProfileCookie](isOk: true,
+      value: to(document, ProfileCookie))
+  except CatchableError:
+    ProfileResult[ProfileCookie](isOk: false,
+      error: "profile cookie is not valid JSON")
 
 proc listProfileCookies*(appId, profile: string): ProfilePathResult =
   let directory = profileDirectoryPath(appId, profile, cookies)
@@ -571,18 +640,13 @@ proc listProfileCookies*(appId, profile: string): ProfilePathResult =
 proc profileCookiesForDomain*(appId, profile, domain: string): ProfileResult[seq[ProfileCookie]] =
   if domain.len == 0:
     return ProfileResult[seq[ProfileCookie]](isOk: false, error: "cookie domain is empty")
-  let listed = listProfileCookies(appId, profile)
-  if not listed.isOk:
+  let files = profileCookieFiles(appId, profile)
+  if not files.isOk:
     return ProfileResult[seq[ProfileCookie]](isOk: true, value: @[])
   let requested = domain.toLowerAscii().strip(chars = {'.'})
   var matches: seq[ProfileCookie]
-  for key in listed.value.splitLines():
-    let separator = key.find("__")
-    if separator <= 0:
-      continue
-    let cookieDomain = key[0 ..< separator]
-    let cookieName = key[separator + 2 .. ^1]
-    let loaded = readProfileCookie(appId, profile, cookieDomain, cookieName)
+  for path in files.value:
+    let loaded = readProfileCookieFile(path)
     if loaded.isOk:
       let stored = loaded.value.domain.toLowerAscii().strip(chars = {'.'})
       if (requested == stored or requested.endsWith("." & stored)) and
@@ -600,17 +664,12 @@ proc profileCookiesForUrl*(appId, profile, url: string): ProfileResult[seq[Profi
         error: "cookie URL must use http or https")
     let requestedDomain = parsed.hostname.toLowerAscii().strip(chars = {'.'})
     let requestedPath = if parsed.path.len == 0: "/" else: parsed.path
-    let listed = listProfileCookies(appId, profile)
-    if not listed.isOk:
+    let files = profileCookieFiles(appId, profile)
+    if not files.isOk:
       return ProfileResult[seq[ProfileCookie]](isOk: true, value: @[])
     var matches: seq[ProfileCookie]
-    for key in listed.value.splitLines():
-      let separator = key.find("__")
-      if separator <= 0:
-        continue
-      let cookieDomain = key[0 ..< separator]
-      let cookieName = key[separator + 2 .. ^1]
-      let loaded = readProfileCookie(appId, profile, cookieDomain, cookieName)
+    for path in files.value:
+      let loaded = readProfileCookieFile(path)
       if not loaded.isOk:
         continue
       let cookie = loaded.value
@@ -637,6 +696,20 @@ proc deleteProfileCookie*(appId, profile, domain, name: string): ProfilePathResu
   try:
     removeFile(path.value)
     profileSuccess(path.value)
+  except OSError:
+    profileFailure("unable to delete profile cookie")
+
+proc deleteProfileCookie*(appId, profile, domain, name, path: string):
+    ProfilePathResult =
+  let file = cookiePath(appId, profile,
+    ProfileCookie(domain: domain, name: name, path: path))
+  if not file.isOk:
+    return file
+  if not fileExists(file.value):
+    return profileFailure("profile cookie does not exist")
+  try:
+    removeFile(file.value)
+    profileSuccess(file.value)
   except OSError:
     profileFailure("unable to delete profile cookie")
 

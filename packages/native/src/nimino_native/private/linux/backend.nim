@@ -315,6 +315,166 @@ proc linuxClearBrowsingData(view: NativeWebView;
     0'i64, nil, linuxBrowsingDataClearCompleted, cast[pointer](request))
   success()
 
+proc linuxFreeSoupCookie(data: pointer) {.cdecl.} =
+  if data != nil:
+    soup_cookie_free(cast[ptr SoupCookie](data))
+
+proc linuxCookieQueryCompleted(sourceObject: pointer;
+                               asyncResult: ptr GAsyncResult;
+                               userData: pointer) {.cdecl.} =
+  let request = cast[NativeCookieQueryRequest](userData)
+  if request.isNil:
+    return
+  var error: ptr GError
+  let manager = cast[ptr WebKitCookieManager](sourceObject)
+  let list = if request.url.len == 0:
+      webkit_cookie_manager_get_all_cookies_finish(manager, asyncResult,
+        addr error)
+    else:
+      webkit_cookie_manager_get_cookies_finish(manager, asyncResult, addr error)
+  var outcome: NativeResultOf[seq[NativeCookie]]
+  if error != nil:
+    let detail = if error.message.isNil:
+        "WebKitGTK CookieManager query failed"
+      else:
+        $error.message
+    outcome = failureOf[seq[NativeCookie]](nativeError(webViewError,
+      "webview.getCookies", detail = detail))
+    g_error_free(error)
+  else:
+    var copied: seq[NativeCookie]
+    var current = list
+    while current != nil:
+      let cookie = cast[ptr SoupCookie](current.data)
+      if cookie != nil:
+        let expires = soup_cookie_get_expires(cookie)
+        let name = soup_cookie_get_name(cookie)
+        let value = soup_cookie_get_value(cookie)
+        let domain = soup_cookie_get_domain(cookie)
+        let path = soup_cookie_get_path(cookie)
+        copied.add(NativeCookie(
+          name: if name.isNil: "" else: $name,
+          value: if value.isNil: "" else: $value,
+          domain: if domain.isNil: "" else: $domain,
+          path: if path.isNil: "" else: $path,
+          secure: soup_cookie_get_secure(cookie) != 0,
+          httpOnly: soup_cookie_get_http_only(cookie) != 0,
+          expires: if expires.isNil: 0 else: g_date_time_to_unix(expires)
+        ))
+      current = current.next
+    outcome = successOf(copied)
+  if list != nil:
+    g_list_free_full(list, linuxFreeSoupCookie)
+  let view = request.view
+  if view != nil:
+    view.completeCookieQuery(request, outcome)
+  elif request.future != nil and not request.future.finished:
+    request.future.complete(failureOf[seq[NativeCookie]](nativeError(
+      invalidState, "webview.getCookies")))
+  GC_unref(request)
+
+proc linuxGetCookies(view: NativeWebView;
+                     request: NativeCookieQueryRequest): NativeResult =
+  if view.isNil or view.platformView.isNil or request.isNil:
+    return failure(nativeError(invalidState, "webview.getCookies"))
+  let session = webkit_web_view_get_network_session(
+    cast[ptr WebKitWebView](view.platformView))
+  if session.isNil:
+    return failure(nativeError(webViewError, "webview.getCookies",
+      detail = "WebKitGTK network session is unavailable"))
+  let manager = webkit_network_session_get_cookie_manager(session)
+  if manager.isNil:
+    return failure(nativeError(webViewError, "webview.getCookies",
+      detail = "WebKitGTK CookieManager is unavailable"))
+  GC_ref(request)
+  if request.url.len == 0:
+    webkit_cookie_manager_get_all_cookies(manager, nil,
+      linuxCookieQueryCompleted, cast[pointer](request))
+  else:
+    webkit_cookie_manager_get_cookies(manager, request.url.cstring, nil,
+      linuxCookieQueryCompleted, cast[pointer](request))
+  success()
+
+proc linuxCookieMutationCompleted(sourceObject: pointer;
+                                  asyncResult: ptr GAsyncResult;
+                                  userData: pointer) {.cdecl.} =
+  let request = cast[NativeCookieMutationRequest](userData)
+  if request.isNil:
+    return
+  let operation = if request.kind == nativeCookieSet:
+      "webview.setCookie"
+    else:
+      "webview.deleteCookie"
+  var error: ptr GError
+  let manager = cast[ptr WebKitCookieManager](sourceObject)
+  let completed = if request.kind == nativeCookieSet:
+      webkit_cookie_manager_add_cookie_finish(manager, asyncResult, addr error)
+    else:
+      webkit_cookie_manager_delete_cookie_finish(manager, asyncResult, addr error)
+  let outcome = if completed != 0:
+      success()
+    else:
+      failure(nativeError(webViewError, operation,
+        detail = if error.isNil or error.message.isNil:
+            "WebKitGTK CookieManager mutation failed"
+          else:
+            $error.message))
+  if error != nil:
+    g_error_free(error)
+  if request.platformCookie != nil:
+    soup_cookie_free(cast[ptr SoupCookie](request.platformCookie))
+    request.platformCookie = nil
+  let view = request.view
+  if view != nil:
+    view.completeCookieMutation(request, outcome)
+  elif request.future != nil and not request.future.finished:
+    request.future.complete(failure(nativeError(invalidState, operation)))
+  GC_unref(request)
+
+proc linuxMutateCookie(view: NativeWebView;
+                       request: NativeCookieMutationRequest): NativeResult =
+  if view.isNil or view.platformView.isNil or request.isNil:
+    return failure(nativeError(invalidState, "webview.setCookie"))
+  let operation = if request.kind == nativeCookieSet:
+      "webview.setCookie"
+    else:
+      "webview.deleteCookie"
+  let session = webkit_web_view_get_network_session(
+    cast[ptr WebKitWebView](view.platformView))
+  if session.isNil:
+    return failure(nativeError(webViewError, operation,
+      detail = "WebKitGTK network session is unavailable"))
+  let manager = webkit_network_session_get_cookie_manager(session)
+  if manager.isNil:
+    return failure(nativeError(webViewError, operation,
+      detail = "WebKitGTK CookieManager is unavailable"))
+  let path = if request.cookie.path.len == 0: "/" else: request.cookie.path
+  let cookie = soup_cookie_new(request.cookie.name.cstring,
+    request.cookie.value.cstring, request.cookie.domain.cstring, path.cstring,
+    -1)
+  if cookie.isNil:
+    return failure(nativeError(webViewError, operation,
+      detail = "libsoup cookie allocation failed"))
+  soup_cookie_set_secure(cookie, if request.cookie.secure: 1 else: 0)
+  soup_cookie_set_http_only(cookie, if request.cookie.httpOnly: 1 else: 0)
+  if request.cookie.expires > 0:
+    let expires = g_date_time_new_from_unix_utc(request.cookie.expires)
+    if expires.isNil:
+      soup_cookie_free(cookie)
+      return failure(nativeError(invalidArgument, operation,
+        detail = "cookie expiry is outside the supported range"))
+    soup_cookie_set_expires(cookie, expires)
+    g_date_time_unref(expires)
+  request.platformCookie = cast[pointer](cookie)
+  GC_ref(request)
+  if request.kind == nativeCookieSet:
+    webkit_cookie_manager_add_cookie(manager, cookie, nil,
+      linuxCookieMutationCompleted, cast[pointer](request))
+  else:
+    webkit_cookie_manager_delete_cookie(manager, cookie, nil,
+      linuxCookieMutationCompleted, cast[pointer](request))
+  success()
+
 proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.} =
   let nativeWindow = cast[NativeWindow](userData)
   ## GTK close-request returns TRUE to stop the close emission.
@@ -828,6 +988,10 @@ proc linuxDisposeView(view: NativeWebView) =
   view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
   view.failOutstandingBrowsingDataRequests(nativeError(invalidState,
     "webview.clearBrowsingData", detail = "the WebView closed before clearing completed"))
+  view.failOutstandingCookieQueries(nativeError(invalidState,
+    "webview.getCookies", detail = "the WebView closed before the cookie query completed"))
+  view.failOutstandingCookieMutations(nativeError(invalidState,
+    "webview.setCookie", detail = "the WebView closed before the cookie mutation completed"))
   view.linuxDisposeMessageBridge()
   view.linuxDisposeLoadEvents()
   view.linuxClearDownloadSignals()

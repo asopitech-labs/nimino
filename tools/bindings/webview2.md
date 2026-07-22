@@ -93,6 +93,10 @@ private implementation rather than a general WebView wrapper.
 | Clear selected data | `ICoreWebView2Profile2::ClearBrowsingData` | `fa740d4b-5eae-4344-a8ad-74be31925397` / 10 |
 | Completion callback | `ICoreWebView2ClearBrowsingDataCompletedHandler::Invoke` | `e9710a06-1d1d-49b2-8234-226f35846ae5` / 3 |
 | Delete all cookies | `ICoreWebView2CookieManager::DeleteAllCookies` | `177cd9e7-b6f5-451a-94a0-5d7a3a4c4141` / 10 |
+| Query cookies | `ICoreWebView2CookieManager::GetCookies` | manager slot 5; completion IID `5a4f5069-5c15-47c3-8646-f4de1c116670` |
+| Create/update/delete a cookie | `CreateCookie` / `AddOrUpdateCookie` / `DeleteCookie` | manager slots 3 / 6 / 7 |
+| Enumerate a cookie list | `get_Count` / `GetValueAtIndex` | list slots 3 / 4 |
+| Copy cookie attributes | `get_Name` through `get_IsSession` | cookie slots 3-16 (verified individually by the header check) |
 
 `ClearBrowsingData` is asynchronous.  The backend owns its completed-handler
 COM object from successful registration through `Invoke`, holds the associated

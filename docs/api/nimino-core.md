@@ -93,7 +93,8 @@ window.rpc.register("files.save") do (request: SaveRequest) -> Future[SaveResult
 `window.rpc.unregister("method")`で登録済みの一つのメソッドを撤去できます。撤去後の新規呼び出しは拒否され、既に実行中のrequestは完了まで維持されます。
 
 `parseCookieHeader`はSet-Cookie形式の名前・値を共通検証し、プロファイル保存前の入力境界として利用できます。ブラウザ固有の属性ポリシーは呼び出し側で明示的に適用します。
-`window.syncDocumentCookies()`は現在の文書でスクリプトから見える`document.cookie`だけをプロファイルへ同期します。成功したナビゲーション完了時にも自動実行されます。HttpOnly cookieは取得・上書きせず、ブラウザCookie managerの完全な自動同期とは異なります。
+`window.webViewCookies(url)`、`setWebViewCookie`、`deleteWebViewCookie`はブラウザエンジンのCookieManagerを直接操作する非同期APIです。WindowsはWebView2の`ICoreWebView2CookieManager`、LinuxはWebKitGTKの`WebKitCookieManager`、WSLは認証済みWindows hostの同じWebView2 APIへ接続します。読込結果にはHttpOnly、Secure、expiry、domain、pathを含みます。空URLはエンジン内の全Cookie、HTTP(S) URLはエンジン規則で絞り込んだCookieを返します。
+`window.syncDocumentCookies()`は上記CookieManagerの内容をNimino管理のプロファイルへミラーし、HttpOnly Cookieも対象にします。成功したナビゲーション完了時にも自動実行されます。CookieManager capabilityを通知しない旧WSL hostだけは互換性のためscript-visibleな`document.cookie`へ後退し、HttpOnlyを完全同期したとは扱いません。
 メソッド名は制御文字・空白・引用符を含められず、256文字以内に制限されます。
 
 ```nim
@@ -156,7 +157,7 @@ window.onPermission proc(request: PermissionRequest): PermissionDecision =
   deny()
 ```
 
-プロファイルは`app id / profile`をキーにcookie、local storage、cache、permission、download、settingの永続化ディレクトリを分離します。`ensureProfileLayout`で冪等に領域を作成でき、`writeProfileSetting` / `readProfileSetting`でJSON設定、`writeProfileCookie` / `readProfileCookie`でCookieを安全に保存・読込できます。最初のHTTP(S)読込では、対象domainとrequest pathに一致する非HttpOnly Cookieをdocument-startで復元します。LinuxはWebKitNetworkSession、Windows/WSLはWebView2 UserDataFolderをprofileへ接続するため、エンジン管理のCookie・HttpOnly Cookie・localStorageもprofile単位で永続化されます。無処理の権限要求はdenyです。
+プロファイルは`app id / profile`をキーにcookie、local storage、cache、permission、download、settingの永続化ディレクトリを分離します。`ensureProfileLayout`で冪等に領域を作成でき、`writeProfileSetting` / `readProfileSetting`でJSON設定、`writeProfileCookie` / `readProfileCookie`でCookieを安全に保存・読込できます。最初のHTTP(S)読込では、対象domainとrequest pathに一致する非HttpOnly Cookieをdocument-startで復元します。LinuxはWebKitNetworkSession、Windows/WSLはWebView2 UserDataFolderをprofileへ接続するため、エンジン管理のCookie・HttpOnly Cookie・localStorageもprofile単位で永続化されます。`writeCookie` / `readCookie` / `deleteCookie`は起動前準備などに使うNimino管理ファイルだけの同期APIであり、実行中WebViewの正本を操作するAPIではありません。実行中の正本には`webViewCookies` / `setWebViewCookie` / `deleteWebViewCookie`を使います。無処理の権限要求はdenyです。
 `window.clearCookies()`でNiminoがprofileへ明示保存したCookieを全削除できます。
 `window.cookiesForDomain(domain)`では、指定hostに可視な期限切れでないCookieをprofileから取得できます。
 `window.clearSettings()`では同じprofileのJSON設定を全削除できます。

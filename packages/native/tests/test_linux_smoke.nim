@@ -13,6 +13,8 @@ var navigationCompleted: bool
 var browsingDataClearInFlight: bool
 var browsingDataClearStep: int
 var browsingDataFinished: bool
+var cookieMutationStarted: bool
+var cookieMutationFinished: bool
 var notificationRequested: bool
 var baseDocumentCompleted: bool
 var baseUrlResolved: bool
@@ -28,6 +30,7 @@ const UrlSmokeDocument = "data:text/html,%3Cmain%3ENimino%20Linux%20smoke%3C/mai
 proc quitWhenComplete() =
   if idleTicks > 0 and evaluationFinished and messageReceived and
       navigationStarted and navigationCompleted and browsingDataFinished and
+      cookieMutationFinished and
       notificationRequested and baseDocumentCompleted and baseUrlResolved and
       urlRequested and uiTaskExecuted and (resizeReceived or idleTicks > 200):
     doAssert cast[NativeApp](callbackApp).quit().isOk
@@ -46,6 +49,35 @@ proc completeBrowsingData(completed: Future[NativeResult]) {.gcsafe.} =
   inc browsingDataClearStep
   if browsingDataClearStep == 3:
     browsingDataFinished = true
+
+proc completeCookieDelete(completed: Future[NativeResult]) {.gcsafe.} =
+  doAssert not completed.failed
+  doAssert completed.read().isOk
+  cookieMutationFinished = true
+
+proc completeCookieQuery(completed:
+                         Future[NativeResultOf[seq[NativeCookie]]]) {.gcsafe.} =
+  doAssert not completed.failed
+  let queried = completed.read()
+  doAssert queried.isOk
+  var found = false
+  for cookie in queried.value:
+    if cookie.name == "nimino-smoke" and cookie.value == "cookie-manager":
+      doAssert cookie.httpOnly
+      doAssert cookie.secure
+      found = true
+  doAssert found
+  let deleted = cast[NativeWebView](callbackView).deleteCookie(NativeCookie(
+    name: "nimino-smoke", value: "cookie-manager", domain: "example.invalid",
+    path: "/", secure: true, httpOnly: true))
+  deleted.addCallback(completeCookieDelete)
+
+proc completeCookieSet(completed: Future[NativeResult]) {.gcsafe.} =
+  doAssert not completed.failed
+  doAssert completed.read().isOk
+  let queried = cast[NativeWebView](callbackView).getCookies(
+    "https://example.invalid/")
+  queried.addCallback(completeCookieQuery)
 
 proc beginNextBrowsingDataClear() =
   let view = cast[NativeWebView](callbackView)
@@ -87,7 +119,13 @@ proc receiveIdle() =
   if baseDocumentCompleted and baseUrlResolved and not urlRequested:
     urlRequested = true
     doAssert cast[NativeWebView](callbackView).loadUrl(UrlSmokeDocument).isOk
-  if navigationCompleted and not browsingDataFinished and not browsingDataClearInFlight:
+  if navigationCompleted and not cookieMutationStarted:
+    cookieMutationStarted = true
+    let changed = cast[NativeWebView](callbackView).setCookie(NativeCookie(
+      name: "nimino-smoke", value: "cookie-manager", domain: "example.invalid",
+      path: "/", secure: true, httpOnly: true))
+    changed.addCallback(completeCookieSet)
+  if cookieMutationFinished and not browsingDataFinished and not browsingDataClearInFlight:
     beginNextBrowsingDataClear()
   quitWhenComplete()
 
@@ -152,6 +190,7 @@ doAssert navigationStarted
 doAssert navigationCompleted
 doAssert browsingDataClearStep == 3
 doAssert browsingDataFinished
+doAssert cookieMutationFinished
 doAssert notificationRequested
 doAssert baseDocumentCompleted
 doAssert baseUrlResolved

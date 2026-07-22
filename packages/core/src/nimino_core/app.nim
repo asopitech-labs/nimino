@@ -473,6 +473,10 @@ when defined(linux):
     not app.isNil and not app.wslClient.isNil and
       WebViewProfileDataClearCapability in app.wslClient.capabilities
 
+  proc wslSupportsCookieManager(app: App): bool {.inline.} =
+    not app.isNil and not app.wslClient.isNil and
+      WebViewCookieManagerCapability in app.wslClient.capabilities
+
   proc wslNativeErrorKind(value: string): CoreErrorKind =
     case value
     of "unsupported": platformUnavailable
@@ -572,6 +576,10 @@ proc documentStartCookieSource(window: Window; url: string): string =
       return ""
     var source = "(() => { if (typeof document === 'undefined') return;"
     for cookie in cookies.value:
+      if cookie.httpOnly:
+        ## HttpOnly cookies may be mirrored from the engine for inspection,
+        ## but must never be downgraded through document.cookie injection.
+        continue
       let cookiePath = if cookie.path.len == 0: "/" else: cookie.path
       let requestPath = if parsed.path.len == 0: "/" else: parsed.path
       if not requestPath.startsWith(cookiePath) or
@@ -1747,6 +1755,229 @@ proc clearWebViewProfileData*(window: Window;
       target.complete(coreFailure(coreError(platformUnavailable,
         "window.clearWebViewProfileData")))
 
+proc toNativeCookie(cookie: ProfileCookie): native.NativeCookie =
+  native.NativeCookie(name: cookie.name, value: cookie.value,
+    domain: cookie.domain, path: cookie.path, secure: cookie.secure,
+    httpOnly: cookie.httpOnly, expires: cookie.expires)
+
+proc toProfileCookie(cookie: native.NativeCookie): ProfileCookie =
+  ProfileCookie(name: cookie.name, value: cookie.value,
+    domain: cookie.domain, path: cookie.path, secure: cookie.secure,
+    httpOnly: cookie.httpOnly, expires: cookie.expires)
+
+proc webViewCookies*(window: Window; url = ""):
+                     Future[CoreResultOf[seq[ProfileCookie]]] =
+  ## Read the engine's authoritative cookie store, including HttpOnly cookies.
+  ## Profile-file helpers below remain a persistence mirror and never pretend
+  ## to be the browser CookieManager.
+  let target = newFuture[CoreResultOf[seq[ProfileCookie]]](
+    "nimino.core.webViewCookies")
+  result = target
+  if window.isNil or window.closed or window.app.isNil:
+    target.complete(coreFailureOf[seq[ProfileCookie]](coreError(invalidState,
+      "window.webViewCookies")))
+    return
+  case window.app.backend
+  of nativeBackend:
+    if window.nativeView.isNil:
+      target.complete(coreFailureOf[seq[ProfileCookie]](coreError(invalidState,
+        "window.webViewCookies")))
+      return
+    let queried = native.getCookies(window.nativeView, url)
+    queried.addCallback(proc(completed:
+        Future[native.NativeResultOf[seq[native.NativeCookie]]]) {.gcsafe.} =
+      if target.finished:
+        return
+      if completed.failed:
+        target.complete(coreFailureOf[seq[ProfileCookie]](coreError(
+          nativeFailure, "window.webViewCookies",
+          detail = "native cookie query failed")))
+        return
+      let outcome = completed.read()
+      if not outcome.isOk:
+        target.complete(coreFailureOf[seq[ProfileCookie]](
+          outcome.failure.mapNativeError()))
+        return
+      var cookies: seq[ProfileCookie]
+      for cookie in outcome.value:
+        cookies.add(cookie.toProfileCookie())
+      target.complete(coreSuccessOf(cookies))
+    )
+  of wslBackend:
+    when defined(linux):
+      if not window.app.wslSupportsCookieManager():
+        target.complete(coreFailureOf[seq[ProfileCookie]](coreError(
+          platformUnavailable, "window.webViewCookies",
+          detail = "the connected WSL host does not expose CookieManager queries")))
+        return
+      if window.app.state != coreRunning or not window.app.wslUiStarted:
+        target.complete(coreFailureOf[seq[ProfileCookie]](coreError(
+          invalidState, "window.webViewCookies",
+          detail = "WSL CookieManager queries require an active UI session")))
+        return
+      let response = window.app.wslCall("native.webview.getCookies", $(%*{
+        "webViewId": $window.webViewId,
+        "url": url
+      }))
+      if not response.isOk:
+        target.complete(coreFailureOf[seq[ProfileCookie]](response.failure))
+        return
+      try:
+        let payload = parseJson(response.value.payload)
+        if payload.kind != JObject or not payload.hasKey("cookies") or
+            payload["cookies"].kind != JArray:
+          raise newException(ValueError, "missing cookies")
+        var cookies: seq[ProfileCookie]
+        for value in payload["cookies"].items:
+          if value.kind != JObject or not value.hasKey("name") or
+              not value.hasKey("value") or not value.hasKey("domain") or
+              not value.hasKey("path") or not value.hasKey("secure") or
+              not value.hasKey("httpOnly") or not value.hasKey("expires") or
+              value["name"].kind != JString or value["value"].kind != JString or
+              value["domain"].kind != JString or value["path"].kind != JString or
+              value["secure"].kind != JBool or value["httpOnly"].kind != JBool or
+              value["expires"].kind != JInt:
+            raise newException(ValueError, "malformed cookie")
+          cookies.add(ProfileCookie(name: value["name"].getStr(),
+            value: value["value"].getStr(), domain: value["domain"].getStr(),
+            path: value["path"].getStr(), secure: value["secure"].getBool(),
+            httpOnly: value["httpOnly"].getBool(),
+            expires: int64(value["expires"].getBiggestInt())))
+        target.complete(coreSuccessOf(cookies))
+      except CatchableError:
+        target.complete(coreFailureOf[seq[ProfileCookie]](coreError(
+          nativeFailure, "window.webViewCookies",
+          detail = "WSL CookieManager response is malformed")))
+    else:
+      target.complete(coreFailureOf[seq[ProfileCookie]](coreError(
+        platformUnavailable, "window.webViewCookies")))
+
+proc setWebViewCookie*(window: Window; cookie: ProfileCookie): Future[CoreResult] =
+  ## Set the browser cookie first and persist the same value only after the
+  ## engine confirms success. A successful Future therefore means both stores
+  ## agree; synchronous profile-only `writeCookie` remains available for
+  ## offline profile preparation.
+  let target = newFuture[CoreResult]("nimino.core.setWebViewCookie")
+  result = target
+  if window.isNil or window.closed or window.app.isNil:
+    target.complete(coreFailure(coreError(invalidState,
+      "window.setWebViewCookie")))
+    return
+  when defined(linux):
+    if window.app.backend == wslBackend:
+      if not window.app.wslSupportsCookieManager():
+        target.complete(coreFailure(coreError(platformUnavailable,
+          "window.setWebViewCookie",
+          detail = "the connected WSL host does not expose CookieManager mutation")))
+        return
+      if window.app.state != coreRunning or not window.app.wslUiStarted:
+        target.complete(coreFailure(coreError(invalidState,
+          "window.setWebViewCookie",
+          detail = "WSL CookieManager mutation requires an active UI session")))
+        return
+      let response = window.app.wslCall("native.webview.setCookie", $(%*{
+        "webViewId": $window.webViewId,
+        "cookie": {
+          "name": cookie.name, "value": cookie.value,
+          "domain": cookie.domain, "path": cookie.path,
+          "secure": cookie.secure, "httpOnly": cookie.httpOnly,
+          "expires": cookie.expires
+        }
+      }))
+      if not response.isOk:
+        target.complete(coreFailure(response.failure))
+        return
+      let written = writeProfileCookie(window.app.id, window.profileName, cookie)
+      target.complete(if written.isOk: coreSuccess() else: coreFailure(coreError(
+        osError, "window.setWebViewCookie", detail = written.error)))
+      return
+  if window.app.backend != nativeBackend or window.nativeView.isNil:
+    target.complete(coreFailure(coreError(platformUnavailable,
+      "window.setWebViewCookie",
+      detail = "the connected WSL host does not yet expose CookieManager mutation")))
+    return
+  let changed = native.setCookie(window.nativeView, cookie.toNativeCookie())
+  changed.addCallback(proc(completed: Future[native.NativeResult]) {.gcsafe.} =
+    if target.finished:
+      return
+    if completed.failed:
+      target.complete(coreFailure(coreError(nativeFailure,
+        "window.setWebViewCookie", detail = "native cookie mutation failed")))
+      return
+    let outcome = completed.read()
+    if not outcome.isOk:
+      target.complete(coreFailure(outcome.failure.mapNativeError()))
+      return
+    let written = writeProfileCookie(window.app.id, window.profileName, cookie)
+    if written.isOk:
+      target.complete(coreSuccess())
+    else:
+      target.complete(coreFailure(coreError(osError, "window.setWebViewCookie",
+        detail = written.error)))
+  )
+
+proc deleteWebViewCookie*(window: Window; cookie: ProfileCookie): Future[CoreResult] =
+  let target = newFuture[CoreResult]("nimino.core.deleteWebViewCookie")
+  result = target
+  if window.isNil or window.closed or window.app.isNil:
+    target.complete(coreFailure(coreError(invalidState,
+      "window.deleteWebViewCookie")))
+    return
+  when defined(linux):
+    if window.app.backend == wslBackend:
+      if not window.app.wslSupportsCookieManager():
+        target.complete(coreFailure(coreError(platformUnavailable,
+          "window.deleteWebViewCookie",
+          detail = "the connected WSL host does not expose CookieManager mutation")))
+        return
+      if window.app.state != coreRunning or not window.app.wslUiStarted:
+        target.complete(coreFailure(coreError(invalidState,
+          "window.deleteWebViewCookie",
+          detail = "WSL CookieManager mutation requires an active UI session")))
+        return
+      let response = window.app.wslCall("native.webview.deleteCookie", $(%*{
+        "webViewId": $window.webViewId,
+        "cookie": {
+          "name": cookie.name, "value": cookie.value,
+          "domain": cookie.domain, "path": cookie.path,
+          "secure": cookie.secure, "httpOnly": cookie.httpOnly,
+          "expires": cookie.expires
+        }
+      }))
+      if not response.isOk:
+        target.complete(coreFailure(response.failure))
+        return
+      let deleted = deleteProfileCookie(window.app.id, window.profileName,
+        cookie.domain, cookie.name, cookie.path)
+      target.complete(if deleted.isOk: coreSuccess() else: coreFailure(coreError(
+        osError, "window.deleteWebViewCookie", detail = deleted.error)))
+      return
+  if window.app.backend != nativeBackend or window.nativeView.isNil:
+    target.complete(coreFailure(coreError(platformUnavailable,
+      "window.deleteWebViewCookie",
+      detail = "the connected WSL host does not yet expose CookieManager mutation")))
+    return
+  let changed = native.deleteCookie(window.nativeView, cookie.toNativeCookie())
+  changed.addCallback(proc(completed: Future[native.NativeResult]) {.gcsafe.} =
+    if target.finished:
+      return
+    if completed.failed:
+      target.complete(coreFailure(coreError(nativeFailure,
+        "window.deleteWebViewCookie", detail = "native cookie mutation failed")))
+      return
+    let outcome = completed.read()
+    if not outcome.isOk:
+      target.complete(coreFailure(outcome.failure.mapNativeError()))
+      return
+    let deleted = deleteProfileCookie(window.app.id, window.profileName,
+      cookie.domain, cookie.name, cookie.path)
+    if deleted.isOk:
+      target.complete(coreSuccess())
+    else:
+      target.complete(coreFailure(coreError(osError,
+        "window.deleteWebViewCookie", detail = deleted.error)))
+  )
+
 proc writeCookie*(window: Window; cookie: ProfileCookie): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.writeCookie"))
@@ -1805,9 +2036,10 @@ proc deleteCookie*(window: Window; domain, name: string): CoreResult =
 proc evalJavaScript*(window: Window; script: string): Future[CoreResultOf[string]]
 
 proc syncDocumentCookies*(window: Window): Future[CoreResult] =
-  ## Persist non-HttpOnly cookies currently visible to the document. Browser
-  ## engines remain authoritative; this explicit operation only mirrors the
-  ## script-visible cookie string into Nimino's profile store.
+  ## Mirror the browser engine's CookieManager into the Nimino profile store.
+  ## Native Windows/Linux includes HttpOnly cookies; WSL retains the legacy
+  ## script-visible fallback until the authenticated host protocol advertises
+  ## a cookie-query capability.
   let target = newFuture[CoreResult]("nimino.core.syncDocumentCookies")
   if window.isNil or window.closed or window.app.isNil or window.lastUrl.len == 0:
     target.complete(coreFailure(coreError(invalidState, "window.syncDocumentCookies")))
@@ -1816,6 +2048,35 @@ proc syncDocumentCookies*(window: Window): Future[CoreResult] =
   if parsedUrl.hostname.len == 0:
     target.complete(coreFailure(coreError(invalidArgument, "window.syncDocumentCookies",
       detail = "current URL has no cookie domain")))
+    return target
+  var useEngineCookieManager = window.app.backend == nativeBackend
+  when defined(linux):
+    if window.app.backend == wslBackend and window.app.wslSupportsCookieManager():
+      useEngineCookieManager = true
+  if useEngineCookieManager:
+    let queried = window.webViewCookies(window.lastUrl)
+    queried.addCallback(proc(completed:
+        Future[CoreResultOf[seq[ProfileCookie]]]) {.gcsafe.} =
+      if target.finished:
+        return
+      if completed.failed:
+        target.complete(coreFailure(coreError(webViewError,
+          "window.syncDocumentCookies",
+          detail = "native cookie query failed")))
+        return
+      let outcome = completed.read()
+      if not outcome.isOk:
+        target.complete(coreFailure(outcome.failure))
+        return
+      for cookie in outcome.value:
+        let written = writeProfileCookie(window.app.id, window.profileName,
+          cookie)
+        if not written.isOk:
+          target.complete(coreFailure(coreError(osError,
+            "window.syncDocumentCookies", detail = written.error)))
+          return
+      target.complete(coreSuccess())
+    )
     return target
   let evaluation = window.evalJavaScript("document.cookie")
   evaluation.addCallback(proc(completed: Future[CoreResultOf[string]]) {.gcsafe.} =

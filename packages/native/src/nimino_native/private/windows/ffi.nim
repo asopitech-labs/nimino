@@ -290,6 +290,10 @@ const
     data1: 0xe9710a06'u32, data2: 0x1d1d'u16, data3: 0x49b2'u16,
     data4: [0x82'u8, 0x34'u8, 0x22'u8, 0x6f'u8, 0x35'u8, 0x84'u8, 0x6a'u8, 0xe5'u8]
   )
+  IidGetCookiesCompletedHandler* = WinGuid(
+    data1: 0x5a4f5069'u32, data2: 0x5c15'u16, data3: 0x47c3'u16,
+    data4: [0x86'u8, 0x46'u8, 0xf4'u8, 0xde'u8, 0x1c'u8, 0x11'u8, 0x66'u8, 0x70'u8]
+  )
   IidWebResourceRequestedEventHandler* = WinGuid(
     data1: 0xab00b74c'u32, data2: 0x15f1'u16, data3: 0x4646'u16,
       data4: [0x80'u8, 0xe8'u8, 0xe7'u8, 0x63'u8, 0x41'u8, 0xd2'u8, 0x5d'u8, 0x71'u8]
@@ -322,6 +326,23 @@ const
   Core13GetProfileSlot* = 105
   Profile2ClearBrowsingDataSlot* = 10
   CookieManagerDeleteAllCookiesSlot* = 10
+  CookieManagerGetCookiesSlot* = 5
+  CookieManagerCreateCookieSlot* = 3
+  CookieManagerAddOrUpdateCookieSlot* = 6
+  CookieManagerDeleteCookieSlot* = 7
+  CookieListGetCountSlot* = 3
+  CookieListGetValueAtIndexSlot* = 4
+  CookieGetNameSlot* = 3
+  CookieGetValueSlot* = 4
+  CookieGetDomainSlot* = 6
+  CookieGetPathSlot* = 7
+  CookieGetExpiresSlot* = 8
+  CookieGetIsHttpOnlySlot* = 10
+  CookieGetIsSecureSlot* = 14
+  CookieGetIsSessionSlot* = 16
+  CookiePutExpiresSlot* = 9
+  CookiePutIsHttpOnlySlot* = 11
+  CookiePutIsSecureSlot* = 15
 
   ## COREWEBVIEW2_BROWSING_DATA_KINDS values used by Nimino's profile-data
   ## model.  They are flags, so callers may combine them with `or`.
@@ -544,6 +565,132 @@ proc cookieManagerDeleteAllCookies*(cookieManager: pointer): HResult {.inline.} 
     cast[ptr ComInterface](cookieManager).vtable[CookieManagerDeleteAllCookiesSlot]
   )
   dispatch(cookieManager)
+
+proc cookieManagerGetCookies*(cookieManager: pointer; uri: WideCString;
+                              handler: pointer): HResult {.inline.} =
+  if cookieManager.isNil or handler.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer; uri: WideCString;
+      handler: pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookieManager).vtable[CookieManagerGetCookiesSlot]
+  )
+  dispatch(cookieManager, uri, handler)
+
+proc cookieManagerCreateCookie*(cookieManager: pointer; name, value, domain,
+                                path: WideCString; cookie: ptr pointer): HResult {.inline.} =
+  if cookieManager.isNil or cookie.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer; name, value, domain,
+      path: WideCString; cookie: ptr pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookieManager).vtable[CookieManagerCreateCookieSlot]
+  )
+  dispatch(cookieManager, name, value, domain, path, cookie)
+
+proc cookieManagerAddOrUpdateCookie*(cookieManager, cookie: pointer): HResult {.inline.} =
+  if cookieManager.isNil or cookie.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self, cookie: pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookieManager).vtable[CookieManagerAddOrUpdateCookieSlot]
+  )
+  dispatch(cookieManager, cookie)
+
+proc cookieManagerDeleteCookie*(cookieManager, cookie: pointer): HResult {.inline.} =
+  if cookieManager.isNil or cookie.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self, cookie: pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookieManager).vtable[CookieManagerDeleteCookieSlot]
+  )
+  dispatch(cookieManager, cookie)
+
+proc cookieListGetCount*(cookies: pointer; count: ptr uint32): HResult {.inline.} =
+  if cookies.isNil or count.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer; count: ptr uint32): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookies).vtable[CookieListGetCountSlot]
+  )
+  dispatch(cookies, count)
+
+proc cookieListGetValueAtIndex*(cookies: pointer; index: uint32;
+                                value: ptr pointer): HResult {.inline.} =
+  if cookies.isNil or value.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer; index: uint32;
+      value: ptr pointer): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookies).vtable[CookieListGetValueAtIndexSlot]
+  )
+  dispatch(cookies, index, value)
+
+proc cookieGetString(cookie: pointer; slot: int;
+                     value: ptr WideCString): HResult {.inline.} =
+  if cookie.isNil or value.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer;
+      value: ptr WideCString): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookie).vtable[slot]
+  )
+  dispatch(cookie, value)
+
+proc cookieGetName*(cookie: pointer; value: ptr WideCString): HResult {.inline.} =
+  cookieGetString(cookie, CookieGetNameSlot, value)
+
+proc cookieGetValue*(cookie: pointer; value: ptr WideCString): HResult {.inline.} =
+  cookieGetString(cookie, CookieGetValueSlot, value)
+
+proc cookieGetDomain*(cookie: pointer; value: ptr WideCString): HResult {.inline.} =
+  cookieGetString(cookie, CookieGetDomainSlot, value)
+
+proc cookieGetPath*(cookie: pointer; value: ptr WideCString): HResult {.inline.} =
+  cookieGetString(cookie, CookieGetPathSlot, value)
+
+proc cookieGetExpires*(cookie: pointer; value: ptr cdouble): HResult {.inline.} =
+  if cookie.isNil or value.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer;
+      value: ptr cdouble): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookie).vtable[CookieGetExpiresSlot]
+  )
+  dispatch(cookie, value)
+
+proc cookieGetBool(cookie: pointer; slot: int;
+                   value: ptr WinBool): HResult {.inline.} =
+  if cookie.isNil or value.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer;
+      value: ptr WinBool): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookie).vtable[slot]
+  )
+  dispatch(cookie, value)
+
+proc cookieGetIsHttpOnly*(cookie: pointer; value: ptr WinBool): HResult {.inline.} =
+  cookieGetBool(cookie, CookieGetIsHttpOnlySlot, value)
+
+proc cookieGetIsSecure*(cookie: pointer; value: ptr WinBool): HResult {.inline.} =
+  cookieGetBool(cookie, CookieGetIsSecureSlot, value)
+
+proc cookieGetIsSession*(cookie: pointer; value: ptr WinBool): HResult {.inline.} =
+  cookieGetBool(cookie, CookieGetIsSessionSlot, value)
+
+proc cookiePutExpires*(cookie: pointer; value: cdouble): HResult {.inline.} =
+  if cookie.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer; value: cdouble): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookie).vtable[CookiePutExpiresSlot]
+  )
+  dispatch(cookie, value)
+
+proc cookiePutBool(cookie: pointer; slot: int; value: WinBool): HResult {.inline.} =
+  if cookie.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer; value: WinBool): HResult {.stdcall.}](
+    cast[ptr ComInterface](cookie).vtable[slot]
+  )
+  dispatch(cookie, value)
+
+proc cookiePutIsHttpOnly*(cookie: pointer; value: WinBool): HResult {.inline.} =
+  cookiePutBool(cookie, CookiePutIsHttpOnlySlot, value)
+
+proc cookiePutIsSecure*(cookie: pointer; value: WinBool): HResult {.inline.} =
+  cookiePutBool(cookie, CookiePutIsSecureSlot, value)
 
 proc core4AddDownloadStarting*(core4: pointer; handler: pointer;
                                token: ptr EventRegistrationToken): HResult {.inline.} =

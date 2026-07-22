@@ -25,6 +25,12 @@ type
     release: proc(self: pointer): uint32 {.stdcall.}
     invoke: proc(self: pointer; errorCode: HResult): HResult {.stdcall.}
 
+  GetCookiesCompletedVTable = object
+    queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
+    addRef: proc(self: pointer): uint32 {.stdcall.}
+    release: proc(self: pointer): uint32 {.stdcall.}
+    invoke: proc(self: pointer; errorCode: HResult; cookies: pointer): HResult {.stdcall.}
+
   AddScriptToExecuteOnDocumentCreatedCompletedVTable = object
     queryInterface: proc(self: pointer; iid: ptr WinGuid; outInstance: ptr pointer): HResult {.stdcall.}
     addRef: proc(self: pointer): uint32 {.stdcall.}
@@ -96,6 +102,11 @@ type
 
   ClearBrowsingDataCompletedHandler = object
     vtable: ptr ClearBrowsingDataCompletedVTable
+    references: Atomic[int]
+    request: pointer
+
+  GetCookiesCompletedHandler = object
+    vtable: ptr GetCookiesCompletedVTable
     references: Atomic[int]
     request: pointer
 
@@ -260,6 +271,22 @@ proc clearBrowsingDataQueryInterface(self: pointer; iid: ptr WinGuid;
                                      outInstance: ptr pointer): HResult {.stdcall.} =
   queryCallback(self, iid, outInstance, IidClearBrowsingDataCompletedHandler,
     clearBrowsingDataAddRef)
+
+proc getCookiesAddRef(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr GetCookiesCompletedHandler](self)
+  uint32(handler.references.fetchAdd(1, moRelaxed) + 1)
+
+proc getCookiesRelease(self: pointer): uint32 {.stdcall.} =
+  let handler = cast[ptr GetCookiesCompletedHandler](self)
+  let remaining = handler.references.fetchSub(1, moAcquireRelease) - 1
+  if remaining == 0:
+    dealloc(handler)
+  uint32(remaining)
+
+proc getCookiesQueryInterface(self: pointer; iid: ptr WinGuid;
+                              outInstance: ptr pointer): HResult {.stdcall.} =
+  queryCallback(self, iid, outInstance, IidGetCookiesCompletedHandler,
+    getCookiesAddRef)
 
 proc addDocumentStartScriptAddRef(self: pointer): uint32 {.stdcall.} =
   let handler = cast[ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler](self)
@@ -582,6 +609,8 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
 proc executeScriptInvoke(self: pointer; errorCode: HResult;
                          jsonResult: WideCString): HResult {.stdcall.}
 proc clearBrowsingDataInvoke(self: pointer; errorCode: HResult): HResult {.stdcall.}
+proc getCookiesInvoke(self: pointer; errorCode: HResult;
+                      cookies: pointer): HResult {.stdcall.}
 proc addDocumentStartScriptInvoke(self: pointer; errorCode: HResult;
                                   scriptId: WideCString): HResult {.stdcall.}
 proc webMessageInvoke(self: pointer; sender, args: pointer): HResult {.stdcall.}
@@ -615,6 +644,13 @@ var clearBrowsingDataCompletedVTable = ClearBrowsingDataCompletedVTable(
   addRef: clearBrowsingDataAddRef,
   release: clearBrowsingDataRelease,
   invoke: clearBrowsingDataInvoke
+)
+
+var getCookiesCompletedVTable = GetCookiesCompletedVTable(
+  queryInterface: getCookiesQueryInterface,
+  addRef: getCookiesAddRef,
+  release: getCookiesRelease,
+  invoke: getCookiesInvoke
 )
 
 var addDocumentStartScriptCompletedVTable = AddScriptToExecuteOnDocumentCreatedCompletedVTable(
@@ -725,6 +761,14 @@ proc newClearBrowsingDataCompletedHandler(request: NativeBrowsingDataRequest):
   result.references.store(1, moRelaxed)
   result.request = cast[pointer](request)
 
+proc newGetCookiesCompletedHandler(request: NativeCookieQueryRequest):
+    ptr GetCookiesCompletedHandler =
+  result = cast[ptr GetCookiesCompletedHandler](
+    alloc0(sizeof(GetCookiesCompletedHandler)))
+  result.vtable = addr getCookiesCompletedVTable
+  result.references.store(1, moRelaxed)
+  result.request = cast[pointer](request)
+
 proc newAddDocumentStartScriptCompletedHandler(view: NativeWebView):
     ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler =
   result = cast[ptr AddScriptToExecuteOnDocumentCreatedCompletedHandler](
@@ -789,6 +833,10 @@ proc windowsDisposeView(view: NativeWebView) =
   view.failOutstandingScripts(nativeError(invalidState, "webview.evalJavaScript"))
   view.failOutstandingBrowsingDataRequests(nativeError(invalidState,
     "webview.clearBrowsingData", detail = "the WebView closed before clearing completed"))
+  view.failOutstandingCookieQueries(nativeError(invalidState,
+    "webview.getCookies", detail = "the WebView closed before the cookie query completed"))
+  view.failOutstandingCookieMutations(nativeError(invalidState,
+    "webview.setCookie", detail = "the WebView closed before the cookie mutation completed"))
   if view.messageRegistered and view.platformView != nil:
     let token = EventRegistrationToken(value: view.messageRegistrationToken)
     discard coreRemoveWebMessageReceived(view.platformView, token)
@@ -1596,6 +1644,91 @@ proc windowsClearBrowsingData(view: NativeWebView;
     return failure(hresultError("webview.clearBrowsingData", cleared))
   success()
 
+proc windowsGetCookies(view: NativeWebView;
+                       request: NativeCookieQueryRequest): NativeResult =
+  if view.isNil or view.platformView.isNil or request.isNil:
+    return failure(nativeError(invalidState, "webview.getCookies"))
+  var core2: pointer
+  let queried = comQueryInterface(view.platformView, addr IidCoreWebView2_2,
+    addr core2)
+  if not succeeded(queried) or core2.isNil:
+    return failure(unavailableWebView2Interface("webview.getCookies",
+      "ICoreWebView2_2", queried))
+  var cookieManager: pointer
+  let managerStatus = core2GetCookieManager(core2, addr cookieManager)
+  discard comRelease(core2)
+  if not succeeded(managerStatus) or cookieManager.isNil:
+    return failure(if succeeded(managerStatus):
+        nativeError(webViewError, "webview.getCookies",
+          detail = "WebView2 returned a nil CookieManager")
+      else:
+        hresultError("webview.getCookies", managerStatus))
+  let handler = newGetCookiesCompletedHandler(request)
+  GC_ref(request)
+  let uri = newWideCString(request.url)
+  let status = cookieManagerGetCookies(cookieManager, uri,
+    cast[pointer](handler))
+  discard getCookiesRelease(handler)
+  discard comRelease(cookieManager)
+  if not succeeded(status):
+    GC_unref(request)
+    return failure(hresultError("webview.getCookies", status))
+  success()
+
+proc windowsMutateCookie(view: NativeWebView;
+                         request: NativeCookieMutationRequest): NativeResult =
+  if view.isNil or view.platformView.isNil or request.isNil:
+    return failure(nativeError(invalidState, "webview.setCookie"))
+  let operation = if request.kind == nativeCookieSet:
+      "webview.setCookie"
+    else:
+      "webview.deleteCookie"
+  var core2: pointer
+  let queried = comQueryInterface(view.platformView, addr IidCoreWebView2_2,
+    addr core2)
+  if not succeeded(queried) or core2.isNil:
+    return failure(unavailableWebView2Interface(operation,
+      "ICoreWebView2_2", queried))
+  var manager: pointer
+  let managerStatus = core2GetCookieManager(core2, addr manager)
+  discard comRelease(core2)
+  if not succeeded(managerStatus) or manager.isNil:
+    return failure(if succeeded(managerStatus):
+        nativeError(webViewError, operation,
+          detail = "WebView2 returned a nil CookieManager")
+      else:
+        hresultError(operation, managerStatus))
+  let path = if request.cookie.path.len == 0: "/" else: request.cookie.path
+  var cookie: pointer
+  let created = cookieManagerCreateCookie(manager,
+    newWideCString(request.cookie.name), newWideCString(request.cookie.value),
+    newWideCString(request.cookie.domain), newWideCString(path), addr cookie)
+  if not succeeded(created) or cookie.isNil:
+    discard comRelease(manager)
+    return failure(if succeeded(created):
+        nativeError(webViewError, operation,
+          detail = "WebView2 returned a nil cookie")
+      else:
+        hresultError(operation, created))
+  var status = cookiePutIsSecure(cookie,
+    if request.cookie.secure: 1 else: 0)
+  if succeeded(status):
+    status = cookiePutIsHttpOnly(cookie,
+      if request.cookie.httpOnly: 1 else: 0)
+  if succeeded(status) and request.cookie.expires > 0:
+    status = cookiePutExpires(cookie, cdouble(request.cookie.expires))
+  if succeeded(status):
+    status = if request.kind == nativeCookieSet:
+        cookieManagerAddOrUpdateCookie(manager, cookie)
+      else:
+        cookieManagerDeleteCookie(manager, cookie)
+  discard comRelease(cookie)
+  discard comRelease(manager)
+  let outcome = if succeeded(status): success() else: failure(hresultError(
+    operation, status))
+  view.completeCookieMutation(request, outcome)
+  success()
+
 proc windowsConfigureMessageBridge(view: NativeWebView): NativeResult =
   if view.platformView.isNil:
     return failure(nativeError(invalidState, "webview.onMessage"))
@@ -1994,6 +2127,113 @@ proc clearBrowsingDataInvoke(self: pointer; errorCode: HResult): HResult {.stdca
       )))
   elif request.future != nil and not request.future.finished:
     request.future.complete(failure(nativeError(invalidState, "webview.clearBrowsingData")))
+  GC_unref(request)
+  S_OK
+
+proc copiedCookieString(status: HResult; value: WideCString):
+    NativeResultOf[string] =
+  let copied = if succeeded(status) and value != nil: $value else: ""
+  if value != nil:
+    coTaskMemFree(cast[pointer](value))
+  if not succeeded(status):
+    failureOf[string](hresultError("webview.getCookies", status))
+  else:
+    successOf(copied)
+
+proc windowsCopyCookie(cookie: pointer): NativeResultOf[NativeCookie] =
+  if cookie.isNil:
+    return failureOf[NativeCookie](nativeError(webViewError,
+      "webview.getCookies", detail = "WebView2 returned a nil cookie"))
+  var raw: WideCString
+  var status = cookieGetName(cookie, addr raw)
+  var copied = copiedCookieString(status, raw)
+  if not copied.isOk:
+    return failureOf[NativeCookie](copied.failure)
+  var nativeCookie: NativeCookie
+  nativeCookie.name = copied.value
+  raw = nil
+  status = cookieGetValue(cookie, addr raw)
+  copied = copiedCookieString(status, raw)
+  if not copied.isOk:
+    return failureOf[NativeCookie](copied.failure)
+  nativeCookie.value = copied.value
+  raw = nil
+  status = cookieGetDomain(cookie, addr raw)
+  copied = copiedCookieString(status, raw)
+  if not copied.isOk:
+    return failureOf[NativeCookie](copied.failure)
+  nativeCookie.domain = copied.value
+  raw = nil
+  status = cookieGetPath(cookie, addr raw)
+  copied = copiedCookieString(status, raw)
+  if not copied.isOk:
+    return failureOf[NativeCookie](copied.failure)
+  nativeCookie.path = copied.value
+  var secure, httpOnly, session: WinBool
+  var expires: cdouble
+  for status in [
+      cookieGetIsSecure(cookie, addr secure),
+      cookieGetIsHttpOnly(cookie, addr httpOnly),
+      cookieGetIsSession(cookie, addr session),
+      cookieGetExpires(cookie, addr expires)]:
+    if not succeeded(status):
+      return failureOf[NativeCookie](hresultError("webview.getCookies", status))
+  nativeCookie.secure = secure != 0
+  nativeCookie.httpOnly = httpOnly != 0
+  nativeCookie.expires = if session != 0: 0 else: int64(expires)
+  successOf(nativeCookie)
+
+proc getCookiesInvoke(self: pointer; errorCode: HResult;
+                      cookies: pointer): HResult {.stdcall.} =
+  let handler = cast[ptr GetCookiesCompletedHandler](self)
+  let request = cast[NativeCookieQueryRequest](handler.request)
+  if request.isNil:
+    return S_OK
+  let view = request.view
+  var outcome: NativeResultOf[seq[NativeCookie]]
+  if not succeeded(errorCode):
+    outcome = failureOf[seq[NativeCookie]](hresultError(
+      "webview.getCookies", errorCode))
+  elif cookies.isNil:
+    outcome = failureOf[seq[NativeCookie]](nativeError(webViewError,
+      "webview.getCookies", detail = "WebView2 returned a nil cookie list"))
+  else:
+    var count: uint32
+    let countStatus = cookieListGetCount(cookies, addr count)
+    if not succeeded(countStatus):
+      outcome = failureOf[seq[NativeCookie]](hresultError(
+        "webview.getCookies", countStatus))
+    else:
+      var copiedCookies: seq[NativeCookie]
+      var copyFailure: NativeError
+      var failed = false
+      for index in 0'u32 ..< count:
+        var cookie: pointer
+        let valueStatus = cookieListGetValueAtIndex(cookies, index, addr cookie)
+        if not succeeded(valueStatus) or cookie.isNil:
+          copyFailure = if succeeded(valueStatus):
+              nativeError(webViewError, "webview.getCookies",
+                detail = "WebView2 returned a nil cookie")
+            else:
+              hresultError("webview.getCookies", valueStatus)
+          failed = true
+          break
+        let copied = windowsCopyCookie(cookie)
+        discard comRelease(cookie)
+        if not copied.isOk:
+          copyFailure = copied.failure
+          failed = true
+          break
+        copiedCookies.add(copied.value)
+      outcome = if failed:
+          failureOf[seq[NativeCookie]](copyFailure)
+        else:
+          successOf(copiedCookies)
+  if view != nil:
+    view.completeCookieQuery(request, outcome)
+  elif request.future != nil and not request.future.finished:
+    request.future.complete(failureOf[seq[NativeCookie]](nativeError(
+      invalidState, "webview.getCookies")))
   GC_unref(request)
   S_OK
 

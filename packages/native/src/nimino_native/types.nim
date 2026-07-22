@@ -105,6 +105,17 @@ type
     nativeBrowsingLocalStorage
     nativeBrowsingCache
 
+  NativeCookie* = object
+    ## Cookie values copied out of the platform engine. Strings never borrow
+    ## COM, WebKitGTK, or libsoup storage.
+    name*: string
+    value*: string
+    domain*: string
+    path*: string
+    secure*: bool
+    httpOnly*: bool
+    expires*: int64
+
   NativeScriptRequest = ref object
     view: NativeWebView
     script: string
@@ -113,6 +124,22 @@ type
   NativeBrowsingDataRequest = ref object
     view: NativeWebView
     kinds: set[NativeBrowsingDataKind]
+    future: Future[NativeResult]
+
+  NativeCookieQueryRequest = ref object
+    view: NativeWebView
+    url: string
+    future: Future[NativeResultOf[seq[NativeCookie]]]
+
+  NativeCookieMutationKind = enum
+    nativeCookieSet
+    nativeCookieDelete
+
+  NativeCookieMutationRequest = ref object
+    view: NativeWebView
+    kind: NativeCookieMutationKind
+    cookie: NativeCookie
+    platformCookie: pointer
     future: Future[NativeResult]
 
   NativeFileDialogRequest = ref object
@@ -238,6 +265,8 @@ type
     pendingScripts: seq[NativeScriptRequest]
     activeScripts: seq[NativeScriptRequest]
     activeBrowsingDataRequests: seq[NativeBrowsingDataRequest]
+    activeCookieQueries: seq[NativeCookieQueryRequest]
+    activeCookieMutations: seq[NativeCookieMutationRequest]
 
 when defined(linux) and not defined(niminoWsl):
   proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.}
@@ -248,6 +277,10 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc linuxClearBrowsingData(view: NativeWebView;
                               request: NativeBrowsingDataRequest): NativeResult
+  proc linuxGetCookies(view: NativeWebView;
+                       request: NativeCookieQueryRequest): NativeResult
+  proc linuxMutateCookie(view: NativeWebView;
+                         request: NativeCookieMutationRequest): NativeResult
   proc linuxSendNativeNotification(app: NativeApp;
                                    notification: NativeNotification): NativeResult
   proc linuxRegisterCustomProtocol(app: NativeApp): NativeResult
@@ -259,6 +292,10 @@ elif defined(windows):
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc windowsClearBrowsingData(view: NativeWebView;
                                 request: NativeBrowsingDataRequest): NativeResult
+  proc windowsGetCookies(view: NativeWebView;
+                         request: NativeCookieQueryRequest): NativeResult
+  proc windowsMutateCookie(view: NativeWebView;
+                           request: NativeCookieMutationRequest): NativeResult
   proc windowsSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
   proc windowsReplaceDocumentStartScript(view: NativeWebView;
                                           script: string): NativeResult
@@ -320,6 +357,49 @@ proc failOutstandingBrowsingDataRequests(view: NativeWebView;
   ## return. Do not release them here; callbacks retain responsibility for the
   ## matching GC_unref after a view has closed.
   view.activeBrowsingDataRequests.setLen(0)
+
+proc completeCookieQuery(view: NativeWebView; request: NativeCookieQueryRequest;
+                         queried: NativeResultOf[seq[NativeCookie]]) {.gcsafe.} =
+  if request.isNil:
+    return
+  if request.future != nil and not request.future.finished:
+    request.future.complete(queried)
+  if view != nil and view.activeCookieQueries.len > 0:
+    for index in countdown(view.activeCookieQueries.high, 0):
+      if cast[pointer](view.activeCookieQueries[index]) == cast[pointer](request):
+        view.activeCookieQueries.delete(index)
+        break
+
+proc failOutstandingCookieQueries(view: NativeWebView;
+                                  error: NativeError) {.gcsafe.} =
+  if view.isNil:
+    return
+  for request in view.activeCookieQueries:
+    if request.future != nil and not request.future.finished:
+      request.future.complete(failureOf[seq[NativeCookie]](error))
+  view.activeCookieQueries.setLen(0)
+
+proc completeCookieMutation(view: NativeWebView;
+                            request: NativeCookieMutationRequest;
+                            outcome: NativeResult) {.gcsafe.} =
+  if request.isNil:
+    return
+  if request.future != nil and not request.future.finished:
+    request.future.complete(outcome)
+  if view != nil and view.activeCookieMutations.len > 0:
+    for index in countdown(view.activeCookieMutations.high, 0):
+      if cast[pointer](view.activeCookieMutations[index]) == cast[pointer](request):
+        view.activeCookieMutations.delete(index)
+        break
+
+proc failOutstandingCookieMutations(view: NativeWebView;
+                                    error: NativeError) {.gcsafe.} =
+  if view.isNil:
+    return
+  for request in view.activeCookieMutations:
+    if request.future != nil and not request.future.finished:
+      request.future.complete(failure(error))
+  view.activeCookieMutations.setLen(0)
 
 proc releaseCallbackReferences(view: NativeWebView) =
   ## Native signal/COM registrations are removed by each backend before this
@@ -1142,6 +1222,99 @@ proc clearBrowsingData*(view: NativeWebView;
   else:
     result.complete(failure(nativeError(unsupported, "webview.clearBrowsingData",
       detail = "live browser data clearing is unavailable on this platform")))
+
+proc getCookies*(view: NativeWebView; url = ""):
+                 Future[NativeResultOf[seq[NativeCookie]]] =
+  ## Query the browser engine's CookieManager. An empty URL returns the
+  ## complete profile cookie store; HTTP(S) URLs filter using engine policy.
+  let request = NativeCookieQueryRequest(
+    view: view,
+    url: url,
+    future: newFuture[NativeResultOf[seq[NativeCookie]]](
+      "nimino.native.getCookies")
+  )
+  result = request.future
+  if view.isNil or view.state in {closing, closed}:
+    result.complete(failureOf[seq[NativeCookie]](nativeError(invalidState,
+      "webview.getCookies")))
+    return
+  if url.len > 0:
+    let lower = url.toLowerAscii()
+    if not (lower.startsWith("http://") or lower.startsWith("https://")) or
+        url.find({'\r', '\n', '\0'}) >= 0:
+      result.complete(failureOf[seq[NativeCookie]](nativeError(invalidArgument,
+        "webview.getCookies", detail = "cookie URL must use HTTP(S)")))
+      return
+  if view.state != ready or view.platformView.isNil:
+    result.complete(failureOf[seq[NativeCookie]](nativeError(invalidState,
+      "webview.getCookies", detail = "WebView must be ready before cookies can be queried")))
+    return
+  view.activeCookieQueries.add(request)
+  when defined(windows):
+    let started = view.windowsGetCookies(request)
+    if not started.isOk:
+      view.completeCookieQuery(request, failureOf[seq[NativeCookie]](started.failure))
+  elif defined(linux) and not defined(niminoWsl):
+    let started = view.linuxGetCookies(request)
+    if not started.isOk:
+      view.completeCookieQuery(request, failureOf[seq[NativeCookie]](started.failure))
+  else:
+    view.completeCookieQuery(request, failureOf[seq[NativeCookie]](nativeError(
+      unsupported, "webview.getCookies",
+      detail = "live cookie queries are unavailable on this platform")))
+
+proc validNativeCookie(cookie: NativeCookie): bool =
+  if cookie.name.len == 0 or cookie.domain.len == 0 or
+      (cookie.path.len > 0 and not cookie.path.startsWith("/")):
+    return false
+  for character in cookie.name:
+    if not (character.isAlphaNumeric or character in
+        {'!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~'}):
+      return false
+  for value in [cookie.value, cookie.domain, cookie.path]:
+    if value.find({'\0', '\r', '\n'}) >= 0:
+      return false
+  true
+
+proc mutateCookie(view: NativeWebView; cookie: NativeCookie;
+                  kind: NativeCookieMutationKind; operation: string):
+                  Future[NativeResult] =
+  let request = NativeCookieMutationRequest(
+    view: view,
+    kind: kind,
+    cookie: cookie,
+    future: newFuture[NativeResult]("nimino.native." & operation)
+  )
+  result = request.future
+  if view.isNil or view.state in {closing, closed}:
+    result.complete(failure(nativeError(invalidState, operation)))
+    return
+  if not cookie.validNativeCookie():
+    result.complete(failure(nativeError(invalidArgument, operation,
+      detail = "cookie name, domain, or path is invalid")))
+    return
+  if view.state != ready or view.platformView.isNil:
+    result.complete(failure(nativeError(invalidState, operation,
+      detail = "WebView must be ready before cookies can be changed")))
+    return
+  view.activeCookieMutations.add(request)
+  when defined(windows):
+    let started = view.windowsMutateCookie(request)
+    if not started.isOk:
+      view.completeCookieMutation(request, started)
+  elif defined(linux) and not defined(niminoWsl):
+    let started = view.linuxMutateCookie(request)
+    if not started.isOk:
+      view.completeCookieMutation(request, started)
+  else:
+    view.completeCookieMutation(request, failure(nativeError(unsupported,
+      operation, detail = "live cookie mutation is unavailable on this platform")))
+
+proc setCookie*(view: NativeWebView; cookie: NativeCookie): Future[NativeResult] =
+  view.mutateCookie(cookie, nativeCookieSet, "webview.setCookie")
+
+proc deleteCookie*(view: NativeWebView; cookie: NativeCookie): Future[NativeResult] =
+  view.mutateCookie(cookie, nativeCookieDelete, "webview.deleteCookie")
 
 proc openFileDialog*(window: NativeWindow;
                      options: NativeFileDialogOptions):

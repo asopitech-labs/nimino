@@ -7,6 +7,7 @@ const
   LibGio = "libgio-2.0.so.0"
   LibGObject = "libgobject-2.0.so.0"
   LibWebKit = "libwebkitgtk-6.0.so.4"
+  LibSoup = "libsoup-3.0.so.0"
 
 type
   GApplication* {.incompleteStruct.} = object
@@ -28,6 +29,7 @@ type
   GInputStream* {.incompleteStruct.} = object
   GBytes* {.incompleteStruct.} = object
   WebKitWebsiteDataManager* {.incompleteStruct.} = object
+  WebKitCookieManager* {.incompleteStruct.} = object
   WebKitUserContentManager* {.incompleteStruct.} = object
   WebKitUserScript* {.incompleteStruct.} = object
   WebKitPolicyDecision* {.incompleteStruct.} = object
@@ -39,6 +41,12 @@ type
   GAsyncResult* {.incompleteStruct.} = object
   GFile* {.incompleteStruct.} = object
   GListModel* {.incompleteStruct.} = object
+  SoupCookie* {.incompleteStruct.} = object
+  GDateTime* {.incompleteStruct.} = object
+  GList* {.bycopy.} = object
+    data*: pointer
+    next*: ptr GList
+    prev*: ptr GList
   GError* {.bycopy.} = object
     domain*: uint32
     code*: cint
@@ -47,6 +55,7 @@ type
   JSCContext* {.incompleteStruct.} = object
   JSCException* {.incompleteStruct.} = object
   GClosureNotify* = proc(data: pointer; closure: pointer) {.cdecl.}
+  GDestroyNotify* = proc(data: pointer) {.cdecl.}
   GAsyncReadyCallback* = proc(sourceObject: pointer; asyncResult: ptr GAsyncResult;
                               userData: pointer) {.cdecl.}
   GSourceFunc* = proc(data: pointer): cint {.cdecl.}
@@ -188,6 +197,16 @@ proc g_filename_to_uri*(filename, hostname: cstring; error: ptr ptr GError): cst
   {.cdecl, importc, dynlib: LibGlib.}
 proc g_error_free*(error: ptr GError)
   {.cdecl, importc, dynlib: LibGlib.}
+proc g_list_free*(list: ptr GList)
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_list_free_full*(list: ptr GList; freeFunc: GDestroyNotify)
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_date_time_to_unix*(dateTime: ptr GDateTime): int64
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_date_time_new_from_unix_utc*(unixTime: int64): ptr GDateTime
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_date_time_unref*(dateTime: ptr GDateTime)
+  {.cdecl, importc, dynlib: LibGlib.}
 proc g_file_get_path*(file: ptr GFile): cstring
   {.cdecl, importc, dynlib: LibGio.}
 
@@ -259,6 +278,72 @@ proc webkit_network_session_new*(dataDirectory, cacheDirectory: cstring):
 proc webkit_network_session_get_website_data_manager*(session: ptr WebKitNetworkSession):
     ptr WebKitWebsiteDataManager
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_network_session_get_cookie_manager*(session: ptr WebKitNetworkSession):
+    ptr WebKitCookieManager
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_cookie_manager_get_cookies*(manager: ptr WebKitCookieManager;
+                                        uri: cstring; cancellable: pointer;
+                                        callback: GAsyncReadyCallback;
+                                        userData: pointer)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_cookie_manager_get_cookies_finish*(manager: ptr WebKitCookieManager;
+                                               asyncResult: ptr GAsyncResult;
+                                               error: ptr ptr GError): ptr GList
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_cookie_manager_get_all_cookies*(manager: ptr WebKitCookieManager;
+                                            cancellable: pointer;
+                                            callback: GAsyncReadyCallback;
+                                            userData: pointer)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_cookie_manager_get_all_cookies_finish*(manager: ptr WebKitCookieManager;
+                                                   asyncResult: ptr GAsyncResult;
+                                                   error: ptr ptr GError): ptr GList
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_cookie_manager_add_cookie*(manager: ptr WebKitCookieManager;
+                                      cookie: ptr SoupCookie;
+                                      cancellable: pointer;
+                                      callback: GAsyncReadyCallback;
+                                      userData: pointer)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_cookie_manager_add_cookie_finish*(manager: ptr WebKitCookieManager;
+                                             asyncResult: ptr GAsyncResult;
+                                             error: ptr ptr GError): cint
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_cookie_manager_delete_cookie*(manager: ptr WebKitCookieManager;
+                                         cookie: ptr SoupCookie;
+                                         cancellable: pointer;
+                                         callback: GAsyncReadyCallback;
+                                         userData: pointer)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_cookie_manager_delete_cookie_finish*(manager: ptr WebKitCookieManager;
+                                                asyncResult: ptr GAsyncResult;
+                                                error: ptr ptr GError): cint
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc soup_cookie_new*(name, value, domain, path: cstring;
+                     maxAge: cint): ptr SoupCookie
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_get_name*(cookie: ptr SoupCookie): cstring
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_get_value*(cookie: ptr SoupCookie): cstring
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_get_domain*(cookie: ptr SoupCookie): cstring
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_get_path*(cookie: ptr SoupCookie): cstring
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_get_expires*(cookie: ptr SoupCookie): ptr GDateTime
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_get_secure*(cookie: ptr SoupCookie): cint
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_get_http_only*(cookie: ptr SoupCookie): cint
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_set_secure*(cookie: ptr SoupCookie; secure: cint)
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_set_http_only*(cookie: ptr SoupCookie; httpOnly: cint)
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_set_expires*(cookie: ptr SoupCookie; expires: ptr GDateTime)
+  {.cdecl, importc, dynlib: LibSoup.}
+proc soup_cookie_free*(cookie: ptr SoupCookie)
+  {.cdecl, importc, dynlib: LibSoup.}
 proc webkit_web_view_load_uri*(view: ptr WebKitWebView; uri: cstring)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_load_html*(view: ptr WebKitWebView; content: cstring; baseUri: cstring)

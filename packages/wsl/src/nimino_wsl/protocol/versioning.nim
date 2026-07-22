@@ -10,6 +10,9 @@ const
   ## request/response lifecycle. The underlying WebView runtime can still
   ## reject a particular request as unsupported.
   WebViewProfileDataClearCapability* = "webViewProfileDataClear"
+  ## Host support for authenticated asynchronous CookieManager get/set/delete
+  ## relays. The installed WebView2 Runtime remains the final authority.
+  WebViewCookieManagerCapability* = "webViewCookieManager"
   NativeCapabilityNames* = [
     "multipleWebViews",
     "transparentWindow",
@@ -18,5 +21,6 @@ const
     "nativeNotification",
     "customProtocol",
     "webPermissionEvents",
-    WebViewProfileDataClearCapability
+    WebViewProfileDataClearCapability,
+    WebViewCookieManagerCapability
   ]

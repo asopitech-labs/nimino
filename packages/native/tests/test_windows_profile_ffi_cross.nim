@@ -9,6 +9,12 @@ static:
   doAssert Core13GetProfileSlot == 105
   doAssert Profile2ClearBrowsingDataSlot == 10
   doAssert CookieManagerDeleteAllCookiesSlot == 10
+  doAssert CookieManagerCreateCookieSlot == 3
+  doAssert CookieManagerGetCookiesSlot == 5
+  doAssert CookieManagerAddOrUpdateCookieSlot == 6
+  doAssert CookieManagerDeleteCookieSlot == 7
+  doAssert CookieListGetCountSlot == 3
+  doAssert CookieListGetValueAtIndexSlot == 4
 
 proc profileApiContract(core2, core13, profile2, cookieManager, handler: pointer) =
   var value: pointer

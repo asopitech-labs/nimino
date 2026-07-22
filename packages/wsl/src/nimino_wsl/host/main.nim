@@ -21,6 +21,14 @@ type
     request: ProtocolMessage
     future: Future[NativeResult]
 
+  PendingCookieQuery = object
+    request: ProtocolMessage
+    future: Future[NativeResultOf[seq[NativeCookie]]]
+
+  PendingCookieMutation = object
+    request: ProtocolMessage
+    future: Future[NativeResult]
+
   PendingFileDialog = object
     request: ProtocolMessage
     future: Future[NativeResultOf[seq[string]]]
@@ -32,6 +40,8 @@ type
     sessionId: string
     pendingEvaluations: seq[PendingEvaluation]
     pendingBrowsingDataClears: seq[PendingBrowsingDataClear]
+    pendingCookieQueries: seq[PendingCookieQuery]
+    pendingCookieMutations: seq[PendingCookieMutation]
     pendingFileDialogs: seq[PendingFileDialog]
     nextEventId: uint64
     nextPolicyRequestId: uint64
@@ -114,6 +124,7 @@ proc readyCapabilities(state: HostState): string =
   ## This names protocol support only. A specific WebView2 runtime can still
   ## reject the browser-engine operation in its structured completion.
   capabilities.add(WebViewProfileDataClearCapability)
+  capabilities.add(WebViewCookieManagerCapability)
   nativeCapabilitiesPayload(capabilities)
 
 proc stopForProtocolError(state: HostState; message: ProtocolMessage; detail: string) =
@@ -181,6 +192,63 @@ proc flushBrowsingDataClears(state: HostState) =
       return
     state.pendingBrowsingDataClears.delete(index)
 
+proc flushCookieQueries(state: HostState) =
+  var index = 0
+  while index < state.pendingCookieQueries.len:
+    let pending = state.pendingCookieQueries[index]
+    if not pending.future.finished:
+      inc index
+      continue
+    var response: ProtocolMessage
+    if pending.future.failed:
+      response = state.responseFor(pending.request,
+        error = "native.webview.getCookies failed")
+    else:
+      let queried = pending.future.read()
+      if not queried.isOk:
+        response = state.responseForNativeFailure(pending.request,
+          queried.failure)
+      else:
+        var values = newJArray()
+        for cookie in queried.value:
+          values.add(%*{
+            "name": cookie.name,
+            "value": cookie.value,
+            "domain": cookie.domain,
+            "path": cookie.path,
+            "secure": cookie.secure,
+            "httpOnly": cookie.httpOnly,
+            "expires": cookie.expires
+          })
+        response = state.responseFor(pending.request,
+          payload = $(%*{"cookies": values}))
+    if not state.writeMessage(response):
+      discard state.adapter.app.close()
+      return
+    state.pendingCookieQueries.delete(index)
+
+proc flushCookieMutations(state: HostState) =
+  var index = 0
+  while index < state.pendingCookieMutations.len:
+    let pending = state.pendingCookieMutations[index]
+    if not pending.future.finished:
+      inc index
+      continue
+    var response: ProtocolMessage
+    if pending.future.failed:
+      response = state.responseFor(pending.request,
+        error = "native CookieManager mutation failed")
+    else:
+      let changed = pending.future.read()
+      response = if changed.isOk:
+          state.responseFor(pending.request, payload = "{}")
+        else:
+          state.responseForNativeFailure(pending.request, changed.failure)
+    if not state.writeMessage(response):
+      discard state.adapter.app.close()
+      return
+    state.pendingCookieMutations.delete(index)
+
 proc flushFileDialogs(state: HostState) =
   var index = 0
   while index < state.pendingFileDialogs.len:
@@ -227,6 +295,18 @@ proc cancelPending(state: HostState; requestId: uint64) =
   while index < state.pendingEvaluations.len:
     if state.pendingEvaluations[index].request.requestId == requestId:
       state.pendingEvaluations.delete(index)
+    else:
+      inc index
+  index = 0
+  while index < state.pendingCookieQueries.len:
+    if state.pendingCookieQueries[index].request.requestId == requestId:
+      state.pendingCookieQueries.delete(index)
+    else:
+      inc index
+  index = 0
+  while index < state.pendingCookieMutations.len:
+    if state.pendingCookieMutations[index].request.requestId == requestId:
+      state.pendingCookieMutations.delete(index)
     else:
       inc index
   index = 0
@@ -418,6 +498,12 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
     elif action.value.kind == deferredBrowsingDataClear:
       state.pendingBrowsingDataClears.add(PendingBrowsingDataClear(
         request: message, future: action.value.browsingDataClear))
+    elif action.value.kind == deferredCookieQuery:
+      state.pendingCookieQueries.add(PendingCookieQuery(
+        request: message, future: action.value.cookieQuery))
+    elif action.value.kind == deferredCookieMutation:
+      state.pendingCookieMutations.add(PendingCookieMutation(
+        request: message, future: action.value.cookieMutation))
     elif action.value.kind == deferredFileDialog:
       state.pendingFileDialogs.add(PendingFileDialog(
         request: message, future: action.value.fileDialog))
@@ -453,6 +539,8 @@ proc pollHost(state: HostState) =
     state.handleRunningMessage(message)
   state.flushEvaluations()
   state.flushBrowsingDataClears()
+  state.flushCookieQueries()
+  state.flushCookieMutations()
   state.flushFileDialogs()
   state.flushMessages()
   state.flushErrors()
@@ -556,6 +644,10 @@ proc runHost(): int =
       discard state.writeMessage(state.responseFor(message,
         error = "browser data clearing requires the UI loop"))
       continue
+    if action.value.kind in {deferredCookieQuery, deferredCookieMutation}:
+      discard state.writeMessage(state.responseFor(message,
+        error = "CookieManager operations require the UI loop"))
+      continue
     if action.value.kind == deferredFileDialog:
       discard state.writeMessage(state.responseFor(message,
         error = "file dialogs require the UI loop"))
@@ -569,6 +661,8 @@ proc runHost(): int =
     of deferredResponse:
       discard
     of deferredBrowsingDataClear:
+      discard
+    of deferredCookieQuery, deferredCookieMutation:
       discard
     of deferredFileDialog:
       discard
@@ -584,6 +678,8 @@ proc runHost(): int =
       let finished = state.adapter.app.run()
       state.flushEvaluations()
       state.flushBrowsingDataClears()
+      state.flushCookieQueries()
+      state.flushCookieMutations()
       state.flushFileDialogs()
       state.flushMessages()
       state.flushErrors()

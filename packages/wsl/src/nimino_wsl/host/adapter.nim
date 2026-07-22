@@ -55,6 +55,8 @@ type
     startUiLoop
     deferredResponse
     deferredBrowsingDataClear
+    deferredCookieQuery
+    deferredCookieMutation
     deferredFileDialog
     shutdownHost
     restartHostForProfileReset
@@ -64,6 +66,8 @@ type
     payload*: string
     evaluation*: Future[NativeResultOf[string]]
     browsingDataClear*: Future[NativeResult]
+    cookieQuery*: Future[NativeResultOf[seq[NativeCookie]]]
+    cookieMutation*: Future[NativeResult]
     fileDialog*: Future[NativeResultOf[seq[string]]]
 
   HostAdapter* = ref object
@@ -863,6 +867,65 @@ proc handleClearBrowsingData(adapter: HostAdapter;
     browsingDataClear: adapter.webViews[webViewId.value].clearBrowsingData(kinds.value)
   ))
 
+proc requiredNativeCookie(payload: JsonNode): ProtocolResultOf[NativeCookie] =
+  for name in ["name", "value", "domain", "path"]:
+    if not payload.hasKey(name) or payload[name].kind != JString:
+      return failureOf[NativeCookie](protocolError(invalidMessage,
+        "cookie." & name & " must be a string"))
+  for name in ["secure", "httpOnly"]:
+    if not payload.hasKey(name) or payload[name].kind != JBool:
+      return failureOf[NativeCookie](protocolError(invalidMessage,
+        "cookie." & name & " must be a boolean"))
+  if not payload.hasKey("expires") or payload["expires"].kind != JInt:
+    return failureOf[NativeCookie](protocolError(invalidMessage,
+      "cookie.expires must be an integer"))
+  let expires = payload["expires"].getBiggestInt()
+  successOf(NativeCookie(
+    name: payload["name"].getStr(),
+    value: payload["value"].getStr(),
+    domain: payload["domain"].getStr(),
+    path: payload["path"].getStr(),
+    secure: payload["secure"].getBool(),
+    httpOnly: payload["httpOnly"].getBool(),
+    expires: int64(expires)
+  ))
+
+proc handleGetCookies(adapter: HostAdapter;
+                      payload: JsonNode): ProtocolResultOf[HostAction] =
+  let webViewId = payload.requiredId("webViewId")
+  let url = payload.requiredString("url")
+  if not webViewId.isOk:
+    return failureOf[HostAction](webViewId.failure)
+  if not url.isOk:
+    return failureOf[HostAction](url.failure)
+  if not adapter.uiStartRequested:
+    return errorAction("cookie queries require the UI loop")
+  if not adapter.webViews.hasKey(webViewId.value):
+    return errorAction("unknown webViewId")
+  successOf(HostAction(kind: deferredCookieQuery,
+    cookieQuery: adapter.webViews[webViewId.value].getCookies(url.value)))
+
+proc handleMutateCookie(adapter: HostAdapter; payload: JsonNode;
+                        delete: bool): ProtocolResultOf[HostAction] =
+  let webViewId = payload.requiredId("webViewId")
+  if not webViewId.isOk:
+    return failureOf[HostAction](webViewId.failure)
+  if not payload.hasKey("cookie") or payload["cookie"].kind != JObject:
+    return errorAction("cookie must be an object")
+  let cookie = payload["cookie"].requiredNativeCookie()
+  if not cookie.isOk:
+    return failureOf[HostAction](cookie.failure)
+  if not adapter.uiStartRequested:
+    return errorAction("cookie mutation requires the UI loop")
+  if not adapter.webViews.hasKey(webViewId.value):
+    return errorAction("unknown webViewId")
+  let changed = if delete:
+      adapter.webViews[webViewId.value].deleteCookie(cookie.value)
+    else:
+      adapter.webViews[webViewId.value].setCookie(cookie.value)
+  successOf(HostAction(kind: deferredCookieMutation,
+    cookieMutation: changed))
+
 proc handleConfigureNativeMenu(adapter: HostAdapter;
                                payload: JsonNode): ProtocolResultOf[HostAction] =
   if adapter.uiStartRequested:
@@ -1022,5 +1085,11 @@ proc handleRequest*(adapter: HostAdapter; message: ProtocolMessage): ProtocolRes
     adapter.handleEvalJavaScript(payload.value)
   of "native.webview.clearBrowsingData":
     adapter.handleClearBrowsingData(payload.value)
+  of "native.webview.getCookies":
+    adapter.handleGetCookies(payload.value)
+  of "native.webview.setCookie":
+    adapter.handleMutateCookie(payload.value, false)
+  of "native.webview.deleteCookie":
+    adapter.handleMutateCookie(payload.value, true)
   else:
     errorAction("method is not allowed")
