@@ -95,6 +95,15 @@ proc manifestPermissionAllowed(manifest: JsonNode; permission: string): bool =
       return true
   false
 
+proc manifestWebviewProxy(manifest: JsonNode): string =
+  if not manifest.hasKey("webview") or manifest["webview"].kind != JObject:
+    return ""
+  let webview = manifest["webview"]
+  for key in ["proxyUrl", "proxy_url"]:
+    if webview.hasKey(key) and webview[key].kind == JString:
+      return webview[key].getStr()
+  ""
+
 proc plistEscaped(value: string): string =
   value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     .replace("\"", "&quot;")
@@ -116,6 +125,12 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
     return failure[string](ioFailure, "macOS package bundle is missing nimino-manifest.json")
   let manifest = try: parseJson(readFile(manifestPath))
     except CatchableError: return failure[string](invalidManifest, "nimino-manifest.json is invalid JSON")
+  let proxyUrl = manifest.manifestWebviewProxy()
+  if proxyUrl.len > 0:
+    let proxyScheme = proxyUrl.toLowerAscii()
+    if not (proxyScheme.startsWith("http://") or proxyScheme.startsWith("socks5://")):
+      return failure[string](unsupportedFeature,
+        "macOS proxyUrl supports only http:// and socks5://")
   let id = manifest.jsonString("id")
   let name = manifest.jsonString("name")
   if not safeName(id) or name.len == 0:
@@ -172,10 +187,13 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
           id.plistEscaped() & "</string><key>CFBundleURLSchemes</key><array>" & schemeItems &
           "</array></dict></array>"
     let iconXml = if iconEntry.len > 0: "<key>CFBundleIconFile</key><string>" & iconEntry.plistEscaped() & "</string>" else: ""
-    let cameraUsage = if manifest.manifestPermissionAllowed("camera"):
+    let cameraAllowed = manifest.manifestPermissionAllowed("camera")
+    let microphoneAllowed = manifest.manifestPermissionAllowed("microphone")
+    let cameraUsage = if cameraAllowed:
         "<key>NSCameraUsageDescription</key><string>Camera access is required by this application.</string>" else: ""
-    let microphoneUsage = if manifest.manifestPermissionAllowed("microphone"):
+    let microphoneUsage = if microphoneAllowed:
         "<key>NSMicrophoneUsageDescription</key><string>Microphone access is required by this application.</string>" else: ""
+    let minimumSystemVersion = if proxyUrl.len > 0: "14.0" else: "12.0"
     let plist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>" &
       "<key>CFBundleDisplayName</key><string>" & name.plistEscaped() & "</string>" &
       "<key>CFBundleExecutable</key><string>" & id & "</string>" &
@@ -184,13 +202,28 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
       "<key>CFBundlePackageType</key><string>APPL</string>" &
       "<key>CFBundleShortVersionString</key><string>" & version.plistEscaped() & "</string>" &
       "<key>CFBundleVersion</key><string>" & version.plistEscaped() & "</string>" &
-      "<key>LSMinimumSystemVersion</key><string>12.0</string>" & iconXml & urlTypes &
+      "<key>LSMinimumSystemVersion</key><string>" & minimumSystemVersion & "</string>" & iconXml & urlTypes &
       cameraUsage & microphoneUsage &
       "<key>NSHighResolutionCapable</key><true/></dict></plist>\n"
     writeFile(contents / "Info.plist", plist)
+    var entitlements = ""
+    if cameraAllowed or microphoneAllowed:
+      entitlements = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>"
+      if cameraAllowed:
+        entitlements.add("<key>com.apple.security.device.camera</key><true/>")
+      if microphoneAllowed:
+        entitlements.add("<key>com.apple.security.device.audio-input</key><true/>")
+      entitlements.add("</dict></plist>\n")
+      writeFile(resources / "nimino-entitlements.plist", entitlements)
     if options.signingIdentity.len > 0:
-      let signed = runTool("codesign", ["--deep", "--force", "--options", "runtime",
-        "--sign", options.signingIdentity, appPath])
+      var signArgs = @["--deep", "--force", "--options", "runtime"]
+      if entitlements.len > 0:
+        signArgs.add("--entitlements")
+        signArgs.add(resources / "nimino-entitlements.plist")
+      signArgs.add("--sign")
+      signArgs.add(options.signingIdentity)
+      signArgs.add(appPath)
+      let signed = runTool("codesign", signArgs)
       if not signed.isOk: return failure[string](signed.error.kind, signed.error.detail)
     if options.format == macosDmgPackage:
       let dmgPath = options.outputDirectory / (id & ".dmg")

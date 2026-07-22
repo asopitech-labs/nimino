@@ -82,6 +82,15 @@ doAssert appRef.configureSystemTray([
 ], proc(itemId: uint32) = discard).isOk
 doAssert appRef.setIdleHandler(onIdle).isOk
 
+## Proxy configuration is applied while the WKWebView is being constructed.
+## The view has no network dependency here; this asserts the macOS 14+ native
+## configuration path itself rather than relying on the system proxy.
+let proxyWindow = appRef.newWindow("Nimino macOS proxy", 320, 200)
+doAssert proxyWindow.isOk
+doAssert proxyWindow.value.setTitleBarOverlay(true).isOk
+let proxyView = proxyWindow.value.newWebView(proxyUrl = "http://127.0.0.1:8080")
+doAssert proxyView.isOk
+
 let window = appRef.newWindow("Nimino macOS smoke", 360, 240)
 doAssert window.isOk
 windowPtr = cast[pointer](window.value)

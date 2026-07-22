@@ -23,12 +23,15 @@ proc macosCookieCompleted*(data, requestData: pointer; succeeded: cint) {.cdecl.
 proc macosCookieMutationCompleted*(data, requestData: pointer; succeeded: cint) {.cdecl.}
 proc macosMenuAction(data: pointer; itemId: cuint) {.cdecl.}
 proc macosCustomProtocolRequest(data, task: pointer; methodName, url, path: cstring) {.cdecl.}
+proc macosReopen(data: pointer) {.cdecl.}
 proc macosQuit(app: NativeApp)
 proc macosDisposeView(view: NativeWebView)
 proc macosDisposeWindow(window: NativeWindow)
 proc macosCreateView(view: NativeWebView): NativeResult
 proc macosSetZoom(view: NativeWebView; factor: float): NativeResult
 proc macosLoadPendingContent(view: NativeWebView): NativeResult
+proc macosShowWindow(window: NativeWindow)
+proc macosSetTitleBarOverlay(window: NativeWindow; enabled: bool): NativeResult
 
 proc macosKeepCallbackSymbols() =
   discard cast[pointer](macosBrowsingDataCompleted)
@@ -188,6 +191,15 @@ proc macosDeepLink(data: pointer; url: cstring) {.cdecl.} =
   if app != nil:
     app.dispatchDeepLink(if url.isNil: "" else: $url)
 
+proc macosReopen(data: pointer) {.cdecl.} =
+  let app = cast[NativeApp](data)
+  if app.isNil:
+    return
+  ## Restore all live hidden windows when the Dock icon is activated.
+  for window in app.windows:
+    if not window.isNil and window.state == ready and window.hidden:
+      macosShowWindow(window)
+
 proc macosPermission(data: pointer; kind, url: cstring): cint {.cdecl.} =
   let view = cast[NativeWebView](data)
   if view.isNil: return 0
@@ -233,6 +245,7 @@ proc macosCreateView(view: NativeWebView): NativeResult =
   let context = macosViewCreate(view.window.platformWindow, cast[pointer](view),
     view.userAgent.cstring, view.window.profilePath.cstring,
     view.window.app.customProtocolScheme.cstring, view.documentStartScript.cstring,
+    view.proxyUrl.cstring,
     if view.incognito: 1 else: 0, if view.devToolsEnabled: 1 else: 0,
     if view.ignoreCertificateErrors: 1 else: 0,
     cast[MacCallback](macosMessage), cast[MacCallback](macosError),
@@ -265,6 +278,10 @@ proc macosCreateWindow(window: NativeWindow): NativeResult =
     return macosNativeFailure("window.create", "NSWindow creation failed")
   window.platformWindow = nativeWindow
   window.platformContainer = nativeWindow
+  if window.titleBarOverlay:
+    let configured = window.macosSetTitleBarOverlay(true)
+    if not configured.isOk:
+      return configured
   for view in window.views:
     let created = view.macosCreateView()
     if not created.isOk:
@@ -334,6 +351,12 @@ proc macosSetDecorated(window: NativeWindow; enabled: bool): NativeResult =
   if window.platformWindow.isNil: return success()
   if macosWindowSetDecorated(window.platformWindow, if enabled: 1 else: 0) == 0:
     return macosNativeFailure("window.setDecorated", "NSWindow style update failed")
+  success()
+
+proc macosSetTitleBarOverlay(window: NativeWindow; enabled: bool): NativeResult =
+  if window.platformWindow.isNil: return success()
+  if macosWindowSetTitleBarOverlay(window.platformWindow, if enabled: 1 else: 0) == 0:
+    return macosNativeFailure("window.setTitleBarOverlay", "NSWindow title bar style update failed")
   success()
 
 proc macosSetFullscreen(window: NativeWindow; enabled: bool): NativeResult =
@@ -562,6 +585,8 @@ proc macosRun(app: NativeApp): NativeResult =
     app.platformApp = macosAppCreate(cast[pointer](app))
   if app.platformApp.isNil:
     return macosNativeFailure("app.run", "NSApplication creation failed")
+  if macosAppSetReopenCallback(app.platformApp, cast[MacCallback](macosReopen)) == 0:
+    return macosNativeFailure("app.run", "NSApplication reopen delegate setup failed")
   app.state = running
   for window in app.windows:
     if window.state == pending:

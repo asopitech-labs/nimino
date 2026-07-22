@@ -44,6 +44,7 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
                       title = ""; width = 1200; height = 800; resizable = true;
                       fullscreen = false; maximized = false;
                       alwaysOnTop = false; hideWindowDecorations = false;
+                      hideTitleBar = false;
                       enableDragDrop = false;
                       userAgent = ""; proxyUrl = ""; incognito = false; zoom = 100;
                       ignoreCertificateErrors = false;
@@ -82,7 +83,8 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
       profile: if profile.strip().len > 0: profile.strip() else: "default",
       window: PackWindowOptions(title: title, width: width, height: height, resizable: resizable,
         fullscreen: fullscreen, maximized: maximized, alwaysOnTop: alwaysOnTop,
-        hideWindowDecorations: hideWindowDecorations, enableDragDrop: enableDragDrop),
+        hideWindowDecorations: hideWindowDecorations, hideTitleBar: hideTitleBar,
+        enableDragDrop: enableDragDrop),
       webview: PackWebViewOptions(userAgent: userAgent, proxyUrl: proxyUrl,
         incognito: incognito, zoomFactor: zoom.float / 100.0,
         ignoreCertificateErrors: ignoreCertificateErrors),
@@ -104,7 +106,7 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
                             icon = ""; width = 1200; height = 800;
                             resizable = true; fullscreen = false;
                             maximized = false; alwaysOnTop = false;
-                            hideWindowDecorations = false; userAgent = "";
+                            hideWindowDecorations = false; hideTitleBar = false; userAgent = "";
                             enableDragDrop = false;
                             proxyUrl = ""; incognito = false; zoom = 100;
                             ignoreCertificateErrors = false;
@@ -146,7 +148,8 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
     profile: if profile.strip().len > 0: profile.strip() else: "default",
     window: PackWindowOptions(title: title, width: width, height: height, resizable: resizable,
       fullscreen: fullscreen, maximized: maximized, alwaysOnTop: alwaysOnTop,
-      hideWindowDecorations: hideWindowDecorations, enableDragDrop: enableDragDrop),
+      hideWindowDecorations: hideWindowDecorations, hideTitleBar: hideTitleBar,
+      enableDragDrop: enableDragDrop),
     webview: PackWebViewOptions(userAgent: userAgent, proxyUrl: proxyUrl,
       incognito: incognito, zoomFactor: zoom.float / 100.0,
       ignoreCertificateErrors: ignoreCertificateErrors),

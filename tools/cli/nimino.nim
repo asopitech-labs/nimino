@@ -5,7 +5,7 @@ import nimino_pack
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino pack --config <manifest.toml|config.json> [--out <directory>] [--host <executable>] [--targets <deb,rpm,appimage,flatpak,zst,nsis,msi>[,-arm64]...]")
-  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--hide-title-bar] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak|zst> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory> [--arch <x64|arm64>]")
   stderr.writeLine("       nimino package-macos <bundle> --format <app|dmg> --out <directory> [--arch <arm64|x86_64>] [--sign-identity <identity>] [--notary-profile <keychain-profile>]")
@@ -653,7 +653,7 @@ proc parseCliBool(value: string): bool =
 
 proc packBooleanFlag(flag: string): bool =
   flag in ["--resizable", "--fullscreen", "--maximize", "--always-on-top",
-           "--hide-window-decorations", "--incognito", "--show-system-tray",
+           "--hide-window-decorations", "--hide-title-bar", "--incognito", "--show-system-tray",
            "--enable-drag-drop",
            "--start-to-tray", "--hide-on-close", "--multi-window",
            "--multi-instance", "--use-local-file", "--json"]
@@ -675,6 +675,7 @@ proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
   of "--maximize": manifest.window.maximized = parseCliBool(value)
   of "--always-on-top": manifest.window.alwaysOnTop = parseCliBool(value)
   of "--hide-window-decorations": manifest.window.hideWindowDecorations = parseCliBool(value)
+  of "--hide-title-bar": manifest.window.hideTitleBar = parseCliBool(value)
   of "--enable-drag-drop": manifest.window.enableDragDrop = parseCliBool(value)
   of "--user-agent": manifest.webview.userAgent = value
   of "--proxy-url": manifest.webview.proxyUrl = value
@@ -725,6 +726,7 @@ let sourceIsManifest = fileExists(source) and
 let sourceIsLocal = (fileExists(source) or dirExists(source)) and not sourceIsManifest
 var localSourcePath = ""
 var localUseLocalFile = false
+var hideTitleBar = false
 if sourceIsUrl or sourceIsLocal:
   var name = ""
   var title = ""
@@ -779,6 +781,7 @@ if sourceIsUrl or sourceIsLocal:
     of "--maximize": maximized = parseCliBool(value)
     of "--always-on-top": alwaysOnTop = parseCliBool(value)
     of "--hide-window-decorations": hideWindowDecorations = parseCliBool(value)
+    of "--hide-title-bar": hideTitleBar = parseCliBool(value)
     of "--enable-drag-drop": enableDragDrop = parseCliBool(value)
     of "--user-agent": userAgent = value
     of "--proxy-url": proxyUrl = value
@@ -813,7 +816,8 @@ if sourceIsUrl or sourceIsLocal:
       icon = icon, width = width,
       height = height, resizable = resizable, fullscreen = fullscreen,
       maximized = maximized, alwaysOnTop = alwaysOnTop,
-      hideWindowDecorations = hideWindowDecorations, userAgent = userAgent,
+      hideWindowDecorations = hideWindowDecorations, hideTitleBar = hideTitleBar,
+      userAgent = userAgent,
       enableDragDrop = enableDragDrop,
       proxyUrl = proxyUrl, incognito = incognito, zoom = zoom,
       ignoreCertificateErrors = ignoreCertificateErrors,
@@ -828,7 +832,8 @@ if sourceIsUrl or sourceIsLocal:
       icon = icon, deepLinkSchemes = deepLinkSchemes, width = width,
       height = height, resizable = resizable, fullscreen = fullscreen,
       maximized = maximized, alwaysOnTop = alwaysOnTop,
-      hideWindowDecorations = hideWindowDecorations, userAgent = userAgent,
+      hideWindowDecorations = hideWindowDecorations, hideTitleBar = hideTitleBar,
+      userAgent = userAgent,
       enableDragDrop = enableDragDrop,
       proxyUrl = proxyUrl, incognito = incognito, zoom = zoom,
       ignoreCertificateErrors = ignoreCertificateErrors,
@@ -864,7 +869,7 @@ while index <= paramCount():
     for target in paramStr(index + 1).split(','):
       if target.strip().len > 0: targets.add(target.strip().toLowerAscii())
   of "--config", "--name", "--id", "--profile", "--title", "--width", "--height", "--resizable",
-     "--fullscreen", "--maximize", "--always-on-top", "--hide-window-decorations",
+     "--fullscreen", "--maximize", "--always-on-top", "--hide-window-decorations", "--hide-title-bar",
      "--enable-drag-drop",
      "--user-agent", "--proxy-url", "--incognito", "--zoom", "--ignore-certificate-errors", "--show-system-tray",
      "--start-to-tray", "--hide-on-close", "--multi-window", "--multi-instance",

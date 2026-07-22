@@ -152,6 +152,9 @@ type
     maximized*: bool
     alwaysOnTop*: bool
     hideWindowDecorations*: bool
+    ## macOS title-bar overlay style used by Pake's hideTitleBar option.
+    ## Other backends reject this option explicitly.
+    hideTitleBar*: bool
     userAgent*: string
     proxyUrl*: string
     incognito*: bool
@@ -1484,6 +1487,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         "maximized": options.maximized,
         "alwaysOnTop": options.alwaysOnTop,
         "hideWindowDecorations": options.hideWindowDecorations,
+        "hideTitleBar": options.hideTitleBar,
         "userAgent": options.userAgent,
         "proxyUrl": options.proxyUrl,
         "incognito": options.incognito,
@@ -1536,11 +1540,17 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     profile.value)
   if not nativeWindow.isOk:
     return coreFailureOf[Window](nativeWindow.failure.mapNativeError())
+  if options.hideTitleBar:
+    let titleBar = nativeWindow.value.setTitleBarOverlay(true)
+    if not titleBar.isOk:
+      discard nativeWindow.value.close()
+      return coreFailureOf[Window](titleBar.failure.mapNativeError())
   let nativeView = native.newWebView(nativeWindow.value,
     userAgent = options.userAgent, proxyUrl = options.proxyUrl,
     incognito = options.incognito,
     ignoreCertificateErrors = options.ignoreCertificateErrors)
   if not nativeView.isOk:
+    discard nativeWindow.value.close()
     return coreFailureOf[Window](nativeView.failure.mapNativeError())
   let zoomFactor = if options.zoomFactor <= 0: 1.0 else: options.zoomFactor
   let zoomed = nativeView.value.setZoom(zoomFactor)

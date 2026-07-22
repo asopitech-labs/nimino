@@ -233,6 +233,7 @@ type
     fullscreenBottom: int32
     alwaysOnTop: bool
     decorated: bool
+    titleBarOverlay: bool
     views: seq[NativeWebView]
     closeRequestedHandler: NativeCloseRequestedHandler
     closeSignalHandler: culong
@@ -1053,7 +1054,8 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
     width: width,
     height: height,
     profilePath: profilePath,
-    decorated: true
+    decorated: true,
+    titleBarOverlay: false
   )
   app.windows.add(window)
   successOf(window)
@@ -1127,8 +1129,8 @@ proc setProxy*(view: NativeWebView; value: string): NativeResult =
     failure(nativeError(invalidState, "webview.setProxy",
       detail = "proxy is a construct-only WebView environment option on Windows"))
   elif defined(macosx):
-    failure(nativeError(unsupported, "webview.setProxy",
-      detail = "WKWebView uses the system proxy configuration on macOS"))
+    failure(nativeError(invalidState, "webview.setProxy",
+      detail = "proxy is a construct-only WebView option on macOS; it requires macOS 14+"))
   else:
     failure(nativeError(unsupported, "webview.setProxy"))
 
@@ -1200,6 +1202,20 @@ proc setDecorated*(window: NativeWindow; enabled: bool): NativeResult =
     window.macosSetDecorated(enabled)
   else:
     failure(nativeError(unsupported, "window.setDecorated"))
+
+proc setTitleBarOverlay*(window: NativeWindow; enabled: bool): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.setTitleBarOverlay"))
+  if window.state == pending:
+    window.titleBarOverlay = enabled
+    return success()
+  when defined(macosx):
+    let configured = window.macosSetTitleBarOverlay(enabled)
+    if configured.isOk:
+      window.titleBarOverlay = enabled
+    configured
+  else:
+    failure(nativeError(unsupported, "window.setTitleBarOverlay"))
 
 proc close*(view: NativeWebView): NativeResult =
   if view.isNil or view.window.isNil or view.state in {closing, closed}:

@@ -1,5 +1,6 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+#import <Network/Network.h>
 #import <dispatch/dispatch.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -24,6 +25,7 @@ typedef void (*MacMenuCallback)(void *, unsigned int);
 typedef void (*MacSchemeCallback)(void *, void *, const char *, const char *, const char *);
 typedef void (*MacNotificationCallback)(void *, const char *);
 typedef void (*MacDeepLinkCallback)(void *, const char *);
+typedef void (*MacReopenCallback)(void *);
 typedef int (*MacPermissionCallback)(void *, const char *, const char *);
 typedef int (*MacDownloadStartingCallback)(void *, const char *);
 typedef const char *(*MacDownloadPathCallback)(void *, const char *);
@@ -87,6 +89,7 @@ struct MacAppContext {
   MacSchemeCallback schemeCallback;
   MacNotificationCallback notificationCallback;
   MacDeepLinkCallback deepLinkCallback;
+  MacReopenCallback reopenCallback;
 };
 
 struct MacWindowContext {
@@ -225,6 +228,15 @@ static MacIdleCallback g_idleCallback = NULL;
     else
       [self.context->pendingDeepLinks addObject:url.absoluteString];
   }
+}
+
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)application
+                    hasVisibleWindows:(BOOL)flag {
+  (void)application;
+  (void)flag;
+  if (self.context && self.context->reopenCallback)
+    self.context->reopenCallback(self.context->userData);
+  return YES;
 }
 @end
 
@@ -372,6 +384,13 @@ static MacIdleCallback g_idleCallback = NULL;
   [self.observedDownloads removeObject:download];
 }
 
+- (void)dealloc {
+  for (WKDownload *download in [self.observedDownloads allObjects])
+    [self removeProgressObserverFromDownload:download];
+  [_observedDownloads release];
+  [super dealloc];
+}
+
 - (void)download:(WKDownload *)download
  decideDestinationUsingResponse:(NSURLResponse *)response
  suggestedFilename:(NSString *)suggestedFilename
@@ -509,6 +528,7 @@ void nimino_macos_app_dispose(void *opaque) {
   context->menuCallback = NULL;
   context->notificationCallback = NULL;
   context->deepLinkCallback = NULL;
+  context->reopenCallback = NULL;
   free(context);
 }
 
@@ -616,6 +636,13 @@ int nimino_macos_app_set_deep_link_callback(void *opaque, void *callback) {
   return 1;
 }
 
+int nimino_macos_app_set_reopen_callback(void *opaque, void *callback) {
+  MacAppContext *context = (MacAppContext *)opaque;
+  if (!context || !callback || !context->applicationDelegate) return 0;
+  context->reopenCallback = (MacReopenCallback)callback;
+  return 1;
+}
+
 int nimino_macos_app_send_notification(void *opaque, const char *identifier,
                                        const char *title, const char *body) {
   MacAppContext *context = (MacAppContext *)opaque;
@@ -700,12 +727,27 @@ int nimino_macos_window_set_size(void *opaque, int width, int height) { MacWindo
 int nimino_macos_window_set_position(void *opaque, int x, int y) { MacWindowContext *c=opaque; if (!c) return 0; [c->window setFrameOrigin:NSMakePoint(x,y)]; return 1; }
 int nimino_macos_window_set_resizable(void *opaque, int enabled) { MacWindowContext *c=opaque; if (!c) return 0; NSUInteger s=c->window.styleMask; if (enabled) s|=NSWindowStyleMaskResizable; else s&=~NSWindowStyleMaskResizable; c->window.styleMask=s; return 1; }
 int nimino_macos_window_set_decorated(void *opaque, int enabled) { MacWindowContext *c=opaque; if (!c) return 0; NSUInteger s=c->window.styleMask; if (enabled) s|=NSWindowStyleMaskTitled; else s&=~NSWindowStyleMaskTitled; c->window.styleMask=s; return 1; }
+int nimino_macos_window_set_title_bar_overlay(void *opaque, int enabled) {
+  MacWindowContext *c = opaque;
+  if (!c) return 0;
+  if (enabled) {
+    c->window.titleVisibility = NSWindowTitleHidden;
+    c->window.titlebarAppearsTransparent = YES;
+    c->window.styleMask |= NSWindowStyleMaskFullSizeContentView;
+  } else {
+    c->window.titleVisibility = NSWindowTitleVisible;
+    c->window.titlebarAppearsTransparent = NO;
+    c->window.styleMask &= ~NSWindowStyleMaskFullSizeContentView;
+  }
+  return 1;
+}
 int nimino_macos_window_set_fullscreen(void *opaque, int enabled) { MacWindowContext *c=opaque; if (!c) return 0; BOOL current=(c->window.styleMask & NSWindowStyleMaskFullScreen)!=0; if ((enabled!=0) != current) [c->window toggleFullScreen:nil]; return 1; }
 int nimino_macos_window_set_always_on_top(void *opaque, int enabled) { MacWindowContext *c=opaque; if (!c) return 0; [c->window setLevel:enabled?NSFloatingWindowLevel:NSNormalWindowLevel]; return 1; }
 
 void *nimino_macos_view_create(void *windowOpaque, void *userData, const char *userAgent,
                                const char *profilePath, const char *scheme,
-                               const char *documentStartScript, int incognito, int devTools,
+                               const char *documentStartScript, const char *proxyUrl,
+                               int incognito, int devTools,
                                int ignoreCertificateErrors, void *messageCallback,
                                void *errorCallback, void *newWindowCallback,
                                void *navigationStartingCallback, void *navigationCompletedCallback,
@@ -740,6 +782,47 @@ void *nimino_macos_view_create(void *windowOpaque, void *userData, const char *u
     [identifier release];
   } else {
     configuration.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
+  }
+  if (proxyUrl && proxyUrl[0]) {
+    if (@available(macOS 14.0, *)) {
+      NSString *proxy = [NSString stringWithUTF8String:proxyUrl];
+      NSURL *proxyURL = [NSURL URLWithString:proxy];
+      NSString *schemeName = proxyURL.scheme.lowercaseString;
+      NSString *host = proxyURL.host;
+      NSNumber *portNumber = proxyURL.port;
+      NSInteger port = portNumber ? portNumber.integerValue :
+        ([schemeName isEqualToString:@"socks5"] ? 1080 : 80);
+      if (!proxyURL || !host || host.length == 0 ||
+          (![schemeName isEqualToString:@"http"] && ![schemeName isEqualToString:@"socks5"]) ||
+          port < 1 || port > 65535) {
+        [configuration release];
+        free(context);
+        return NULL;
+      }
+      char portString[6];
+      snprintf(portString, sizeof(portString), "%ld", (long)port);
+      nw_endpoint_t endpoint = nw_endpoint_create_host(host.UTF8String, portString);
+      nw_proxy_config_t proxyConfig = NULL;
+      if (endpoint) {
+        proxyConfig = [schemeName isEqualToString:@"socks5"]
+          ? nw_proxy_config_create_socksv5(endpoint)
+          : nw_proxy_config_create_http_connect(endpoint, NULL);
+      }
+      if (!proxyConfig) {
+        if (endpoint) nw_release(endpoint);
+        [configuration release];
+        free(context);
+        return NULL;
+      }
+      NSArray *proxies = [NSArray arrayWithObject:(id)proxyConfig];
+      [configuration.websiteDataStore setValue:proxies forKey:@"proxyConfigurations"];
+      nw_release(proxyConfig);
+      nw_release(endpoint);
+    } else {
+      [configuration release];
+      free(context);
+      return NULL;
+    }
   }
   context->delegate = [NiminoWebViewDelegate new]; context->delegate.context=context;
   [configuration.userContentController addScriptMessageHandler:context->delegate name:@"nimino"];

@@ -446,6 +446,10 @@ proc parse*(text: string): PackResult[PackManifest] =
         let parsed = parseBool(value)
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
         manifest.window.hideWindowDecorations = parsed.value
+      of "hide-title-bar", "hidetitlebar":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.window.hideTitleBar = parsed.value
       of "enable-drag-drop", "enabledragdrop":
         let parsed = parseBool(value)
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)

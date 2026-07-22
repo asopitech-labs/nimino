@@ -166,8 +166,10 @@ proc main() =
     fail("window minimum size must not be negative")
   if minWidth > 0 or minHeight > 0:
     fail("window minimum size is not supported by this host")
-  if windowNode.boolean("hideTitleBar", false):
-    fail("window.hideTitleBar is not supported by this host")
+  let hideTitleBar = windowNode.boolean("hideTitleBar", false)
+  when not defined(macosx):
+    if hideTitleBar:
+      fail("window.hideTitleBar is only supported by the macOS host")
   if webview.boolean("darkMode", false):
     fail("webview.darkMode is not supported by this host")
   if webview.boolean("disabledWebShortcuts", false):
@@ -226,6 +228,7 @@ proc main() =
     maximized: windowNode.boolean("maximized", false),
     alwaysOnTop: windowNode.boolean("alwaysOnTop", false),
     hideWindowDecorations: windowNode.boolean("hideWindowDecorations", false),
+    hideTitleBar: hideTitleBar,
     enableDragDrop: windowNode.boolean("enableDragDrop", false),
     userAgent: userAgent,
     proxyUrl: proxyUrl,

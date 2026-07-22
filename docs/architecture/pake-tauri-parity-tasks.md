@@ -1,7 +1,15 @@
 # Pake/Tauri parity task list
 
-This checklist is for the Windows, native Linux, and WSL development branch.
-macOS work is performed in a separate environment and is intentionally excluded.
+This checklist covers the Windows, native Linux, WSL, and macOS development branches.
+The macOS items below are verified by local AppKit/WKWebView and bundle smoke tests.
+
+## macOS parity follow-up (2026-07-23)
+
+- [x] Apply macOS 14+ WKWebView HTTP CONNECT/SOCKS5 proxy configuration at WebView construction time and reject unsupported runtime changes.
+- [x] Restore hidden windows when the application is reopened from the Dock, matching Pake's `hide_on_close` lifecycle.
+- [x] Implement Pake's `hide_title_bar` as a native title-bar overlay while preserving traffic-light controls.
+- [x] Emit macOS camera/microphone usage metadata and entitlements when permissions are packaged.
+- [x] Fail closed for unsupported macOS proxy schemes and set `LSMinimumSystemVersion` to 14.0 when a proxy is used.
 
 ## P0 — generated host correctness
 

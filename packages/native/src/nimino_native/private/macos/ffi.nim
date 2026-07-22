@@ -7,6 +7,7 @@
 {.compile: "bridge.m".}
 {.passL: "-framework Cocoa".}
 {.passL: "-framework WebKit".}
+{.passL: "-framework Network".}
 
 type
   MacCallback* = pointer
@@ -28,6 +29,8 @@ proc macosAppSetNotificationCallback*(app: pointer; callback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_app_set_notification_callback".}
 proc macosAppSetDeepLinkCallback*(app: pointer; callback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_app_set_deep_link_callback".}
+proc macosAppSetReopenCallback*(app: pointer; callback: MacCallback): cint
+  {.cdecl, importc: "nimino_macos_app_set_reopen_callback".}
 proc macosAppSendNotification*(app: pointer; id, title, body: cstring): cint
   {.cdecl, importc: "nimino_macos_app_send_notification".}
 proc macosAppRegisterScheme*(app: pointer; scheme: cstring; callback: MacCallback): cint
@@ -56,13 +59,15 @@ proc macosWindowSetResizable*(window: pointer; enabled: cint): cint
   {.cdecl, importc: "nimino_macos_window_set_resizable".}
 proc macosWindowSetDecorated*(window: pointer; enabled: cint): cint
   {.cdecl, importc: "nimino_macos_window_set_decorated".}
+proc macosWindowSetTitleBarOverlay*(window: pointer; enabled: cint): cint
+  {.cdecl, importc: "nimino_macos_window_set_title_bar_overlay".}
 proc macosWindowSetFullscreen*(window: pointer; enabled: cint): cint
   {.cdecl, importc: "nimino_macos_window_set_fullscreen".}
 proc macosWindowSetAlwaysOnTop*(window: pointer; enabled: cint): cint
   {.cdecl, importc: "nimino_macos_window_set_always_on_top".}
 
 proc macosViewCreate*(window: pointer; userData: pointer; userAgent, profilePath,
-                      scheme, documentStartScript: cstring; incognito,
+                      scheme, documentStartScript, proxyUrl: cstring; incognito,
                       devTools, ignoreCertificateErrors: cint; messageCallback,
                       errorCallback, newWindowCallback, navigationStartingCallback,
                       navigationCompletedCallback, evalCallback, fileDropCallback,

@@ -40,3 +40,5 @@ Tauriの実装はNiminoの依存として取り込まず、上記の制御上の
 `reference/tauri/crates/tauri-runtime-wry/src/window/macos.rs`、`webview.rs`と、`reference/pake/src-tauri/src/app/window.rs`、`src/app/setup.rs`を確認した。Tauriのmain-thread所有、WKWebView delegate、document-start script、custom scheme、new-window policyの分離を採用し、PakeのmacOS固有処理がTauriへ委譲される境界も確認した。
 
 NiminoではこれをCocoa/WebKitの小さなObjective-C bridge（`packages/native/src/nimino_native/private/macos/bridge.m`）とNim backendへ再設計した。Cocoa資源の破棄はWebKit callback中に行わず、AppKit run loop終了後に行う。NSStatusItem、NSUserNotificationCenterDelegate、NSApplication openURLs、WKWebKit media permission/download delegate、profile別`WKWebsiteDataStore`も同じbridge境界に接続し、`nimino-pack`はURL scheme付き`Info.plist`を含む`.app`と`hdiutil`による`.dmg`を生成する。codesignは`--sign-identity`指定時だけ実行し、notarization送信は資格情報を伴うrelease工程としてCLIの自動処理から分離する。
+
+追加監査では、PakeのmacOS固有設定に対応してDock再表示、`hide_title_bar`のtitle-bar overlay、macOS 14+のNetwork.framework proxy、camera/microphone entitlementを実装した。proxyを指定したbundleは`LSMinimumSystemVersion=14.0`とし、macOSが対応しないproxy schemeはpackaging時に明示的に拒否する。検証は`nimble testMacosSmoke`と`tools/ci/test_pack_macos.sh`で行う。

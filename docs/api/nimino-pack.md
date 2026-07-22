@@ -25,7 +25,7 @@ nimino pack ./site/index.html --use-local-file --out build/site-bundle --host ni
 ```
 
 URL指定でも`--width`、`--height`、`--resizable`、`--fullscreen`、`--maximize`、
-`--always-on-top`、`--hide-window-decorations`、`--user-agent`、`--allow-permission`、
+`--always-on-top`、`--hide-window-decorations`、`--hide-title-bar`、`--user-agent`、`--allow-permission`、
 `--enable-drag-drop`、`--inject-css`、`--inject-js`、`--allow-url`、`--external-url`を指定できます。複雑な設定はTOMLへ移せます。
 Windowタイトルは`--title`で変更できます。Pake形式のJSON設定ファイルも読み込めます。
 
@@ -38,9 +38,11 @@ nimino pack --config pake.json --out dist/example --host nimino-host
 ```
 
 `--user-agent`はWindows WebView2の`ICoreWebView2Settings2`とLinux WebKitGTKの
-`WebKitSettings`へ適用します。`--proxy-url`はLinuxのWebKitNetworkSessionとWindows WebView2の
-`ICoreWebView2EnvironmentOptions`へ、`--incognito`はLinuxのephemeral NetworkSessionとWindows
-WebView2の`ICoreWebView2ControllerOptions`へ適用します。WSL hostもWindows側へ設定を中継します。
+`WebKitSettings`へ適用します。`--proxy-url`はLinuxのWebKitNetworkSession、Windows WebView2の
+`ICoreWebView2EnvironmentOptions`、macOS 14+のWKWebViewデータストアへ構築時に適用します。
+macOSでは`http://`または`socks5://`のみ利用でき、起動後の変更はできません。`--incognito`は
+Linuxのephemeral NetworkSession、Windows WebView2の`ICoreWebView2ControllerOptions`、
+macOSのnon-persistent data storeへ適用します。WSL hostもWindows側へ設定を中継します。
 `--zoom`は25〜500%でWebView2 Controller/WebKitGTKへ適用し、`--ignore-certificate-errors`は
 明示指定時だけWebView2の追加ブラウザ引数またはWebKitGTKのTLS policyを変更します。後者は
 開発・検証用途に限定し、本番配布では指定しないでください。
@@ -144,8 +146,8 @@ enable-drag-drop = false
 
 [webview]
 user-agent = "Example/1.0"
-proxy-url = "http://127.0.0.1:8080" # Linux native host
-incognito = false                  # Linux native host
+proxy-url = "http://127.0.0.1:8080" # macOS 14+ / Linux / Windows native host
+incognito = false                  # macOS / Linux / Windows native host
 
 [runtime]
 show-system-tray = true
@@ -155,11 +157,16 @@ multi-window = true
 multi-instance = false
 ```
 
-`proxy-url`と`incognito`はLinux native hostおよびWindows WebView2 hostで実装済みです。Windows
-ではWebView2の環境・コントローラー生成時に適用され、起動後に変更できません。WSL hostは
+`proxy-url`と`incognito`はLinux native host、Windows WebView2 host、macOS 14+ WKWebView hostで
+実装済みです。Windows/macOSではWebView環境・データストア生成時に適用され、起動後に変更できません。
+macOSのプロキシ指定がある`.app`は`LSMinimumSystemVersion=14.0`になり、カメラ/マイク権限を指定した
+`.app`にはInfo.plistの利用目的文字列と対応するコード署名entitlementsを同梱します。WSL hostは
 認証済みIPCで同じ設定をWindows側へ転送します。設定を無視して通常セッションへフォールバックしません。
 `enable-drag-drop`を有効にした場合、Windowsは`WM_DROPFILES`、LinuxはGTK4 `GtkDropTarget`を使い、
 WSLは認証済みイベントとしてパスを中継します。
+
+`window.hide-title-bar = true`はmacOSのtitle-bar overlay（traffic light buttonsは維持）として適用されます。
+他のプラットフォームでは、未対応設定を成功扱いせずhost起動時に拒否します。
 
 `version`は`major.minor.patch`形式（任意のSemVer prerelease/build suffix付き）、`homepage`はHTTP(S) URL、`categories`はDesktop Entry category registryの許可値に検証します。省略時は`version = "0.1.0"`、`description = name`、`categories = ["Network"]`になります。
 
