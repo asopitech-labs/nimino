@@ -9,7 +9,7 @@ when defined(linux):
 
 import nimino_native as native
 
-import ./[errors, instance, logging, profile, rpc]
+import ./[errors, instance, logging, profile, rpc, update]
 
 const RpcBootstrapSource = """
 (() => {
@@ -99,10 +99,14 @@ type
     nativeNotification
     customProtocol
     webPermissionEvents
+    autostart
 
   AppOptions* = object
     id*: string
     name*: string
+    ## Version used by the update lifecycle; packagers should set this to the
+    ## application version rather than relying on the framework default.
+    version*: string
     ## When false (the default), only one live process may own this app ID.
     ## The lock is acquired before any native or WSL host UI is started.
     multiInstance*: bool
@@ -272,6 +276,7 @@ type
     ## URLs until `onDeepLink` installs the consumer instead of dropping them.
     pendingDeepLinks: seq[string]
     appLogger: Logger
+    update*: UpdateLifecycle
     instanceLock: InstanceLock
     customProtocolHandler: CustomProtocolHandler
     when defined(linux):
@@ -1082,7 +1087,9 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
         name: options.name,
         wslClient: launched.value,
         instanceLock: instanceLock,
-        appLogger: newLogger()
+        appLogger: newLogger(),
+        update: newUpdateLifecycle(options.id,
+          if options.version.len == 0: NiminoCoreVersion else: options.version)
       ))
     else:
       releaseInstanceLock(instanceLock)
@@ -1092,7 +1099,9 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
   let app = App(state: coreCreated, backend: nativeBackend, id: options.id, name: options.name,
                 nativeApp: native.newNativeApp(native.NativeAppOptions(appId: options.id)),
                 instanceLock: instanceLock,
-                appLogger: newLogger())
+                appLogger: newLogger(),
+                update: newUpdateLifecycle(options.id,
+                  if options.version.len == 0: NiminoCoreVersion else: options.version))
   let idleConfigured = native.setIdleHandler(app.nativeApp, proc() =
     if app != nil and app.state == coreRunning:
       for window in app.windows:
@@ -1365,6 +1374,7 @@ proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
       of nativeNotification: native.nativeNotification
       of customProtocol: native.customProtocol
       of webPermissionEvents: native.webPermissionEvents
+      of autostart: native.autostart
     coreSuccessOf(app.nativeApp.supports(nativeCapability))
   of wslBackend:
     when defined(linux):
@@ -1386,6 +1396,49 @@ proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
           detail = "host capabilities response is malformed"))
     else:
       coreFailureOf[bool](coreError(platformUnavailable, "app.supports"))
+
+proc setAutostart*(app: App; enabled: bool): CoreResult =
+  ## Autostart is never implemented by shelling out or writing arbitrary
+  ## startup files.  A backend must advertise the capability before this API
+  ## can change OS state; current backends explicitly report unavailable.
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.setAutostart"))
+  let supported = app.supports(autostart)
+  if not supported.isOk:
+    return coreFailure(supported.failure)
+  if not supported.value:
+    return coreFailure(coreError(platformUnavailable, "app.setAutostart",
+      detail = "autostart registration is not supported by this backend"))
+  ## Keep this guard even when a future backend advertises the capability: an
+  ## implementation must be added at this boundary before state can change.
+  coreFailure(coreError(platformUnavailable, "app.setAutostart",
+    detail = "autostart backend is not implemented"))
+
+proc checkForUpdate*(app: App; manifest: UpdateManifest;
+                     verifier: UpdateSignatureVerifier): CoreResultOf[bool] =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailureOf[bool](coreError(invalidState, "app.checkForUpdate"))
+  app.update.checkForUpdate(manifest, verifier)
+
+proc beginUpdateDownload*(app: App): CoreResult =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailure(coreError(invalidState, "app.beginUpdateDownload"))
+  app.update.beginDownload()
+
+proc markUpdateReady*(app: App): CoreResult =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailure(coreError(invalidState, "app.markUpdateReady"))
+  app.update.markReady()
+
+proc failUpdate*(app: App; detail: string): CoreResult =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailure(coreError(invalidState, "app.failUpdate"))
+  app.update.failUpdate(detail)
+
+proc cancelUpdate*(app: App): CoreResult =
+  if app.isNil or app.state == coreFinished or app.update.isNil:
+    return coreFailure(coreError(invalidState, "app.cancelUpdate"))
+  app.update.cancelUpdate()
 
 proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if app.isNil or app.state notin {coreCreated, coreRunning}:

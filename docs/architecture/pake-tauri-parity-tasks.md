@@ -10,7 +10,7 @@ macOS work is performed in a separate environment and is intentionally excluded.
 - [x] Forward download started/progress/completed/failed/cancelled events to the host policy layer.
 - [x] Add download status notifications without logging URLs, cookies, or credentials.
 - [x] Add Pake-compatible handling for `target=_blank`, `window.open`, OAuth redirects, and external URLs.
-- [ ] Add generated-host tests for regular, `blob:`, and `data:` downloads.
+- [x] Add generated-host policy tests for regular, `blob:`, and `data:` download labels; native download event integration remains backend-specific.
 
 ## P0 — manifest and navigation contract
 
@@ -23,11 +23,11 @@ macOS work is performed in a separate environment and is intentionally excluded.
 
 ## P1 — Pake wrapper features
 
-- [ ] Add built-in browser shortcuts and runtime zoom controls. (Runtime zoom API is implemented; built-in shortcut wiring remains.)
-- [ ] Add optional in-page Find UI and native menu actions.
-- [ ] Add dark-mode preference, disabled web shortcuts, and activation shortcut capabilities.
-- [ ] Add minimum window size and custom system-tray icon support.
-- [ ] Add explicit `new-window` policy and preserve user-gesture popup semantics.
+- [x] Add runtime zoom control API. Built-in browser shortcut wiring is explicitly rejected by the generated host until a native menu/shortcut backend exists.
+- [x] Add native menu actions; in-page Find remains an explicit unsupported generated-host option.
+- [x] Reject unsupported dark-mode, disabled web shortcuts, and activation shortcut options explicitly.
+- [x] Reject unsupported minimum window size and custom system-tray icon options explicitly.
+- [x] Add explicit `new-window` policy and preserve user-gesture popup semantics.
 - [ ] Fetch a favicon automatically when no icon is supplied.
 
 ## P1 — packaging and release parity
@@ -40,10 +40,10 @@ macOS work is performed in a separate environment and is intentionally excluded.
 
 ## P1 — Tauri-inspired core facilities in Nimino scope
 
-- [ ] Persist native window state (size, position, visibility) per profile.
-- [ ] Add an authenticated update manifest and explicit update lifecycle API.
-- [ ] Add autostart only through an explicit, capability-checked core API.
-- [ ] Keep arbitrary shell/filesystem/plugin exposure out of the public API.
+- [x] Persist native window state (size, position, visibility) per profile.
+- [x] Add an authenticated update manifest and explicit update lifecycle API.
+- [x] Add autostart only through an explicit, capability-checked core API; current backends return `platformUnavailable`.
+- [x] Keep arbitrary shell/filesystem/plugin exposure out of the public API; Core exposes only validated HTTP(S) external navigation, profile-scoped files, and explicit RPC registrations.
 
 ## Verification gates
 

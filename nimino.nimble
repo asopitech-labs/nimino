@@ -6,6 +6,9 @@ license = "MIT"
 requires "nim >= 2.2.0"
 
 task test, "Run Nimino unit tests in ARC mode":
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-update-nimcache --out:/tmp/nimino-test-update --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_update.nim"
+  exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 nim c -r --mm:arc --nimcache:/tmp/nimino-autostart-nimcache --out:/tmp/nimino-test-autostart --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_autostart.nim"
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-host-policy-nimcache --out:/tmp/nimino-test-host-policy tools/hosts/tests/test_policy.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-logging-nimcache --out:/tmp/nimino-test-core-logging --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_logging.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-nimcache --out:/tmp/nimino-test-foundation --path:packages/native packages/native/tests/test_foundation.nim"
   exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-desktop-capabilities-nimcache --out:/tmp/nimino-test-wsl-desktop-capabilities --path:packages/native packages/native/tests/test_wsl_desktop_capabilities.nim"

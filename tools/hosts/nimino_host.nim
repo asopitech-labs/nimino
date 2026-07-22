@@ -4,6 +4,7 @@
 import std/[json, os, sequtils, strutils, uri]
 
 import nimino_core
+import ./policy
 
 proc fail(message: string; code = QuitFailure) {.noreturn.} =
   stderr.writeLine("nimino-host: " & message)
@@ -45,21 +46,6 @@ proc boolean(node: JsonNode; key: string; fallback: bool): bool =
       fail("manifest field '" & key & "' must be a boolean")
     return node[key].getBool()
   fallback
-
-proc safeDownloadLabel(value: string): string =
-  ## Notification text is user-visible but must not contain control characters
-  ## or unbounded input from a remote Content-Disposition header.
-  for character in value:
-    if ord(character) >= 0x20 and ord(character) != 0x7f:
-      result.add(character)
-      if result.len >= 128:
-        break
-  if result.len == 0:
-    result = "download"
-
-proc downloadNotificationId(sequence: var int; state: string): string =
-  inc sequence
-  "nimino-download-" & state & "-" & $sequence
 
 proc readInjection(root: string; names: seq[string]): seq[string] =
   for name in names:
@@ -153,6 +139,32 @@ proc main() =
   let proxyUrl = optionalString(webview, "proxyUrl", "")
   let incognito = webview.boolean("incognito", false)
   let newWindow = webview.boolean("newWindow", false)
+  ## These Pake-compatible fields are accepted by the manifest schema, but
+  ## this generated host does not have a native implementation yet.  Fail at
+  ## startup instead of silently claiming that the requested control exists.
+  let minWidth = if windowNode.hasKey("minWidth") and windowNode["minWidth"].kind == JInt:
+      windowNode["minWidth"].getInt() else: 0
+  let minHeight = if windowNode.hasKey("minHeight") and windowNode["minHeight"].kind == JInt:
+      windowNode["minHeight"].getInt() else: 0
+  if minWidth < 0 or minHeight < 0:
+    fail("window minimum size must not be negative")
+  if minWidth > 0 or minHeight > 0:
+    fail("window minimum size is not supported by this host")
+  if windowNode.boolean("hideTitleBar", false):
+    fail("window.hideTitleBar is not supported by this host")
+  if webview.boolean("darkMode", false):
+    fail("webview.darkMode is not supported by this host")
+  if webview.boolean("disabledWebShortcuts", false):
+    fail("webview.disabledWebShortcuts is not supported by this host")
+  if webview.boolean("enableFind", false):
+    fail("webview.enableFind is not supported by this host")
+  if webview.boolean("forceInternalNavigation", false) or
+      optionalString(webview, "internalUrlRegex", "").len > 0:
+    fail("webview.forceInternalNavigation is not supported by this host")
+  if optionalString(runtime, "activationShortcut", "").len > 0:
+    fail("runtime.activationShortcut is not supported by this host")
+  if optionalString(runtime, "systemTrayIcon", "").len > 0:
+    fail("runtime.systemTrayIcon is not supported by this host")
   let zoomFactor = if webview.hasKey("zoom") and webview["zoom"].kind in {JInt, JFloat}:
       webview["zoom"].getFloat() / 100.0
     else: 1.0
@@ -163,7 +175,10 @@ proc main() =
     if permission notin ["microphone", "camera", "notifications", "geolocation",
                          "clipboard", "screenCapture"]:
       fail("manifest contains an unknown permission: " & permission)
-  let created = newApp(AppOptions(id: appId, name: appName,
+  let packageVersion = if manifest.hasKey("package") and manifest["package"].kind == JObject:
+      optionalString(manifest["package"], "version", NiminoCoreVersion)
+    else: NiminoCoreVersion
+  let created = newApp(AppOptions(id: appId, name: appName, version: packageVersion,
     multiInstance: multiInstance))
   if not created.isOk:
     fail(created.failure.detail)
