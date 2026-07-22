@@ -6,6 +6,7 @@ license = "MIT"
 requires "nim >= 2.2.0"
 
 task test, "Run Nimino unit tests in ARC mode":
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-logging-nimcache --path:packages/core packages/core/tests/test_logging.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-nimcache --out:/tmp/nimino-test-foundation --path:packages/native packages/native/tests/test_foundation.nim"
   exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-desktop-capabilities-nimcache --out:/tmp/nimino-test-wsl-desktop-capabilities --path:packages/native packages/native/tests/test_wsl_desktop_capabilities.nim"
   exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-load-html-base-url-nimcache --out:/tmp/nimino-test-wsl-load-html-base-url --path:packages/native packages/native/tests/test_wsl_load_html_base_url.nim"

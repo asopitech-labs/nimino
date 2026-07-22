@@ -31,6 +31,14 @@ type
     secure*: bool
     expires*: int64
 
+  ProfilePermission* = object
+    ## A profile-scoped decision for one normalized web origin and permission
+    ## kind.  The strings keep the persistence layer independent from the
+    ## public Core enums while still restricting values at the write boundary.
+    origin*: string
+    kind*: string
+    decision*: string
+
 proc validCookieName(name: string): bool =
   ## RFC 6265 cookie-octet token, restricted to path-safe ASCII.
   if name.len == 0:
@@ -200,6 +208,157 @@ proc validSettingKey(key: string): bool =
     if not (character.isAlphaNumeric or character in {'-', '_', '.'}):
       return false
   true
+
+proc atomicWrite(path, content: string): ProfilePathResult
+
+proc normalizePermissionOrigin*(url: string): ProfileResult[string] =
+  ## Persist decisions by origin, never by a full URL.  Query strings, paths,
+  ## fragments, user information, and non-web schemes must not split or widen
+  ## a permission grant.
+  try:
+    let parsed = parseUri(url)
+    let scheme = parsed.scheme.toLowerAscii()
+    if scheme notin ["http", "https"] or parsed.hostname.len == 0 or
+        parsed.username.len > 0 or parsed.password.len > 0:
+      return ProfileResult[string](isOk: false,
+        error: "permission URL must be an absolute HTTP(S) origin")
+    let host = if parsed.isIpv6:
+        "[" & parsed.hostname.toLowerAscii() & "]"
+      else:
+        parsed.hostname.toLowerAscii()
+    var origin = scheme & "://" & host
+    if parsed.port.len > 0 and not
+        ((scheme == "http" and parsed.port == "80") or
+         (scheme == "https" and parsed.port == "443")):
+      for character in parsed.port:
+        if not character.isDigit:
+          return ProfileResult[string](isOk: false,
+            error: "permission URL port is invalid")
+      origin.add(":" & parsed.port)
+    ProfileResult[string](isOk: true, value: origin)
+  except CatchableError:
+    ProfileResult[string](isOk: false, error: "permission URL is invalid")
+
+proc permissionStorePath(appId, profile: string): ProfilePathResult =
+  let directory = profileDirectoryPath(appId, profile, permissions)
+  if not directory.isOk:
+    return directory
+  profileSuccess(directory.value / "decisions.json")
+
+proc readPermissionStore(appId, profile: string): ProfileResult[JsonNode] =
+  let path = permissionStorePath(appId, profile)
+  if not path.isOk:
+    return ProfileResult[JsonNode](isOk: false, error: path.error)
+  if not fileExists(path.value):
+    return ProfileResult[JsonNode](isOk: true, value: %*{
+      "version": 1,
+      "decisions": {}
+    })
+  try:
+    let document = parseJson(readFile(path.value))
+    if document.kind != JObject or not document.hasKey("version") or
+        document["version"].kind != JInt or document["version"].getInt() != 1 or
+        not document.hasKey("decisions") or document["decisions"].kind != JObject:
+      return ProfileResult[JsonNode](isOk: false,
+        error: "profile permission store has an unsupported schema")
+    ProfileResult[JsonNode](isOk: true, value: document)
+  except CatchableError:
+    ProfileResult[JsonNode](isOk: false,
+      error: "profile permission store is not valid JSON")
+
+proc validPermissionKind(kind: string): bool =
+  kind.len > 0 and validSettingKey(kind)
+
+proc writeProfilePermission*(appId, profile, url, kind, decision: string):
+    ProfilePathResult =
+  if not validPermissionKind(kind) or decision notin ["grant", "deny"]:
+    return profileFailure("permission kind or decision is invalid")
+  let origin = normalizePermissionOrigin(url)
+  if not origin.isOk:
+    return profileFailure(origin.error)
+  let layout = ensureProfileLayout(appId, profile)
+  if not layout.isOk:
+    return layout
+  let loaded = readPermissionStore(appId, profile)
+  if not loaded.isOk:
+    return profileFailure(loaded.error)
+  var document = loaded.value
+  if not document["decisions"].hasKey(origin.value):
+    document["decisions"][origin.value] = newJObject()
+  document["decisions"][origin.value][kind] = %decision
+  let path = permissionStorePath(appId, profile)
+  if not path.isOk:
+    return path
+  atomicWrite(path.value, $document)
+
+proc readProfilePermission*(appId, profile, url, kind: string):
+    ProfileResult[ProfilePermission] =
+  if not validPermissionKind(kind):
+    return ProfileResult[ProfilePermission](isOk: false,
+      error: "permission kind is invalid")
+  let origin = normalizePermissionOrigin(url)
+  if not origin.isOk:
+    return ProfileResult[ProfilePermission](isOk: false, error: origin.error)
+  let loaded = readPermissionStore(appId, profile)
+  if not loaded.isOk:
+    return ProfileResult[ProfilePermission](isOk: false, error: loaded.error)
+  let decisions = loaded.value["decisions"]
+  if not decisions.hasKey(origin.value) or decisions[origin.value].kind != JObject or
+      not decisions[origin.value].hasKey(kind) or
+      decisions[origin.value][kind].kind != JString:
+    return ProfileResult[ProfilePermission](isOk: false,
+      error: "profile permission decision does not exist")
+  let decision = decisions[origin.value][kind].getStr()
+  if decision notin ["grant", "deny"]:
+    return ProfileResult[ProfilePermission](isOk: false,
+      error: "profile permission decision is invalid")
+  ProfileResult[ProfilePermission](isOk: true, value: ProfilePermission(
+    origin: origin.value, kind: kind, decision: decision))
+
+proc listProfilePermissions*(appId, profile: string):
+    ProfileResult[seq[ProfilePermission]] =
+  let loaded = readPermissionStore(appId, profile)
+  if not loaded.isOk:
+    return ProfileResult[seq[ProfilePermission]](isOk: false, error: loaded.error)
+  var entries: seq[ProfilePermission]
+  for origin, decisions in loaded.value["decisions"]:
+    if decisions.kind != JObject:
+      return ProfileResult[seq[ProfilePermission]](isOk: false,
+        error: "profile permission decision map is invalid")
+    for kind, value in decisions:
+      if not validPermissionKind(kind) or value.kind != JString or
+          value.getStr() notin ["grant", "deny"]:
+        return ProfileResult[seq[ProfilePermission]](isOk: false,
+          error: "profile permission decision is invalid")
+      entries.add(ProfilePermission(origin: origin, kind: kind,
+        decision: value.getStr()))
+  entries.sort(proc(left, right: ProfilePermission): int =
+    let originOrder = cmp(left.origin, right.origin)
+    if originOrder != 0: originOrder else: cmp(left.kind, right.kind))
+  ProfileResult[seq[ProfilePermission]](isOk: true, value: entries)
+
+proc deleteProfilePermission*(appId, profile, url, kind: string):
+    ProfilePathResult =
+  if not validPermissionKind(kind):
+    return profileFailure("permission kind is invalid")
+  let origin = normalizePermissionOrigin(url)
+  if not origin.isOk:
+    return profileFailure(origin.error)
+  let loaded = readPermissionStore(appId, profile)
+  if not loaded.isOk:
+    return profileFailure(loaded.error)
+  var document = loaded.value
+  if not document["decisions"].hasKey(origin.value) or
+      document["decisions"][origin.value].kind != JObject or
+      not document["decisions"][origin.value].hasKey(kind):
+    return profileFailure("profile permission decision does not exist")
+  document["decisions"][origin.value].delete(kind)
+  if document["decisions"][origin.value].len == 0:
+    document["decisions"].delete(origin.value)
+  let path = permissionStorePath(appId, profile)
+  if not path.isOk:
+    return path
+  atomicWrite(path.value, $document)
 
 proc profileSettingPath(appId, profile, key: string): ProfilePathResult =
   if not validSettingKey(key):

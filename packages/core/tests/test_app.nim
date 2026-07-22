@@ -97,6 +97,28 @@ block profilePathsAreContainedAndSafe:
   doAssert uppercaseScheme.value.len == 1
   doAssert listProfileCookies("tech.asopi.profile-test", "work").value == "example.com__sid"
   doAssert deleteProfileCookie("tech.asopi.profile-test", "work", "example.com", "sid").isOk
+  doAssert clearProfilePermissions("tech.asopi.profile-test", "work").isOk
+  let permissionOrigin = normalizePermissionOrigin("HTTPS://Example.COM:443/private?q=1")
+  doAssert permissionOrigin.isOk
+  doAssert permissionOrigin.value == "https://example.com"
+  doAssert not normalizePermissionOrigin("file:///tmp/index.html").isOk
+  doAssert writeProfilePermission("tech.asopi.profile-test", "work",
+    "https://example.com/account", "notifications", "grant").isOk
+  let loadedPermission = readProfilePermission("tech.asopi.profile-test", "work",
+    "https://EXAMPLE.com:443/other", "notifications")
+  doAssert loadedPermission.isOk
+  doAssert loadedPermission.value.origin == "https://example.com"
+  doAssert loadedPermission.value.decision == "grant"
+  doAssert writeProfilePermission("tech.asopi.profile-test", "work",
+    "https://example.com", "camera", "deny").isOk
+  let profilePermissions = listProfilePermissions("tech.asopi.profile-test", "work")
+  doAssert profilePermissions.isOk
+  doAssert profilePermissions.value.len == 2
+  doAssert deleteProfilePermission("tech.asopi.profile-test", "work",
+    "https://example.com", "notifications").isOk
+  doAssert not readProfilePermission("tech.asopi.profile-test", "work",
+    "https://example.com", "notifications").isOk
+  doAssert clearProfilePermissions("tech.asopi.profile-test", "work").isOk
 
 block windowsOwnIndependentRpcAllowLists:
   let created = newApp(id = "tech.asopi.core-test", name = "Core test")
@@ -315,6 +337,7 @@ block permissionsAndDownloadsDefaultToDeny:
   let created = newApp(id = "tech.asopi.policy-test", name = "Policy test")
   doAssert created.isOk
   let window = created.value.newWindow(title = "Policy").value
+  doAssert window.clearPermissions().isOk
   doAssert window.decidePermission(PermissionRequest(
     kind: microphone, url: "https://example.com")) == permissionDeny
   doAssert window.decideDownload(DownloadRequest(
@@ -324,8 +347,27 @@ block permissionsAndDownloadsDefaultToDeny:
   window.downloadHandler = proc(request: DownloadRequest): DownloadDecision = downloadAllow
   doAssert window.decidePermission(PermissionRequest(
     kind: notifications, url: "https://example.com")) == permissionGrant
+  let remembered = window.readPermission(PermissionRequest(
+    kind: notifications, url: "https://EXAMPLE.com:443/another/path"))
+  doAssert remembered.isOk
+  doAssert remembered.value == permissionGrant
+  window.permissionHandler = proc(request: PermissionRequest): PermissionDecision =
+    permissionDeny
+  ## Stored grants are origin-scoped and take precedence over a later handler.
+  doAssert window.decidePermission(PermissionRequest(
+    kind: notifications, url: "https://example.com/new")) == permissionGrant
   doAssert window.decidePermission(PermissionRequest(
     kind: camera, url: "https://example.com")) == permissionDeny
+  let permissions = window.listPermissions()
+  doAssert permissions.isOk
+  doAssert permissions.value.len == 2
+  doAssert window.deletePermission(PermissionRequest(
+    kind: notifications, url: "https://example.com" )).isOk
+  doAssert window.decidePermission(PermissionRequest(
+    kind: notifications, url: "https://example.com")) == permissionDeny
+  doAssert window.clearPermissions().isOk
+  doAssert not window.readPermission(PermissionRequest(
+    kind: notifications, url: "https://example.com")).isOk
   doAssert window.decideDownload(DownloadRequest(
     url: "https://example.com/file", suggestedName: "file")) == downloadAllow
 

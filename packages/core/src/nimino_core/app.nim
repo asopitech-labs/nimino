@@ -9,7 +9,7 @@ when defined(linux):
 
 import nimino_native as native
 
-import ./[errors, profile, rpc]
+import ./[errors, logging, profile, rpc]
 
 const RpcBootstrapSource = """
 (() => {
@@ -181,6 +181,12 @@ type
     kind*: PermissionKind
     url*: string
 
+  StoredPermission* = object
+    ## A persisted decision scoped to one normalized HTTP(S) origin.
+    origin*: string
+    kind*: PermissionKind
+    decision*: PermissionDecision
+
   DownloadDecision* = enum
     downloadDeny
     downloadAllow
@@ -230,6 +236,7 @@ type
     nativeMenuHandler: proc(itemId: uint32)
     trayMenuHandler: proc(itemId: uint32)
     notificationActivatedHandler: proc(notificationId: string)
+    appLogger: Logger
     customProtocolHandler: CustomProtocolHandler
     when defined(linux):
       wslClient: WslClient
@@ -372,10 +379,31 @@ proc applyNavigationDecision*(window: Window; request: NavigationRequest): bool 
     false
 
 proc decidePermission*(window: Window; request: PermissionRequest): PermissionDecision =
-  ## Unhandled permission requests are denied by default.
-  if window.isNil or window.permissionHandler.isNil:
+  ## A saved profile decision wins over the callback. Unhandled requests are
+  ## denied for this request only; default denial is not persisted because a
+  ## handler may be registered later in the application lifecycle.
+  if window.isNil or window.app.isNil:
     return permissionDeny
-  window.permissionHandler(request)
+  let kind = case request.kind
+    of microphone: "microphone"
+    of camera: "camera"
+    of notifications: "notifications"
+    of geolocation: "geolocation"
+    of clipboard: "clipboard"
+    of screenCapture: "screenCapture"
+  let saved = readProfilePermission(window.app.id, window.profileName,
+    request.url, kind)
+  if saved.isOk:
+    return if saved.value.decision == "grant": permissionGrant else: permissionDeny
+  if window.permissionHandler.isNil:
+    return permissionDeny
+  try:
+    result = window.permissionHandler(request)
+    let encoded = if result == permissionGrant: "grant" else: "deny"
+    discard writeProfilePermission(window.app.id, window.profileName,
+      request.url, kind, encoded)
+  except CatchableError:
+    result = permissionDeny
 
 proc decideDownload*(window: Window; request: DownloadRequest): DownloadDecision =
   ## Downloads require an explicit application decision.
@@ -860,14 +888,16 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
         backend: wslBackend,
         id: options.id,
         name: options.name,
-        wslClient: launched.value
+        wslClient: launched.value,
+        appLogger: newLogger()
       ))
     else:
       return coreFailureOf[App](coreError(platformUnavailable, "app.create",
         detail = "WSL requires the nimino-wsl adapter"))
 
   let app = App(state: coreCreated, backend: nativeBackend, id: options.id, name: options.name,
-                nativeApp: native.newNativeApp(native.NativeAppOptions(appId: options.id)))
+                nativeApp: native.newNativeApp(native.NativeAppOptions(appId: options.id)),
+                appLogger: newLogger())
   let idleConfigured = native.setIdleHandler(app.nativeApp, proc() =
     if app != nil and app.state == coreRunning:
       for window in app.windows:
@@ -880,6 +910,24 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
 
 proc newApp*(id = "tech.asopi.nimino"; name = "Nimino"): CoreResultOf[App] =
   newApp(AppOptions(id: id, name: name))
+
+proc setLogger*(app: App; logger: Logger): CoreResult =
+  ## Replace the application-owned sink.  A nil logger disables emission.
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.setLogger"))
+  app.appLogger = if logger.isNil: newLogger() else: logger
+  coreSuccess()
+
+proc logger*(app: App): Logger =
+  ## Return the current logger for integrations that want to emit records
+  ## without exposing native backend objects.
+  if app.isNil: nil else: app.appLogger
+
+proc log*(app: App; level: LogLevel; operation, message: string): CoreResult =
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.log"))
+  app.appLogger.emit(level, operation, message)
+  coreSuccess()
 
 proc registerCustomProtocol*(app: App; scheme: string;
                              handler: CustomProtocolHandler): CoreResult =
@@ -1473,6 +1521,80 @@ proc clearPermissions*(window: Window): CoreResult =
   let cleared = clearProfilePermissions(window.app.id, window.profileName)
   if cleared.isOk: coreSuccess()
   else: coreFailure(coreError(invalidArgument, "window.clearPermissions", detail = cleared.error))
+
+proc permissionKindName(kind: PermissionKind): string =
+  case kind
+  of microphone: "microphone"
+  of camera: "camera"
+  of notifications: "notifications"
+  of geolocation: "geolocation"
+  of clipboard: "clipboard"
+  of screenCapture: "screenCapture"
+
+proc parsePermissionKind(value: string): CoreResultOf[PermissionKind] =
+  case value
+  of "microphone": coreSuccessOf(microphone)
+  of "camera": coreSuccessOf(camera)
+  of "notifications": coreSuccessOf(notifications)
+  of "geolocation": coreSuccessOf(geolocation)
+  of "clipboard": coreSuccessOf(clipboard)
+  of "screenCapture": coreSuccessOf(screenCapture)
+  else: coreFailureOf[PermissionKind](coreError(nativeFailure,
+    "window.listPermissions", detail = "stored permission kind is invalid"))
+
+proc rememberPermission*(window: Window; request: PermissionRequest;
+                         decision: PermissionDecision): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.rememberPermission"))
+  let stored = writeProfilePermission(window.app.id, window.profileName,
+    request.url, request.kind.permissionKindName(),
+    if decision == permissionGrant: "grant" else: "deny")
+  if stored.isOk:
+    coreSuccess()
+  else:
+    coreFailure(coreError(invalidArgument, "window.rememberPermission",
+      detail = stored.error))
+
+proc readPermission*(window: Window; request: PermissionRequest):
+                     CoreResultOf[PermissionDecision] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[PermissionDecision](coreError(invalidState,
+      "window.readPermission"))
+  let loaded = readProfilePermission(window.app.id, window.profileName,
+    request.url, request.kind.permissionKindName())
+  if not loaded.isOk:
+    return coreFailureOf[PermissionDecision](coreError(invalidArgument,
+      "window.readPermission", detail = loaded.error))
+  coreSuccessOf(if loaded.value.decision == "grant":
+    permissionGrant else: permissionDeny)
+
+proc listPermissions*(window: Window): CoreResultOf[seq[StoredPermission]] =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailureOf[seq[StoredPermission]](coreError(invalidState,
+      "window.listPermissions"))
+  let loaded = listProfilePermissions(window.app.id, window.profileName)
+  if not loaded.isOk:
+    return coreFailureOf[seq[StoredPermission]](coreError(invalidArgument,
+      "window.listPermissions", detail = loaded.error))
+  var entries: seq[StoredPermission]
+  for stored in loaded.value:
+    let kind = parsePermissionKind(stored.kind)
+    if not kind.isOk:
+      return coreFailureOf[seq[StoredPermission]](kind.failure)
+    entries.add(StoredPermission(origin: stored.origin, kind: kind.value,
+      decision: if stored.decision == "grant": permissionGrant else: permissionDeny))
+  coreSuccessOf(entries)
+
+proc deletePermission*(window: Window; request: PermissionRequest): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.deletePermission"))
+  let deleted = deleteProfilePermission(window.app.id, window.profileName,
+    request.url, request.kind.permissionKindName())
+  if deleted.isOk:
+    coreSuccess()
+  else:
+    coreFailure(coreError(invalidArgument, "window.deletePermission",
+      detail = deleted.error))
 
 proc clearLocalStorage*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
