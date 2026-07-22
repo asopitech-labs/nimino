@@ -40,6 +40,17 @@ Releaseへ添付します。READMEのGalleryまたは[Releases](https://github.c
 からinstallerを取得してください。上記の`nimino pack prepack`コマンドは、maintainerが
 bundleを再生成する場合の低水準手順です。
 
+Windows installerを実行する前に、WebView2 Evergreen Runtimeの導入が必須です。
+`v0.1.0`のRelease assetをSHA-256検証付きでURLから取得・実行するPowerShell
+ワンライナーは次のとおりです（管理者PowerShellで実行します）。
+
+```powershell
+$u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1'; $p=Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $p; if ((Get-FileHash -Algorithm SHA256 $p).Hash -ne 'FBB373CC34D49F8B1FBA0792363103455EEE30608D16F7BBD32E78197E1D6F8A') { throw 'WebView2 setup script SHA-256 mismatch' }; Set-ExecutionPolicy -Scope Process Bypass; & $p
+```
+
+この手順を省略してinstallerを起動してはいけません。`WebView2Loader.dll`はbundleへ
+同梱しますが、Evergreen Runtime本体はinstallerへ同梱していません。
+
 `--out`を省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`が必須です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定・ナビゲーション・権限・注入設定はマニフェスト形式で指定します。
 
 PakeのCLI包装フローを参考にしているが、生成物はNimino hostと`nimino-core`を使用し、Pake/Tauriを実行時依存にしません。
