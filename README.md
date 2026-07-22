@@ -29,9 +29,17 @@ No Nim, Docker, or local GUI SDK installation is required for the online path.
 
 The workflow is defined in [`nimino-pack-online.yml`](.github/workflows/nimino-pack-online.yml). It uses the pinned Docker toolchain and produces a bundle, package, checksum file, and SBOM. Supported targets are Linux `.deb`, Linux `.rpm`, and Windows NSIS.
 
-### Ready-made prepacks
+### Prepack Gallery
 
-The CLI includes reviewed definitions for YouTube, Gmail, and Google Analytics. Generate one locally or inside the development container:
+Prepacks are reviewed application definitions: URL, window defaults, profile name, package metadata, and an explicit navigation allow-list. They do not contain user credentials and they do not bypass the service's normal login flow.
+
+| App | Open in browser | Default window | Profile | Generate |
+| --- | --- | ---: | --- | --- |
+| **YouTube** | [youtube.com](https://www.youtube.com/) | 1280 × 800 | `default` | `nimino pack prepack youtube` |
+| **Gmail** | [mail.google.com](https://mail.google.com/mail/u/0/) | 1280 × 900 | `default` | `nimino pack prepack gmail` |
+| **Google Analytics** | [analytics.google.com](https://analytics.google.com/analytics/web/) | 1440 × 900 | `default` | `nimino pack prepack google-analytics` |
+
+The definitions live in [`catalog/prepacks/`](catalog/prepacks/) and are covered by `make pack-prepack-test`. To create a runnable bundle, provide a compiled Nimino host:
 
 ```bash
 nimino pack prepack youtube --out dist/youtube --host nimino-host
@@ -39,7 +47,42 @@ nimino pack prepack gmail --out dist/gmail --host nimino-host
 nimino pack prepack google-analytics --out dist/google-analytics --host nimino-host
 ```
 
-These are bundle definitions, not signed release binaries. The public Popular Packages catalog remains empty until an artifact has independently verified checksums, SBOM, provenance, and signature.
+Then launch the generated bundle's `run-nimino.sh` (Linux) or generated Windows launcher. The first launch opens the service sign-in page; credentials and cookies are stored by the selected Nimino profile.
+
+These are source-controlled bundle definitions, not signed release binaries. The official Popular Packages catalog remains empty until an artifact has independently verified checksums, SBOM, provenance, and signature.
+
+### Installing a generated package
+
+The normal beginner path is the [online build workflow](.github/workflows/nimino-pack-online.yml). Download its artifact, then install the package for your operating system:
+
+When building locally, run these commands inside the Docker development environment (for example with `make shell`) and package a generated bundle first:
+
+```bash
+nimino package-linux dist/youtube --format deb --out dist/packages \
+  --arch amd64 --maintainer 'Nimino <noreply@nimino.invalid>'
+nimino package-windows dist/youtube --format nsis --out dist/packages
+```
+
+```bash
+# Debian/Ubuntu
+sudo apt install ./dist/packages/*.deb
+
+# Fedora/RHEL-compatible systems
+sudo dnf install ./dist/packages/*.rpm
+```
+
+For Windows, run the generated `*-setup.exe`. It is a per-user installer and normally does not require administrator privileges. Nimino uses the Windows WebView2 Evergreen Runtime; the installer does not bundle Chromium or WebView2. `make setup` can install or verify the runtime through elevated PowerShell before the application is started.
+
+For an AppImage, make the file executable and run it:
+
+```bash
+chmod +x ./dist/packages/*.AppImage
+./dist/packages/*.AppImage
+```
+
+`package-linux --format flatpak` currently generates a Flatpak build context. The exported `.flatpak` is produced by the Docker validation/release pipeline; it is not yet a signed public download. Generated packages are not currently published as an official release gallery, so verify the workflow artifact and checksum before installing third-party builds.
+
+To remove an installation, use the platform package manager (`apt remove`/`dnf remove`), the Windows uninstaller shown in **Installed apps**, or delete the AppImage. Profile data is separate from the package and may remain under the platform's Nimino application-data directory.
 
 ### For developers: run from Docker
 
