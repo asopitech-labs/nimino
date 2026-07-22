@@ -13,6 +13,12 @@ type
   GApplication* {.incompleteStruct.} = object
   GDBusConnection* {.incompleteStruct.} = object
   GDBusProxy* {.incompleteStruct.} = object
+  GDBusNodeInfo* {.incompleteStruct.} = object
+  GDBusInterfaceInfo* {.incompleteStruct.} = object
+  GDBusMethodInvocation* {.incompleteStruct.} = object
+  GVariant* {.incompleteStruct.} = object
+  GVariantType* {.incompleteStruct.} = object
+  GVariantBuilder* {.incompleteStruct.} = object
   GtkApplication* {.incompleteStruct.} = object
   GtkWindow* {.incompleteStruct.} = object
   GtkApplicationWindow* {.incompleteStruct.} = object
@@ -61,6 +67,27 @@ type
   GAsyncReadyCallback* = proc(sourceObject: pointer; asyncResult: ptr GAsyncResult;
                               userData: pointer) {.cdecl.}
   GSourceFunc* = proc(data: pointer): cint {.cdecl.}
+  GDBusInterfaceMethodCallFunc* = proc(connection: ptr GDBusConnection;
+                                       sender, objectPath, interfaceName,
+                                       methodName: cstring;
+                                       parameters: ptr GVariant;
+                                       invocation: ptr GDBusMethodInvocation;
+                                       userData: pointer) {.cdecl.}
+  GDBusInterfaceGetPropertyFunc* = proc(connection: ptr GDBusConnection;
+                                        sender, objectPath, interfaceName,
+                                        propertyName: cstring;
+                                        error: ptr ptr GError;
+                                        userData: pointer): ptr GVariant {.cdecl.}
+  GDBusInterfaceSetPropertyFunc* = proc(connection: ptr GDBusConnection;
+                                        sender, objectPath, interfaceName,
+                                        propertyName: cstring; value: ptr GVariant;
+                                        error: ptr ptr GError;
+                                        userData: pointer): cint {.cdecl.}
+  GDBusInterfaceVTable* {.bycopy.} = object
+    methodCall*: GDBusInterfaceMethodCallFunc
+    getProperty*: GDBusInterfaceGetPropertyFunc
+    setProperty*: GDBusInterfaceSetPropertyFunc
+    padding*: array[8, pointer]
   WebKitURISchemeRequestCallback* = proc(request: ptr WebKitURISchemeRequest;
                                          userData: pointer) {.cdecl.}
   GType* = csize_t
@@ -177,6 +204,77 @@ proc g_dbus_proxy_new_sync*(connection: ptr GDBusConnection; flags: cint;
   {.cdecl, importc, dynlib: LibGio.}
 proc g_dbus_proxy_get_name_owner*(proxy: ptr GDBusProxy): cstring
   {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_connection_call_sync*(connection: ptr GDBusConnection;
+                                  busName, objectPath, interfaceName, methodName: cstring;
+                                  parameters: ptr GVariant; replyType: pointer;
+                                  flags, timeoutMsec: cint; cancellable: pointer;
+                                  error: ptr ptr GError): ptr GVariant
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_connection_register_object*(connection: ptr GDBusConnection;
+                                        objectPath: cstring; interfaceInfo: ptr GDBusInterfaceInfo;
+                                        vtable: ptr GDBusInterfaceVTable; userData: pointer;
+                                        userDataFreeFunc: GDestroyNotify;
+                                        error: ptr ptr GError): uint32
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_connection_unregister_object*(connection: ptr GDBusConnection;
+                                          registrationId: uint32): cint
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_node_info_new_for_xml*(xmlData: cstring; error: ptr ptr GError): ptr GDBusNodeInfo
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_node_info_lookup_interface*(info: ptr GDBusNodeInfo;
+                                        name: cstring): ptr GDBusInterfaceInfo
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_node_info_unref*(info: ptr GDBusNodeInfo)
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_method_invocation_return_value*(invocation: ptr GDBusMethodInvocation;
+                                            parameters: ptr GVariant)
+  {.cdecl, importc, dynlib: LibGio.}
+proc g_dbus_method_invocation_return_dbus_error*(invocation: ptr GDBusMethodInvocation;
+                                                 errorName, errorMessage: cstring)
+  {.cdecl, importc, dynlib: LibGio.}
+
+proc g_variant_new*(format: cstring): ptr GVariant {.varargs, cdecl, importc, dynlib: LibGlib.}
+proc g_variant_new_boolean*(value: cint): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_new_int32*(value: int32): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_new_uint32*(value: uint32): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_new_string*(value: cstring): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_new_object_path*(value: cstring): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_new_strv*(strv: ptr cstring; length: csize_t): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_new_array*(elementType: ptr GVariantType; children: ptr ptr GVariant;
+                          nChildren: csize_t): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_new_variant*(value: ptr GVariant): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_get_int32*(value: ptr GVariant): int32
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_get_uint32*(value: ptr GVariant): uint32
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_get_string*(value: ptr GVariant; length: ptr csize_t): cstring
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_get_child_value*(value: ptr GVariant; index: csize_t): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_builder_new*(variantType: ptr GVariantType): ptr GVariantBuilder
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_builder_add*(builder: ptr GVariantBuilder; format: cstring): void
+  {.varargs, cdecl, importc, dynlib: LibGlib.}
+proc g_variant_builder_add_value*(builder: ptr GVariantBuilder; value: ptr GVariant)
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_builder_end*(builder: ptr GVariantBuilder): ptr GVariant
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_builder_unref*(builder: ptr GVariantBuilder)
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_type_new*(typeString: cstring): ptr GVariantType
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_type_free*(variantType: ptr GVariantType)
+  {.cdecl, importc, dynlib: LibGlib.}
+proc g_variant_unref*(value: ptr GVariant)
+  {.cdecl, importc, dynlib: LibGlib.}
 
 proc g_menu_new*(): ptr GMenu
   {.cdecl, importc, dynlib: LibGio.}

@@ -615,17 +615,25 @@ try {
       throw "Host did not execute the new-window page bridge preflight"
     }
     Wait-ForWebMessage $webViewId "new-window-page-ready"
-    ## Signal the popup intent from the same page.  Synthetic ExecuteScript
-    ## clicks are not trusted user gestures in WebView2 and may
-    ## be rejected by Chromium's popup blocker, so the deterministic smoke
-    ## path asserts the bridge signal and then creates the managed popup
-    ## explicitly.  The native NewWindowRequested event remains covered by
-    ## the interactive harness, where the user performs the trusted click.
+    ## Exercise the native NewWindowRequested callback before testing the
+    ## explicit popup API.  The event assertion is intentionally separate from
+    ## managed popup creation so the harness cannot pass by creating a window
+    ## directly and skipping the WebView event path.
+    Set-SmokePhase "new-window callback"
+    $clickRequestId = "20-click"
+    Write-Frame @{
+      version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+      requestId = $clickRequestId; eventId = "0"; method = "native.webview.evalJavaScript"
+      payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "document.getElementById('open').click()" })
+      error = ""; timeoutMs = 5000
+    }
+    $clickResponse = Read-Response $clickRequestId
+    if ($clickResponse.kind -ne "response" -or -not [string]::IsNullOrEmpty($clickResponse.error)) {
+      throw "Host could not execute the popup trigger"
+    }
+    [void](Wait-ForNewWindowRequest $webViewId)
+
     Set-SmokePhase "popup window creation"
-    Set-SmokePhase "popup intent bridge"
-    ## The successful page-ready bridge is the popup intent marker.  Do not
-    ## issue a second synthetic click/message here: WebView2 may defer or drop
-    ## that callback while processing a non-user-initiated script.
     $popupWindowRequestId = "21"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""

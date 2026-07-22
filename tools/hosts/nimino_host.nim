@@ -176,7 +176,9 @@ proc main() =
       ## The request came from the WebView's user gesture.  Consume it by
       ## creating the popup explicitly; native backends never create one
       ## implicitly.
-      discard window.openPopup(NewWindowRequest(url: request.url), profile = profile)
+      let popup = window.openPopup(NewWindowRequest(url: request.url), profile = profile)
+      if not popup.isOk:
+        fail("nimino-host: popup creation failed: " & popup.failure.detail)
       true
     of navigationExternal:
       discard window.openExternally(request.url)

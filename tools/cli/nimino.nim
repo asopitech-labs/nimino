@@ -4,7 +4,7 @@ import nimino_pack
 
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino pack <url> [--name <name>] [--id <id>] [--profile <name>] [--icon <path-or-url>] [--deep-link <scheme>]... [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack <url> [--name <name>] [--id <id>] [--profile <name>] [--width <px>] [--height <px>] [--resizable <true|false>] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
   quit(2)
@@ -460,6 +460,12 @@ proc copyGenerated(source, destination: string): bool =
     stderr.writeLine("nimino pack: unable to copy " & source)
     false
 
+proc parseCliBool(value: string): bool =
+  case value.toLowerAscii()
+  of "true", "1", "yes": result = true
+  of "false", "0", "no": result = false
+  else: usage()
+
 if paramCount() >= 1 and paramStr(1) == "package-linux":
   runPackageLinux()
 if paramCount() >= 1 and paramStr(1) == "package-windows":
@@ -475,6 +481,14 @@ if sourceIsUrl:
   var id = ""
   var profile = "default"
   var icon = ""
+  var width = 1200
+  var height = 800
+  var resizable = true
+  var permissionsAllow: seq[string]
+  var css: seq[string]
+  var javascript: seq[string]
+  var navigationAllow: seq[string]
+  var navigationExternal: seq[string]
   var deepLinkSchemes: seq[string]
   var index = 3
   while index <= paramCount():
@@ -486,13 +500,28 @@ if sourceIsUrl:
     of "--name": name = value
     of "--id": id = value
     of "--profile": profile = value
+    of "--width":
+      try: width = parseInt(value)
+      except ValueError: usage()
+    of "--height":
+      try: height = parseInt(value)
+      except ValueError: usage()
+    of "--resizable": resizable = parseCliBool(value)
     of "--icon": icon = value
     of "--deep-link": deepLinkSchemes.add(value)
+    of "--allow-permission": permissionsAllow.add(value)
+    of "--inject-css": css.add(value)
+    of "--inject-js": javascript.add(value)
+    of "--allow-url": navigationAllow.add(value)
+    of "--external-url": navigationExternal.add(value)
     of "--out", "--host": discard
     else: usage()
     index += 2
   loaded = generateManifest(source, name = name, id = id, profile = profile,
-    icon = icon, deepLinkSchemes = deepLinkSchemes)
+    icon = icon, deepLinkSchemes = deepLinkSchemes, width = width,
+    height = height, resizable = resizable, permissionsAllow = permissionsAllow,
+    css = css, javascript = javascript, navigationAllow = navigationAllow,
+    navigationExternal = navigationExternal)
 else:
   loaded = loadManifest(source)
 if not loaded.isOk:
@@ -507,7 +536,7 @@ while index <= paramCount():
   case paramStr(index)
   of "--out": outputDirectory = paramStr(index + 1)
   of "--host": hostPath = paramStr(index + 1)
-  of "--name", "--id", "--profile", "--icon", "--deep-link":
+  of "--name", "--id", "--profile", "--width", "--height", "--resizable", "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--external-url":
     if not sourceIsUrl: usage()
   else: usage()
   index += 2

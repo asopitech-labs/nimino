@@ -63,7 +63,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 & $p
 ```
 
-To rebuild a site bundle during development, pass its URL directly to `nimino pack`. End users should download the corresponding installer from Releases. No named site alias or site-specific definition is required.
+To rebuild a site bundle during development, pass its URL directly to `nimino pack`. Window size, injection files, permissions, and navigation rules can be supplied as URL options; end users should download the corresponding installer from Releases. No named site alias or site-specific definition is required.
 
 ### Installing a generated package
 

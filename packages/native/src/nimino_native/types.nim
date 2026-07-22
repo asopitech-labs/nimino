@@ -176,6 +176,13 @@ type
     trayConfigured: bool
     trayVisible: bool
     trayWindow: pointer
+    trayWatcherName: string
+    trayBusName: string
+    trayBusConnection: pointer
+    trayItemRegistration: uint32
+    trayMenuRegistration: uint32
+    trayIntrospection: pointer
+    trayMenuIntrospection: pointer
     notificationVisible: bool
     notificationWindow: pointer
     notificationId: string
@@ -278,6 +285,7 @@ type
     activeCookieMutations: seq[NativeCookieMutationRequest]
 
 when defined(linux) and not defined(niminoWsl):
+  proc dispatchTrayMenu(app: NativeApp; itemId: uint32)
   proc linuxCloseRequested(window: pointer; userData: pointer): cint {.cdecl.}
   proc linuxSizeNotify(window, pspec, userData: pointer) {.cdecl.}
   proc linuxCreateWindow(window: NativeWindow): NativeResult
@@ -296,7 +304,10 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxOpenFileDialog*(window: NativeWindow;
                             options: NativeFileDialogOptions):
                             Future[NativeResultOf[seq[string]]]
+  proc linuxSystemTrayWatcherName*(): string
   proc linuxSystemTraySupportDetail*(): string
+  proc linuxInstallSystemTray(app: NativeApp): NativeResult
+  proc linuxUninstallSystemTray(app: NativeApp)
 elif defined(windows):
   proc windowsCreateWindow(window: NativeWindow): NativeResult
   proc windowsEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
@@ -504,16 +515,17 @@ proc dispatchResized(window: NativeWindow; width, height: int) =
     ## A resize observer must not break the native event callback boundary.
     discard
 
+proc dispatchTrayMenu(app: NativeApp; itemId: uint32) =
+  ## Native tray backends invoke this on their UI/event-loop thread. User code
+  ## must not unwind through the native callback boundary.
+  if app.isNil or app.trayMenuHandler.isNil:
+    return
+  try:
+    app.trayMenuHandler(itemId)
+  except CatchableError:
+    discard
+
 when defined(windows):
-  proc dispatchTrayMenu(app: NativeApp; itemId: uint32) =
-    ## Win32 invokes this on the UI thread.  User code must not unwind through
-    ## the window procedure.
-    if app.isNil or app.trayMenuHandler.isNil:
-      return
-    try:
-      app.trayMenuHandler(itemId)
-    except CatchableError:
-      discard
 
   proc dispatchNotificationActivated(app: NativeApp) =
     if app.isNil or app.notificationActivatedHandler.isNil or
@@ -662,6 +674,9 @@ proc newNativeApp*(options: NativeAppOptions): NativeApp =
     result.capabilities.incl(nativeMenu)
     result.capabilities.incl(nativeNotification)
     result.capabilities.incl(customProtocol)
+    result.trayWatcherName = linuxSystemTrayWatcherName()
+    if result.trayWatcherName.len > 0:
+      result.capabilities.incl(systemTray)
 
 proc newNativeApp*(): NativeApp =
   newNativeApp(NativeAppOptions(appId: "tech.asopi.nimino.native"))
@@ -677,7 +692,10 @@ proc systemTraySupportDetail*(app: NativeApp): string =
   if app.isNil:
     return "application is nil"
   if app.supports(systemTray):
-    return "system tray is supported by the native backend"
+    when defined(linux) and not defined(niminoWsl):
+      return "StatusNotifierItem/dbusmenu is available via " & app.trayWatcherName
+    else:
+      return "system tray is supported by the native backend"
   when defined(linux) and not defined(niminoWsl):
     return linuxSystemTraySupportDetail()
   elif defined(niminoWsl):

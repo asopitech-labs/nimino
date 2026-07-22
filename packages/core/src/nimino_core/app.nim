@@ -380,25 +380,18 @@ proc navigationSiteKey(host: string): string =
   labels[^2] & "." & labels[^1]
 
 proc isAuthenticationNavigation*(url: string): bool =
-  ## Provider-agnostic auth detection.  It covers OAuth/SSO redirects and
-  ## common hosted identity providers without requiring each application to
-  ## enumerate accounts.google.com, googleusercontent.com, Okta, etc.
+  ## Detect known identity-provider hosts.  A path containing `/login` or
+  ## `/oauth` is not sufficient on its own: treating every unrelated host as
+  ## an authentication transition would defeat external URL separation.
   let host = navigationHost(url)
   if host.len == 0:
     return false
   if host == "accounts.google.com" or host.endsWith(".accounts.google.com") or
+      host == "googleusercontent.com" or host.endsWith(".googleusercontent.com") or
       host == "login.microsoftonline.com" or host.endsWith(".microsoftonline.com") or
       host == "login.live.com" or host.endsWith(".okta.com") or
       host.endsWith(".auth0.com") or host.endsWith(".onelogin.com"):
     return true
-  try:
-    let path = parseUri(url).path.toLowerAscii()
-    for marker in ["/oauth", "/auth", "/authorize", "/signin", "/sign-in",
-                   "/login", "/sso", "/saml"]:
-      if path.contains(marker):
-        return true
-  except CatchableError:
-    discard
   false
 
 proc defaultNavigationDecision*(entryUrl, requestUrl: string): NavigationDecision =
@@ -2514,9 +2507,23 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
     return coreFailureOf[Window](coreError(permissionDenied, "window.openPopup",
       detail = "popup URL was rejected by navigation policy"))
   let popup = window.app.newWindow(CoreWindowOptions(
-    title: title, width: width, height: height, profile: profile))
+    title: title, width: width, height: height, profile: profile,
+    injectionCss: window.injectionCss,
+    injectionJavaScript: window.injectionJavaScript,
+    injectionEnabled: window.injectionEnabled,
+    disableDevTools: not window.devToolsEnabled))
   if not popup.isOk:
     return popup
+  ## A popup is a new native Window, but it remains inside the same Core
+  ## security scope.  Copy the parent's policy and handlers before the first
+  ## navigation so the child cannot escape through a later redirect.
+  popup.value.navigationRules = window.navigationRules
+  popup.value.navigationRulesConfigured = window.navigationRulesConfigured
+  popup.value.navigationPolicy = window.navigationPolicy
+  popup.value.externalNavigationHandler = window.externalNavigationHandler
+  popup.value.permissionHandler = window.permissionHandler
+  popup.value.downloadHandler = window.downloadHandler
+  popup.value.downloadEventHandler = window.downloadEventHandler
   let loaded = popup.value.loadUrl(request.url)
   if not loaded.isOk:
     discard popup.value.close()

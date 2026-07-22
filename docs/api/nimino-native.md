@@ -125,7 +125,8 @@ discard view.loadHtml("<img src=\"images/logo.svg\">",
 ## Windows system tray（最小実装）
 
 Windows build では、`created` 状態の App に固定の context menu を一度だけ登録できます。
-Windows 以外では `configureSystemTray` は `unsupported` を返します。tray icon は最初に
+Linux native buildでも、session D-BusにfreedesktopまたはKDEのStatusNotifierWatcherが
+存在する場合は、同じAPIでStatusNotifierItemとdbusmenuを登録できます。tray icon は最初に
 作成された native Window を owner にし、その Window または App を閉じる前に削除されます。
 この層は hide-on-close、start-to-tray、アプリ固有 icon、URL包装を実装しません。WindowsのToast表示と、生成されたper-user installerが登録するCOM local-server activationは、AUMID/ToastActivatorCLSIDが揃った配布構成で利用できます。
 
@@ -145,22 +146,21 @@ discard app.configureSystemTray([
 ID `0`、空 title、重複 ID、nil handler は `invalidArgument` で拒否します。callback は
 native UI thread で呼ばれ、例外は Win32 callback 境界へ伝播しません。
 
-## Linux native menu / notification（最小実装）
+## Linux native menu / notification / system tray（最小実装）
 
-ネイティブLinux buildでは、`nativeMenu` と `nativeNotification` Capability を提供します。
-GTK4/GLibには従来のstatus iconを常駐させる正式なsystem-tray APIがありません。Linux
-デスクトップの一部はfreedesktop StatusNotifierItemをsession D-Bus上で提供しますが、
-Niminoは汎用wrapperを導入せず、直接のStatusNotifierItemとdbusmenu実装が揃うまで
-`systemTray` Capabilityを`false`に保ちます。
+ネイティブLinux buildでは、`nativeMenu` と `nativeNotification` Capabilityを常に提供し、
+session D-BusにStatusNotifierWatcherが存在する場合だけ`systemTray`を提供します。GTK4/GLib
+には従来のstatus icon APIがないため、Niminoはfreedesktop StatusNotifierItemと
+`com.canonical.dbusmenu`をGioの公式D-Bus APIへ直接登録します。
 
 `app.systemTraySupportDetail()` は `DBUS_SESSION_BUS_ADDRESS`、session bus、
-`org.kde.StatusNotifierWatcher` の owner を順に検査し、具体的な理由を返します。
+`org.freedesktop.StatusNotifierWatcher`（旧KDE名へfallback）のownerを順に検査し、具体的な理由を返します。
 `configureSystemTray` は同じ理由を `unsupported` エラーへ含め、未対応を成功扱い
 しません。例えばsession busがない場合は
 `session D-Bus is unavailable (DBUS_SESSION_BUS_ADDRESS is not set)` になります。
+StatusNotifierWatcherのない環境では`configureSystemTray`が`unsupported`を返します。
 tray依存の導線は`configureNativeMenu`でアプリメニューを提供し、状態変化は
-`sendNativeNotification`で通知してください。外部のAppIndicator実装を暗黙に導入して
-tray対応済みとは扱いません。
+`sendNativeNotification`で通知してください。外部のAppIndicator実装は導入しません。
 `configureNativeMenu` は `run` 前に一度だけ呼べ、GTK の
 [`GtkApplication.set_menubar`](https://docs.gtk.org/gtk4/method.Application.set_menubar.html)
 へ `GMenu` を登録します。各項目はアプリケーション `GSimpleAction` となり、enabled

@@ -214,8 +214,18 @@ block windowsOwnIndependentRpcAllowLists:
     title = "Popup", profile = "popup")
   doAssert popup.isOk
   doAssert popup.value.profilePath.endsWith("/popup") or popup.value.profilePath.endsWith("\\popup")
-  doAssert app.windowCount() == 3
-  doAssert app.windows().len == 3
+  first.value.navigationPolicy = proc(request: NavigationRequest): NavigationDecision =
+    if request.url == "https://popup.example/allowed": navigationAllow
+    else: navigationDeny
+  let policyPopup = first.value.openPopup(NewWindowRequest(
+    url: "https://popup.example/allowed"), profile = "popup-policy")
+  doAssert policyPopup.isOk
+  doAssert policyPopup.value.applyNavigationDecision(NavigationRequest(
+    url: "https://popup.example/allowed"))
+  doAssert not policyPopup.value.applyNavigationDecision(NavigationRequest(
+    url: "https://evil.example/login"))
+  doAssert app.windowCount() == 4
+  doAssert app.windows().len == 4
   doAssert first.value.setTitle("Updated first").isOk
   doAssert first.value.setSize(640, 480).isOk
   doAssert not first.value.setSize(0, 480).isOk
@@ -232,7 +242,7 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert first.value.close().isOk
   doAssert not first.value.close().isOk
   doAssert first.value.isClosed()
-  doAssert app.windowCount() == 2
+  doAssert app.windowCount() == 3
   doAssert not first.value.rpc.registerSync("only.first", proc(params: JsonNode): RpcResult =
     rpcSuccess(newJNull())
   )
@@ -372,7 +382,7 @@ block localAssetRootRejectsTraversal:
 block navigationRulesAreExplicit:
   doAssert isAuthenticationNavigation("https://accounts.google.com/o/oauth2/auth")
   doAssert isAuthenticationNavigation("https://tenant.okta.com/login/login.htm")
-  doAssert isAuthenticationNavigation("https://example.invalid/oauth/callback")
+  doAssert not isAuthenticationNavigation("https://example.invalid/oauth/callback")
   doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",
     "https://accounts.google.com/signin/v2/identifier") == navigationAllow
   doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",

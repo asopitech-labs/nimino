@@ -40,7 +40,12 @@ proc generatedId(host: string): string =
   "com.nimino." & hostToken(host)
 
 proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
-                      icon = ""; deepLinkSchemes: seq[string] = @[]):
+                      icon = ""; deepLinkSchemes: seq[string] = @[];
+                      width = 1200; height = 800; resizable = true;
+                      permissionsAllow: seq[string] = @[];
+                      css: seq[string] = @[]; javascript: seq[string] = @[];
+                      navigationAllow: seq[string] = @[];
+                      navigationExternal: seq[string] = @[]):
                       PackResult[PackManifest] =
   ## Build a complete, validated manifest from an entry URL.  Navigation
   ## allow-lists are intentionally empty: the host applies Nimino's generic
@@ -67,10 +72,13 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
       url: url,
       icon: icon,
       profile: if profile.strip().len > 0: profile.strip() else: "default",
-      window: PackWindowOptions(width: 1200, height: 800, resizable: true),
+      window: PackWindowOptions(width: width, height: height, resizable: resizable),
       package: metadata,
       deepLink: PackDeepLinkOptions(schemes: deepLinkSchemes),
-      navigationAllow: @[],
-      navigationExternal: @[]))
+      navigationAllow: navigationAllow,
+      navigationExternal: navigationExternal,
+      permissionsAllow: permissionsAllow,
+      css: css,
+      javascript: javascript))
   except CatchableError:
     failure[PackManifest](invalidManifest, "URL-only generation received an invalid URL")

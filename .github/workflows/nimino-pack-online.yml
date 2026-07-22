@@ -25,6 +25,7 @@ on:
           - linux-deb
           - linux-rpm
           - windows-nsis
+          - windows-msi
       icon:
         description: "Optional local icon path in the repository"
         required: false
@@ -62,7 +63,7 @@ jobs:
                 nimble buildNiminoHost
                 host=/tmp/nimino-host
                 ;;
-              windows-nsis)
+              windows-nsis|windows-msi)
                 nimble buildNiminoHostWindows
                 host=/tmp/nimino-host.exe
                 ;;
@@ -92,6 +93,10 @@ jobs:
                 ;;
               windows-nsis)
                 /tmp/nimino package-windows /workspace/.tmp/online-bundle --format nsis \
+                  --out /workspace/.tmp/online-out
+                ;;
+              windows-msi)
+                /tmp/nimino package-windows /workspace/.tmp/online-bundle --format msi \
                   --out /workspace/.tmp/online-out
                 ;;
             esac

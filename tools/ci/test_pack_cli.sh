@@ -123,3 +123,16 @@ printf '%s\n' \
   > "$root/missing-inject.toml"
 ! "$nimino" pack "$root/missing-inject.toml" --out "$root/missing-inject-out"
 test ! -e "$root/missing-inject-out"
+
+"$nimino" pack https://example.com --name DemoOptions --id app.nimino.demo-options \
+  --width 1440 --height 900 --resizable false \
+  --allow-permission notifications --inject-css "$root/custom.css" \
+  --inject-js "$root/custom.js" --allow-url 'https://example.com/**' \
+  --external-url 'https://support.example.com/**' --out "$root/options-out"
+grep -q '"width": 1440' "$root/options-out/nimino-manifest.json"
+grep -q '"height": 900' "$root/options-out/nimino-manifest.json"
+grep -q '"resizable": false' "$root/options-out/nimino-manifest.json"
+grep -q '"notifications"' "$root/options-out/nimino-manifest.json"
+grep -q 'custom.css' "$root/options-out/nimino-manifest.json"
+grep -q 'custom.js' "$root/options-out/nimino-manifest.json"
+grep -q 'support.example.com' "$root/options-out/nimino-manifest.json"

@@ -64,60 +64,382 @@ proc linuxNativeMenuActionActivated(action, parameter, userData: pointer) {.cdec
   if menuAction != nil:
     menuAction.app.dispatchNativeMenu(menuAction.itemId)
 
-proc linuxSystemTraySupportDetail*(): string =
-  ## GTK4 removed GtkStatusIcon and does not define a tray API.  A Linux
-  ## desktop may still expose the freedesktop StatusNotifierWatcher on the
-  ## session bus, but Nimino deliberately does not claim support until an
-  ## SNI object/menu implementation is present.  Probe the concrete runtime
-  ## prerequisites so callers receive an actionable, fail-closed reason
-  ## instead of a generic "unsupported" result.
+proc linuxSystemTrayWatcherName*(): string =
+  ## The current freedesktop specification uses the org.freedesktop name;
+  ## retain the historical org.kde alias for older KDE shells.
   let busAddress = getEnv("DBUS_SESSION_BUS_ADDRESS")
   if busAddress.len == 0:
-    return "session D-Bus is unavailable (DBUS_SESSION_BUS_ADDRESS is not set)"
-
+    return ""
   var error: ptr GError
   let connection = g_bus_get_sync(GBusTypeSession, nil, addr error)
   if connection.isNil:
-    let detail = if error.isNil or error.message.isNil:
-      "unable to connect to the session D-Bus"
-    else:
-      "unable to connect to the session D-Bus: " & $error.message
     if error != nil:
       g_error_free(error)
-    return detail
-
-  let proxy = g_dbus_proxy_new_sync(
-    connection,
-    GDBusProxyFlagsNone,
-    nil,
-    "org.kde.StatusNotifierWatcher",
-    "/StatusNotifierWatcher",
-    "org.kde.StatusNotifierWatcher",
-    nil,
-    addr error)
-  if proxy.isNil:
-    let detail = if error.isNil or error.message.isNil:
-      "session D-Bus has no org.kde.StatusNotifierWatcher"
-    else:
-      "session D-Bus StatusNotifierWatcher probe failed: " & $error.message
+    return ""
+  for watcherName in ["org.freedesktop.StatusNotifierWatcher",
+                      "org.kde.StatusNotifierWatcher"]:
+    let proxy = g_dbus_proxy_new_sync(connection, GDBusProxyFlagsNone, nil,
+      watcherName.cstring, "/StatusNotifierWatcher", watcherName.cstring, nil, addr error)
+    if proxy != nil:
+      ## Transfer-none: this pointer is owned by `proxy` and must not be freed.
+      let owner = g_dbus_proxy_get_name_owner(proxy)
+      let active = not owner.isNil and ($owner).len > 0
+      g_object_unref(proxy)
+      if active:
+        g_object_unref(connection)
+        return watcherName
     if error != nil:
       g_error_free(error)
-    g_object_unref(connection)
-    return detail
-
-  ## Gio returns this name as transfer-none storage owned by `proxy`; copy it
-  ## before dropping the proxy and never pass it to g_free.
-  let owner = g_dbus_proxy_get_name_owner(proxy)
-  if owner.isNil or ($owner).len == 0:
-    g_object_unref(proxy)
-    g_object_unref(connection)
-    return "session D-Bus has no active org.kde.StatusNotifierWatcher"
-
-  let ownerName = $owner
-  g_free(cast[pointer](owner))
-  g_object_unref(proxy)
+      error = nil
   g_object_unref(connection)
-  "StatusNotifierWatcher is available (owner " & ownerName & "), but the direct Nimino StatusNotifierItem/menu backend is not implemented"
+  ""
+
+proc linuxSystemTraySupportDetail*(): string =
+  ## GTK4 removed GtkStatusIcon. Probe the actual session-bus watcher before
+  ## exposing the native capability; no tray support is silently emulated.
+  if getEnv("DBUS_SESSION_BUS_ADDRESS").len == 0:
+    return "session D-Bus is unavailable (DBUS_SESSION_BUS_ADDRESS is not set)"
+  let watcherName = linuxSystemTrayWatcherName()
+  if watcherName.len > 0:
+    return "StatusNotifierWatcher is available via " & watcherName
+  "session D-Bus has no active StatusNotifierWatcher (org.freedesktop or org.kde)"
+
+const
+  linuxStatusNotifierXml = """
+<node>
+  <interface name='org.freedesktop.StatusNotifierItem'>
+    <method name='ContextMenu'><arg type='i' direction='in'/><arg type='i' direction='in'/></method>
+    <method name='Activate'><arg type='i' direction='in'/><arg type='i' direction='in'/></method>
+    <method name='SecondaryActivate'><arg type='i' direction='in'/><arg type='i' direction='in'/></method>
+    <method name='Scroll'><arg type='i' direction='in'/><arg type='s' direction='in'/></method>
+    <property name='Category' type='s' access='read'/>
+    <property name='Id' type='s' access='read'/>
+    <property name='Title' type='s' access='read'/>
+    <property name='Status' type='s' access='read'/>
+    <property name='WindowId' type='u' access='read'/>
+    <property name='IconName' type='s' access='read'/>
+    <property name='IconPixmap' type='a(iiay)' access='read'/>
+    <property name='OverlayIconName' type='s' access='read'/>
+    <property name='OverlayIconPixmap' type='a(iiay)' access='read'/>
+    <property name='AttentionIconName' type='s' access='read'/>
+    <property name='AttentionIconPixmap' type='a(iiay)' access='read'/>
+    <property name='AttentionMovieName' type='s' access='read'/>
+    <property name='ToolTip' type='(sa(iiay)ss)' access='read'/>
+    <property name='ItemIsMenu' type='b' access='read'/>
+    <property name='Menu' type='o' access='read'/>
+    <signal name='NewTitle'/><signal name='NewIcon'/><signal name='NewAttentionIcon'/>
+    <signal name='NewOverlayIcon'/><signal name='NewToolTip'/>
+    <signal name='NewStatus'><arg type='s'/></signal>
+  </interface>
+</node>"""
+  linuxDbusMenuXml = """
+<node>
+  <interface name='com.canonical.dbusmenu'>
+    <property name='Version' type='u' access='read'/>
+    <property name='TextDirection' type='s' access='read'/>
+    <property name='Status' type='s' access='read'/>
+    <property name='IconThemePath' type='as' access='read'/>
+    <method name='GetLayout'>
+      <arg type='i' direction='in'/><arg type='i' direction='in'/><arg type='as' direction='in'/>
+      <arg type='u' direction='out'/><arg type='(ia{sv}av)' direction='out'/>
+    </method>
+    <method name='GetGroupProperties'>
+      <arg type='ai' direction='in'/><arg type='as' direction='in'/><arg type='a(ia{sv})' direction='out'/>
+    </method>
+    <method name='GetProperty'><arg type='i' direction='in'/><arg type='s' direction='in'/><arg type='v' direction='out'/></method>
+    <method name='Event'><arg type='i' direction='in'/><arg type='s' direction='in'/><arg type='v' direction='in'/><arg type='u' direction='in'/></method>
+    <method name='AboutToShow'><arg type='i' direction='in'/><arg type='b' direction='out'/></method>
+    <signal name='LayoutUpdated'><arg type='u'/><arg type='i'/></signal>
+    <signal name='ItemsPropertiesUpdated'><arg type='a(ia{sv})'/><arg type='a(ias)'/></signal>
+  </interface>
+</node>"""
+
+proc linuxVariantArrayType(signature: string): ptr GVariantType =
+  g_variant_type_new(signature.cstring)
+
+proc linuxEmptyVariantArray(elementSignature: string): ptr GVariant =
+  let variantType = linuxVariantArrayType(elementSignature)
+  result = g_variant_new_array(variantType, nil, 0)
+  g_variant_type_free(variantType)
+
+proc linuxTrayProperties(app: NativeApp; item: NativeMenuItem): ptr GVariant =
+  let variantType = g_variant_type_new("a{sv}")
+  let builder = g_variant_builder_new(variantType)
+  g_variant_type_free(variantType)
+  g_variant_builder_add(builder, "{sv}", "label", g_variant_new_string(item.title.cstring))
+  g_variant_builder_add(builder, "{sv}", "enabled", g_variant_new_boolean(if item.enabled: 1 else: 0))
+  g_variant_builder_add(builder, "{sv}", "visible", g_variant_new_boolean(1))
+  g_variant_builder_add(builder, "{sv}", "type", g_variant_new_string("standard"))
+  result = g_variant_builder_end(builder)
+  g_variant_builder_unref(builder)
+
+proc linuxTrayRootProperties(): ptr GVariant =
+  let variantType = g_variant_type_new("a{sv}")
+  let builder = g_variant_builder_new(variantType)
+  g_variant_type_free(variantType)
+  result = g_variant_builder_end(builder)
+  g_variant_builder_unref(builder)
+
+proc linuxTrayMenuNode(item: NativeMenuItem): ptr GVariant =
+  let properties = linuxTrayProperties(nil, item)
+  let children = linuxEmptyVariantArray("v")
+  g_variant_new("(i@a{sv}@av)", item.id.int32, properties, children)
+
+proc linuxTrayMenuLayout(app: NativeApp): ptr GVariant =
+  let variantType = g_variant_type_new("av")
+  let builder = g_variant_builder_new(variantType)
+  g_variant_type_free(variantType)
+  for item in app.trayMenuItems:
+    g_variant_builder_add_value(builder, g_variant_new_variant(linuxTrayMenuNode(item)))
+  let children = g_variant_builder_end(builder)
+  g_variant_builder_unref(builder)
+  let root = g_variant_new("(i@a{sv}@av)", 0.int32, linuxTrayRootProperties(), children)
+  g_variant_new("(u@(ia{sv}av))", 1'u32, root)
+
+proc linuxTrayMenuMethodCall(connection: ptr GDBusConnection; sender, objectPath,
+                             interfaceName, methodName: cstring; parameters: ptr GVariant;
+                             invocation: ptr GDBusMethodInvocation; userData: pointer) {.cdecl.} =
+  let app = cast[NativeApp](userData)
+  let dbusMethod = if methodName.isNil: "" else: $methodName
+  case dbusMethod
+  of "GetLayout":
+    g_dbus_method_invocation_return_value(invocation, app.linuxTrayMenuLayout())
+  of "GetGroupProperties":
+    let variantType = g_variant_type_new("a(ia{sv})")
+    let builder = g_variant_builder_new(variantType)
+    g_variant_type_free(variantType)
+    for item in app.trayMenuItems:
+      g_variant_builder_add_value(builder,
+        g_variant_new("(i@a{sv})", item.id.int32, linuxTrayProperties(app, item)))
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(@a(ia{sv}))",
+      g_variant_builder_end(builder)))
+    g_variant_builder_unref(builder)
+  of "GetProperty":
+    let idValue = g_variant_get_child_value(parameters, 0)
+    let nameValue = g_variant_get_child_value(parameters, 1)
+    let id = if idValue.isNil: 0 else: g_variant_get_int32(idValue)
+    let propertyName = if nameValue.isNil or g_variant_get_string(nameValue, nil).isNil:
+      ""
+    else:
+      $(g_variant_get_string(nameValue, nil))
+    if idValue != nil: g_variant_unref(idValue)
+    if nameValue != nil: g_variant_unref(nameValue)
+    var value = g_variant_new_string("")
+    for item in app.trayMenuItems:
+      if item.id.int32 == id:
+        if propertyName == "label": value = g_variant_new_string(item.title.cstring)
+        elif propertyName == "enabled": value = g_variant_new_boolean(if item.enabled: 1 else: 0)
+        elif propertyName == "visible": value = g_variant_new_boolean(1)
+        break
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(v)", value))
+  of "Event":
+    let idValue = g_variant_get_child_value(parameters, 0)
+    let eventValue = g_variant_get_child_value(parameters, 1)
+    let id = if idValue.isNil: 0 else: g_variant_get_int32(idValue)
+    let eventName = if eventValue.isNil or g_variant_get_string(eventValue, nil).isNil:
+      ""
+    else:
+      $(g_variant_get_string(eventValue, nil))
+    if idValue != nil: g_variant_unref(idValue)
+    if eventValue != nil: g_variant_unref(eventValue)
+    if eventName == "clicked" and app != nil and id > 0:
+      app.dispatchTrayMenu(uint32(id))
+    g_dbus_method_invocation_return_value(invocation, nil)
+  of "AboutToShow":
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(b)", 0))
+  else:
+    g_dbus_method_invocation_return_dbus_error(invocation,
+      "org.freedesktop.DBus.Error.UnknownMethod", "unsupported dbusmenu method")
+
+proc linuxTrayProperty(connection: ptr GDBusConnection; sender, objectPath,
+                       interfaceName, propertyName: cstring; error: ptr ptr GError;
+                       userData: pointer): ptr GVariant {.cdecl.} =
+  let app = cast[NativeApp](userData)
+  let name = if propertyName.isNil: "" else: $propertyName
+  let appId = if app.isNil: "nimino" else: app.appId
+  case name
+  of "Category": g_variant_new_string("ApplicationStatus")
+  of "Id": g_variant_new_string(appId.cstring)
+  of "Title": g_variant_new_string(appId.cstring)
+  of "Status": g_variant_new_string("Active")
+  of "WindowId": g_variant_new_uint32(0)
+  of "IconName": g_variant_new_string("application-x-executable")
+  of "IconPixmap", "OverlayIconPixmap", "AttentionIconPixmap": linuxEmptyVariantArray("(iiay)")
+  of "OverlayIconName", "AttentionIconName", "AttentionMovieName": g_variant_new_string("")
+  of "ToolTip": g_variant_new("(s@a(iiay)ss)", "", linuxEmptyVariantArray("(iiay)"),
+      appId.cstring, "")
+  of "ItemIsMenu": g_variant_new_boolean(0)
+  of "Menu": g_variant_new_object_path("/Menu")
+  of "Version": g_variant_new_uint32(3)
+  of "TextDirection": g_variant_new_string("ltr")
+  of "IconThemePath": g_variant_new_strv(nil, 0)
+  else: g_variant_new_string("")
+
+proc linuxTrayMethodCall(connection: ptr GDBusConnection; sender, objectPath,
+                         interfaceName, methodName: cstring; parameters: ptr GVariant;
+                         invocation: ptr GDBusMethodInvocation; userData: pointer) {.cdecl.} =
+  let dbusMethod = if methodName.isNil: "" else: $methodName
+  if dbusMethod in ["Activate", "SecondaryActivate", "ContextMenu", "Scroll"]:
+    ## Menu selections are delivered through com.canonical.dbusmenu.Event;
+    ## these item methods only acknowledge the shell request.
+    g_dbus_method_invocation_return_value(invocation, nil)
+  else:
+    g_dbus_method_invocation_return_dbus_error(invocation,
+      "org.freedesktop.DBus.Error.UnknownMethod", "unsupported StatusNotifierItem method")
+
+var linuxTrayVTable = GDBusInterfaceVTable(
+  methodCall: linuxTrayMethodCall,
+  getProperty: linuxTrayProperty,
+  setProperty: nil,
+  padding: [nil, nil, nil, nil, nil, nil, nil, nil])
+var linuxTrayMenuVTable = GDBusInterfaceVTable(
+  methodCall: linuxTrayMenuMethodCall,
+  getProperty: linuxTrayProperty,
+  setProperty: nil,
+  padding: [nil, nil, nil, nil, nil, nil, nil, nil])
+
+proc linuxTrayBusName(app: NativeApp): string =
+  var name = "org.nimino.StatusNotifier."
+  for character in app.appId:
+    if character.isAlphaNumeric or character == '_':
+      name.add(character)
+    else:
+      name.add('_')
+  name
+
+proc linuxTrayRequestBusName(connection: ptr GDBusConnection; name: string): NativeResult =
+  var error: ptr GError
+  let reply = g_dbus_connection_call_sync(connection,
+    "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+    "RequestName", g_variant_new("(su)", name.cstring, 0'u32), nil, 0, 1000, nil,
+    addr error)
+  if reply.isNil:
+    let detail = if error.isNil or error.message.isNil: "session bus name request failed"
+      else: $error.message
+    if error != nil: g_error_free(error)
+    return failure(nativeError(osError, "app.configureSystemTray", detail = detail))
+  let resultCode = g_variant_get_child_value(reply, 0)
+  let code = if resultCode.isNil: 0'u32 else: g_variant_get_uint32(resultCode)
+  if resultCode != nil: g_variant_unref(resultCode)
+  g_variant_unref(reply)
+  if code notin [1'u32, 4'u32]:
+    return failure(nativeError(osError, "app.configureSystemTray",
+      detail = "session bus name is already owned by another process"))
+  success()
+
+proc linuxTrayRegisterWatcher(app: NativeApp): NativeResult =
+  var error: ptr GError
+  let reply = g_dbus_connection_call_sync(cast[ptr GDBusConnection](app.trayBusConnection),
+    app.trayWatcherName.cstring, "/StatusNotifierWatcher", app.trayWatcherName.cstring,
+    "RegisterStatusNotifierItem", g_variant_new("(s)", app.trayBusName.cstring), nil,
+    0, 1000, nil, addr error)
+  if reply.isNil:
+    let detail = if error.isNil or error.message.isNil:
+      "StatusNotifierWatcher rejected RegisterStatusNotifierItem"
+    else:
+      $error.message
+    if error != nil: g_error_free(error)
+    return failure(nativeError(osError, "app.configureSystemTray", detail = detail))
+  g_variant_unref(reply)
+  success()
+
+proc linuxInstallSystemTray(app: NativeApp): NativeResult =
+  if app.isNil or not app.trayConfigured:
+    return success()
+  if app.trayWatcherName.len == 0:
+    return failure(nativeError(unsupported, "app.configureSystemTray",
+      detail = linuxSystemTraySupportDetail()))
+  let connection = g_bus_get_sync(GBusTypeSession, nil, nil)
+  if connection.isNil:
+    return failure(nativeError(osError, "app.configureSystemTray",
+      detail = "session D-Bus connection failed while installing StatusNotifierItem"))
+  app.trayBusConnection = cast[pointer](connection)
+  app.trayBusName = app.linuxTrayBusName()
+  let requested = linuxTrayRequestBusName(connection, app.trayBusName)
+  if not requested.isOk:
+    g_object_unref(connection)
+    app.trayBusConnection = nil
+    return requested
+
+  var error: ptr GError
+  let itemInfo = g_dbus_node_info_new_for_xml(linuxStatusNotifierXml.cstring, addr error)
+  if itemInfo.isNil:
+    if error != nil: g_error_free(error)
+    g_object_unref(connection)
+    app.trayBusConnection = nil
+    return failure(nativeError(osError, "app.configureSystemTray",
+      detail = "StatusNotifierItem introspection creation failed"))
+  let menuInfo = g_dbus_node_info_new_for_xml(linuxDbusMenuXml.cstring, addr error)
+  if menuInfo.isNil:
+    if error != nil: g_error_free(error)
+    g_dbus_node_info_unref(itemInfo)
+    g_object_unref(connection)
+    app.trayBusConnection = nil
+    return failure(nativeError(osError, "app.configureSystemTray",
+      detail = "dbusmenu introspection creation failed"))
+  let itemInterface = g_dbus_node_info_lookup_interface(itemInfo,
+    "org.freedesktop.StatusNotifierItem")
+  let menuInterface = g_dbus_node_info_lookup_interface(menuInfo,
+    "com.canonical.dbusmenu")
+  app.trayItemRegistration = g_dbus_connection_register_object(connection,
+    "/StatusNotifierItem", itemInterface, addr linuxTrayVTable, cast[pointer](app), nil,
+    addr error)
+  if app.trayItemRegistration == 0:
+    if error != nil: g_error_free(error)
+    g_dbus_node_info_unref(menuInfo)
+    g_dbus_node_info_unref(itemInfo)
+    g_object_unref(connection)
+    app.trayBusConnection = nil
+    return failure(nativeError(osError, "app.configureSystemTray",
+      detail = "StatusNotifierItem object registration failed"))
+  app.trayMenuRegistration = g_dbus_connection_register_object(connection, "/Menu",
+    menuInterface, addr linuxTrayMenuVTable, cast[pointer](app), nil, addr error)
+  if app.trayMenuRegistration == 0:
+    if error != nil: g_error_free(error)
+    discard g_dbus_connection_unregister_object(connection, app.trayItemRegistration)
+    app.trayItemRegistration = 0
+    g_dbus_node_info_unref(menuInfo)
+    g_dbus_node_info_unref(itemInfo)
+    g_object_unref(connection)
+    app.trayBusConnection = nil
+    return failure(nativeError(osError, "app.configureSystemTray",
+      detail = "dbusmenu object registration failed"))
+  app.trayIntrospection = cast[pointer](itemInfo)
+  app.trayMenuIntrospection = cast[pointer](menuInfo)
+  let registered = app.linuxTrayRegisterWatcher()
+  if not registered.isOk:
+    discard g_dbus_connection_unregister_object(connection, app.trayMenuRegistration)
+    discard g_dbus_connection_unregister_object(connection, app.trayItemRegistration)
+    app.trayMenuRegistration = 0
+    app.trayItemRegistration = 0
+    g_dbus_node_info_unref(menuInfo)
+    g_dbus_node_info_unref(itemInfo)
+    g_object_unref(connection)
+    app.trayBusConnection = nil
+    return registered
+  app.trayVisible = true
+  success()
+
+proc linuxUninstallSystemTray(app: NativeApp) =
+  if app.isNil or app.trayBusConnection.isNil:
+    return
+  let connection = cast[ptr GDBusConnection](app.trayBusConnection)
+  if app.trayMenuRegistration != 0:
+    discard g_dbus_connection_unregister_object(connection, app.trayMenuRegistration)
+    app.trayMenuRegistration = 0
+  if app.trayItemRegistration != 0:
+    discard g_dbus_connection_unregister_object(connection, app.trayItemRegistration)
+    app.trayItemRegistration = 0
+  if app.trayMenuIntrospection != nil:
+    g_dbus_node_info_unref(cast[ptr GDBusNodeInfo](app.trayMenuIntrospection))
+    app.trayMenuIntrospection = nil
+  if app.trayIntrospection != nil:
+    g_dbus_node_info_unref(cast[ptr GDBusNodeInfo](app.trayIntrospection))
+    app.trayIntrospection = nil
+  g_object_unref(connection)
+  app.trayBusConnection = nil
+  app.trayBusName.setLen(0)
+  app.trayVisible = false
 
 proc linuxRemoveNativeMenuActions(app: NativeApp; actionNames: openArray[string]) =
   if app.isNil or app.platformApp.isNil:
@@ -1280,6 +1602,14 @@ proc linuxStartup(application: pointer; data: pointer) {.cdecl.} =
     app.runError = installed.failure
     app.quitRequested = true
     g_application_quit(cast[ptr GApplication](application))
+    return
+  if app.trayConfigured:
+    let trayInstalled = app.linuxInstallSystemTray()
+    if not trayInstalled.isOk:
+      app.hasRunError = true
+      app.runError = trayInstalled.failure
+      app.quitRequested = true
+      g_application_quit(cast[ptr GApplication](application))
 
 proc linuxRun(app: NativeApp): NativeResult =
   if app.platformApp.isNil:
@@ -1294,7 +1624,7 @@ proc linuxRun(app: NativeApp): NativeResult =
       app.state = finished
       return failure(nativeError(osError, "app.setIdleHandler",
         detail = "GLib timeout source creation failed"))
-  if app.nativeMenuConfigured:
+  if app.nativeMenuConfigured or app.trayConfigured:
     app.startupHandler = g_signal_connect_data(
       app.platformApp,
       "startup",
@@ -1337,6 +1667,7 @@ proc linuxRun(app: NativeApp): NativeResult =
     app.idleTimerSource = 0
 
   app.linuxUninstallNativeMenu()
+  app.linuxUninstallSystemTray()
   g_object_unref(app.platformApp)
   app.platformApp = nil
   app.nativeMenuItems.setLen(0)
