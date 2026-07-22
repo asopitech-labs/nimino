@@ -152,6 +152,12 @@ nimino package-linux dist/discord --format rpm --out dist/packages \
 
 `deb`は`/opt/nimino/<id>`と`/usr/share/applications/<id>.desktop`を含む`.deb`を、`rpm`は同じlayoutの`.rpm`を作ります。`--arch`は`amd64`または`arm64`で、bundle内host binaryと一致させる必要があります。Debianには`--maintainer`、RPMには`--license`が必須です。RPMは現時点で`major.minor.patch` release versionだけを受け付けます。
 
+Debian control metadataには`libgtk-4-1`と`libwebkitgtk-6.0-4`、RPM specには`gtk4`と
+`webkitgtk6.0`をruntime依存として記録します。`apt`/`dnf`が依存を解決するため、利用者へ
+GTK/WebKitGTKの手動導入を要求しません。依存名は対象ディストリビューションの標準パッケージ
+名に固定しており、別名しか提供しないディストリビューションではその形式のパッケージ生成を
+成功扱いにしません。
+
 ```bash
 nimino package-linux dist/discord --format appimage --out dist/packages --arch amd64
 ```

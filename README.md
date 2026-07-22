@@ -85,6 +85,10 @@ sudo apt install ./dist/packages/*.deb
 sudo dnf install ./dist/packages/*.rpm
 ```
 
+The generated Debian package declares `libgtk-4-1` and `libwebkitgtk-6.0-4`; the RPM declares
+`gtk4` and `webkitgtk6.0`, so the package manager resolves the native WebKit dependencies.
+They are not downloaded by the Nimino host and are not bundled into the Debian/RPM archive.
+
 For Windows, run the generated `*-setup.exe` or `.msi`. The installer checks WebView2 and bootstraps it when needed. `make setup` is the equivalent developer setup when working from a checkout.
 
 For an AppImage, make the file executable and run it:

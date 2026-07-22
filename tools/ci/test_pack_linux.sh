@@ -35,6 +35,7 @@ chmod +x "$root/nimino-host"
 test -s "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb"
 dpkg-deb -f "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" Package | grep -Fx 'app.nimino.linux-demo'
 dpkg-deb -f "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" Architecture | grep -Fx 'amd64'
+dpkg-deb -f "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" Depends | grep -Fx 'libgtk-4-1, libwebkitgtk-6.0-4'
 dpkg-deb -c "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" | grep -q './opt/nimino/app.nimino.linux-demo/run-nimino.sh'
 dpkg-deb -c "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" | grep -q './usr/share/applications/app.nimino.linux-demo.desktop'
 grep -Fq 'MimeType=x-scheme-handler/nimino;x-scheme-handler/foo+bar;' "$root/bundle/app.nimino.linux-demo.desktop"
@@ -43,6 +44,8 @@ grep -Fq 'MimeType=x-scheme-handler/nimino;x-scheme-handler/foo+bar;' "$root/bun
   --arch amd64 --license MIT
 test -s "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm"
 rpm -qp --qf '%{NAME} %{VERSION} %{ARCH}\n' "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm" | grep -Fx 'app.nimino.linux-demo 1.2.3 x86_64'
+rpm -qp --requires "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm" | grep -Fx 'gtk4'
+rpm -qp --requires "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm" | grep -Fx 'webkitgtk6.0'
 rpm -qpl "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm" | grep -Fx '/opt/nimino/app.nimino.linux-demo/run-nimino.sh'
 rpm -qpl "$root/out/app.nimino.linux-demo-1.2.3-1.x86_64.rpm" | grep -Fx '/usr/share/applications/app.nimino.linux-demo.desktop'
 

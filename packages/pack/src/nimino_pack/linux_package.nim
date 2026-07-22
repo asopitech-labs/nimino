@@ -282,7 +282,8 @@ proc rpmSpec(metadata: LinuxBundleMetadata; stagedRoot, rpmArchitecture,
     "BuildArch: " & rpmArchitecture & "\n"
   if metadata.homepage.len > 0:
     result.add("URL: " & metadata.homepage.replace("%", "%%") & "\n")
-  result.add("\n%description\n" & escapedDescription & "\n\n" &
+  result.add("Requires: gtk4, webkitgtk6.0\n\n" &
+    "%description\n" & escapedDescription & "\n\n" &
     "%install\nrm -rf %{buildroot}\nmkdir -p %{buildroot}\ncp -a " &
     stagedRoot.shellQuote() & "/. %{buildroot}/\n\n%files\n" &
     "/opt/nimino/" & metadata.id & "\n" &
@@ -307,6 +308,7 @@ proc buildDeb(options: LinuxPackageOptions; metadata: LinuxBundleMetadata;
       "Version: " & metadata.version & "\n" &
       "Section: utils\nPriority: optional\nArchitecture: " & debArchitecture & "\n" &
       "Maintainer: " & options.maintainer & "\n" &
+      "Depends: libgtk-4-1, libwebkitgtk-6.0-4\n" &
       "Description: " & metadata.description & "\n"
     if metadata.homepage.len > 0:
       control.add("Homepage: " & metadata.homepage & "\n")
