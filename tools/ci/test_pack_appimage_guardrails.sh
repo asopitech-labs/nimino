@@ -28,6 +28,8 @@ if "$nimino" package-linux "$root/bundle" --format appimage \
 fi
 grep -F 'nimino package-linux: AppImage package generation is unavailable:' \
   "$root/appimage.err"
+grep -Eq 'missing fixed build dependencies|dependency tool failed|dependency closure' \
+  "$root/appimage.err"
 test -z "$(find "$root/out" -maxdepth 1 -name '*.AppImage' -print -quit)"
 
 echo 'AppImage CLI guardrail test passed'
