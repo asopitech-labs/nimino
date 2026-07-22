@@ -594,7 +594,11 @@ proc configureSystemTray*(app: NativeApp; items: openArray[NativeMenuItem];
   if app.isNil or app.state != created:
     return failure(nativeError(invalidState, "app.configureSystemTray"))
   if not app.supports(systemTray):
-    return failure(nativeError(unsupported, "app.configureSystemTray"))
+    when defined(linux) and not defined(niminoWsl):
+      return failure(nativeError(unsupported, "app.configureSystemTray",
+        detail = "GTK4/GLib provide no supported system-tray or status-icon API; use configureNativeMenu or sendNativeNotification"))
+    else:
+      return failure(nativeError(unsupported, "app.configureSystemTray"))
   if app.trayConfigured:
     return failure(nativeError(invalidState, "app.configureSystemTray",
       detail = "the system tray can only be configured once"))

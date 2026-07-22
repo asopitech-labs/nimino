@@ -43,6 +43,10 @@ block systemTrayIsExplicitlyUnsupportedOffWindows:
   ], proc(itemId: uint32) = discard)
   when defined(windows):
     doAssert configured.isOk
+  elif defined(linux) and not defined(niminoWsl):
+    doAssert not configured.isOk
+    doAssert configured.failure.kind == unsupported
+    doAssert configured.failure.detail == "GTK4/GLib provide no supported system-tray or status-icon API; use configureNativeMenu or sendNativeNotification"
   else:
     doAssert not configured.isOk
     doAssert configured.failure.kind == unsupported
