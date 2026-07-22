@@ -59,6 +59,12 @@ task buildNiminoHostWindows, "Cross-compile the generic Windows Nimino host":
   exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-host-windows-nimcache --out:/tmp/nimino-host.exe --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
   exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-host.exe | grep -q 'file format pei-x86-64'"
 
+task buildPrepackRelease, "Build downloadable installers for the built-in prepacks":
+  exec "nimble buildPackCli"
+  exec "nimble buildNiminoHost"
+  exec "nimble buildNiminoHostWindows"
+  exec "bash tools/ci/build_prepacks_release.sh /tmp/nimino /tmp/nimino-host /tmp/nimino-host.exe /workspace/.tmp/prepack-release"
+
 task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "bash tools/ci/test_pack_cli.sh /tmp/nimino"
 

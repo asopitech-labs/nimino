@@ -39,6 +39,18 @@ Prepacks are reviewed application definitions: URL, window defaults, profile nam
 | **Gmail** | [mail.google.com](https://mail.google.com/mail/u/0/) | 1280 × 900 | `default` | `nimino pack prepack gmail` |
 | **Google Analytics** | [analytics.google.com](https://analytics.google.com/analytics/web/) | 1440 × 900 | `default` | `nimino pack prepack google-analytics` |
 
+#### Download ready-made installers
+
+When a prepack release is published, download the installer directly from the [Nimino Releases page](https://github.com/asopitech-labs/nimino/releases):
+
+| Target | Release assets |
+| --- | --- |
+| Debian/Ubuntu | `youtube-*.deb`, `gmail-*.deb`, `google-analytics-*.deb` |
+| Fedora/RPM | `youtube-*.rpm`, `gmail-*.rpm`, `google-analytics-*.rpm` |
+| Windows | `youtube-*-setup.exe`, `gmail-*-setup.exe`, `google-analytics-*-setup.exe` (NSIS) or the matching `.msi` |
+
+The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. Verify the checksum before installing. Until the first signed release is published, the gallery has definitions and build automation but no official binary download.
+
 The definitions live in [`catalog/prepacks/`](catalog/prepacks/) and are covered by `make pack-prepack-test`. To create a runnable bundle, provide a compiled Nimino host:
 
 ```bash
@@ -49,7 +61,7 @@ nimino pack prepack google-analytics --out dist/google-analytics --host nimino-h
 
 Then launch the generated bundle's `run-nimino.sh` (Linux) or generated Windows launcher. The first launch opens the service sign-in page; credentials and cookies are stored by the selected Nimino profile.
 
-These are source-controlled bundle definitions, not signed release binaries. The official Popular Packages catalog remains empty until an artifact has independently verified checksums, SBOM, provenance, and signature.
+The commands above are for maintainers and developers who need to regenerate a bundle. End users should download the corresponding installer from Releases instead. These source-controlled definitions are not signed release binaries. The official Popular Packages catalog remains empty until an artifact has independently verified checksums, SBOM, provenance, and signature.
 
 ### Installing a generated package
 
