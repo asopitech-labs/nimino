@@ -247,6 +247,12 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert app.windows().len == 4
   doAssert first.value.setTitle("Updated first").isOk
   doAssert first.value.setSize(640, 480).isOk
+  let persistedWindowState = first.value.readSetting("window-state")
+  doAssert persistedWindowState.isOk
+  doAssert persistedWindowState.value["width"].getInt() == 640
+  doAssert persistedWindowState.value["height"].getInt() == 480
+  doAssert first.value.saveWindowState().isOk
+  doAssert first.value.restoreWindowState().isOk
   doAssert not first.value.setSize(0, 480).isOk
   doAssert first.value.show().isOk
   doAssert first.value.focus().isOk

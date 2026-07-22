@@ -166,6 +166,16 @@ type
     ## Disable browser developer tools for production windows.
     disableDevTools*: bool
 
+  WindowState* = object
+    ## Profile-persisted native window state. Position is optional in spirit;
+    ## zero is a valid desktop coordinate, so callers use `positionKnown`.
+    width*: int
+    height*: int
+    x*: int
+    y*: int
+    positionKnown*: bool
+    visible*: bool
+
   NavigationRules* = object
     allow*: seq[string]
     deny*: seq[string]
@@ -306,6 +316,7 @@ type
     downloadEventHandler*: proc(event: DownloadEvent)
     closed: bool
     inlineRemoteAssets: bool
+    windowState: WindowState
 
   WebView* = ref object
     window: Window
@@ -318,6 +329,12 @@ proc setFullscreen*(window: Window; enabled: bool): CoreResult
 proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult
 proc maximize*(window: Window): CoreResult
 proc setZoom*(window: Window; factor: float): CoreResult
+proc saveWindowState*(window: Window): CoreResult
+proc restoreWindowState*(window: Window): CoreResult
+proc show*(window: Window): CoreResult
+proc hide*(window: Window): CoreResult
+proc setPosition*(window: Window; x, y: int): CoreResult
+proc setSize*(window: Window; width, height: int): CoreResult
 
 proc mapNativeError(error: native.NativeError): CoreError =
   let kind = case error.kind
@@ -1423,6 +1440,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                           enableDragDrop: options.enableDragDrop,
                           hideOnClose: options.hideOnClose,
                           inlineRemoteAssets: options.inlineRemoteAssets,
+                          windowState: WindowState(width: options.width, height: options.height,
+                            visible: true),
                           injectionCss: options.injectionCss,
                           injectionJavaScript: options.injectionJavaScript,
                           injectionEnabled: options.injectionEnabled or
@@ -1434,6 +1453,9 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         return coreFailureOf[Window](devTools.failure)
       window.rpc = newRpcRegistry(proc(message: string) = window.sendRpcReply(message))
       app.windows.add(window)
+      let restored = window.restoreWindowState()
+      if not restored.isOk:
+        return coreFailureOf[Window](restored.failure)
       return coreSuccessOf(window)
     else:
       return coreFailureOf[Window](coreError(platformUnavailable, "window.create"))
@@ -1471,6 +1493,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                       enableDragDrop: options.enableDragDrop,
                       hideOnClose: options.hideOnClose,
                       inlineRemoteAssets: options.inlineRemoteAssets,
+                      windowState: WindowState(width: options.width, height: options.height,
+                        visible: true),
                       injectionCss: options.injectionCss,
                       injectionJavaScript: options.injectionJavaScript,
                       injectionEnabled: options.injectionEnabled or
@@ -1501,6 +1525,9 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
       window.rpc.close()
       return coreFailureOf[Window](alwaysOnTop.failure)
   app.windows.add(window)
+  let restored = window.restoreWindowState()
+  if not restored.isOk:
+    return coreFailureOf[Window](restored.failure)
   coreSuccessOf(window)
 
 proc newWindow*(app: App; title = ""; width = 1200; height = 800;
@@ -2409,29 +2436,91 @@ proc close*(window: Window): CoreResult =
     else:
       coreFailure(coreError(platformUnavailable, "window.close"))
 
+proc saveWindowState*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.saveWindowState"))
+  let written = writeProfileSetting(window.app.id, window.profileName,
+    "window-state", %*{
+      "width": window.windowState.width,
+      "height": window.windowState.height,
+      "x": window.windowState.x,
+      "y": window.windowState.y,
+      "positionKnown": window.windowState.positionKnown,
+      "visible": window.windowState.visible
+    })
+  if written.isOk:
+    coreSuccess()
+  else:
+    coreFailure(coreError(osError, "window.saveWindowState", detail = written.error))
+
+proc restoreWindowState*(window: Window): CoreResult =
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.restoreWindowState"))
+  let loaded = readProfileSetting(window.app.id, window.profileName, "window-state")
+  if not loaded.isOk:
+    ## A first launch has no saved state and should use the manifest defaults.
+    return coreSuccess()
+  let node = try: parseJson(loaded.value)
+    except CatchableError:
+      return coreFailure(coreError(invalidArgument, "window.restoreWindowState",
+        detail = "persisted window state is not valid JSON"))
+  if node.kind != JObject or not node.hasKey("width") or not node.hasKey("height") or
+      node["width"].kind != JInt or node["height"].kind != JInt:
+    return coreFailure(coreError(invalidArgument, "window.restoreWindowState",
+      detail = "persisted window state has invalid dimensions"))
+  let width = node["width"].getInt()
+  let height = node["height"].getInt()
+  if width <= 0 or height <= 0 or width > 10000 or height > 10000:
+    return coreFailure(coreError(invalidArgument, "window.restoreWindowState",
+      detail = "persisted window dimensions are out of range"))
+  let resized = window.setSize(width, height)
+  if not resized.isOk:
+    return resized
+  if node.hasKey("positionKnown") and node["positionKnown"].kind == JBool and
+      node["positionKnown"].getBool() and node.hasKey("x") and node.hasKey("y") and
+      node["x"].kind == JInt and node["y"].kind == JInt:
+    let positioned = window.setPosition(node["x"].getInt(), node["y"].getInt())
+    if not positioned.isOk:
+      return positioned
+  if node.hasKey("visible") and node["visible"].kind == JBool:
+    if node["visible"].getBool():
+      return window.show()
+    return window.hide()
+  coreSuccess()
+
 proc show*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.show"))
-  case window.app.backend
-  of nativeBackend:
-    native.show(window.nativeWindow).fromNative()
-  of wslBackend:
-    when defined(linux):
-      let shown = window.app.wslCall("native.window.show", $(%*{"windowId": $window.windowId}))
-      if shown.isOk: coreSuccess() else: coreFailure(shown.failure)
-    else: coreFailure(coreError(platformUnavailable, "window.show"))
+  let shown = case window.app.backend
+    of nativeBackend:
+      native.show(window.nativeWindow).fromNative()
+    of wslBackend:
+      when defined(linux):
+        let response = window.app.wslCall("native.window.show", $(%*{"windowId": $window.windowId}))
+        if response.isOk: coreSuccess() else: coreFailure(response.failure)
+      else: coreFailure(coreError(platformUnavailable, "window.show"))
+  if shown.isOk:
+    window.windowState.visible = true
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
+  shown
 
 proc hide*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.hide"))
-  case window.app.backend
-  of nativeBackend:
-    native.hide(window.nativeWindow).fromNative()
-  of wslBackend:
-    when defined(linux):
-      let hidden = window.app.wslCall("native.window.hide", $(%*{"windowId": $window.windowId}))
-      if hidden.isOk: coreSuccess() else: coreFailure(hidden.failure)
-    else: coreFailure(coreError(platformUnavailable, "window.hide"))
+  let hidden = case window.app.backend
+    of nativeBackend:
+      native.hide(window.nativeWindow).fromNative()
+    of wslBackend:
+      when defined(linux):
+        let response = window.app.wslCall("native.window.hide", $(%*{"windowId": $window.windowId}))
+        if response.isOk: coreSuccess() else: coreFailure(response.failure)
+      else: coreFailure(coreError(platformUnavailable, "window.hide"))
+  if hidden.isOk:
+    window.windowState.visible = false
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
+  hidden
 
 proc minimize*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -2539,16 +2628,23 @@ proc setResizable*(window: Window; resizable: bool): CoreResult =
 proc setPosition*(window: Window; x, y: int): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setPosition"))
-  case window.app.backend
-  of nativeBackend:
-    native.setPosition(window.nativeWindow, x, y).fromNative()
-  of wslBackend:
-    when defined(linux):
-      let response = window.app.wslCall("native.window.setPosition", $(%*{
-        "windowId": $window.windowId, "x": x, "y": y
-      }))
-      if response.isOk: coreSuccess() else: coreFailure(response.failure)
-    else: coreFailure(coreError(platformUnavailable, "window.setPosition"))
+  let positioned = case window.app.backend
+    of nativeBackend:
+      native.setPosition(window.nativeWindow, x, y).fromNative()
+    of wslBackend:
+      when defined(linux):
+        let response = window.app.wslCall("native.window.setPosition", $(%*{
+          "windowId": $window.windowId, "x": x, "y": y
+        }))
+        if response.isOk: coreSuccess() else: coreFailure(response.failure)
+      else: coreFailure(coreError(platformUnavailable, "window.setPosition"))
+  if positioned.isOk:
+    window.windowState.x = x
+    window.windowState.y = y
+    window.windowState.positionKnown = true
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
+  positioned
 
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -2577,24 +2673,27 @@ proc setSize*(window: Window; width, height: int): CoreResult =
   if width <= 0 or height <= 0:
     return coreFailure(coreError(invalidArgument, "window.setSize",
       detail = "size must be positive"))
-  case window.app.backend
-  of nativeBackend:
-    if window.nativeWindow.isNil:
-      return coreFailure(coreError(invalidState, "window.setSize"))
-    native.setSize(window.nativeWindow, width, height).fromNative()
-  of wslBackend:
-    when defined(linux):
-      let updated = window.app.wslCall("native.window.setSize", $(%*{
-        "windowId": $window.windowId,
-        "width": width,
-        "height": height
-      }))
-      if updated.isOk:
-        coreSuccess()
+  let resized = case window.app.backend
+    of nativeBackend:
+      if window.nativeWindow.isNil:
+        coreFailure(coreError(invalidState, "window.setSize"))
       else:
-        coreFailure(updated.failure)
-    else:
-      coreFailure(coreError(platformUnavailable, "window.setSize"))
+        native.setSize(window.nativeWindow, width, height).fromNative()
+    of wslBackend:
+      when defined(linux):
+        let updated = window.app.wslCall("native.window.setSize", $(%*{
+          "windowId": $window.windowId,
+          "width": width,
+          "height": height
+        }))
+        if updated.isOk: coreSuccess() else: coreFailure(updated.failure)
+      else: coreFailure(coreError(platformUnavailable, "window.setSize"))
+  if resized.isOk:
+    window.windowState.width = width
+    window.windowState.height = height
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
+  resized
 
 proc setNavigationRules*(window: Window; rules: NavigationRules): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
