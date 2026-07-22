@@ -64,4 +64,6 @@ jobs:
               --title "Nimino $RELEASE_TAG" \
               --notes-file .tmp/prepack-release/RELEASE-NOTES.txt \
               --verify-tag
-          gh release upload "$RELEASE_TAG" .tmp/prepack-release/assets/* --clobber
+          gh release upload "$RELEASE_TAG" \
+            .tmp/prepack-release/RELEASE-NOTES.txt \
+            .tmp/prepack-release/assets/* --clobber

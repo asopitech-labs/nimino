@@ -11,6 +11,8 @@ test -x "$linux_host" || { echo "prepack release: Linux host is not executable: 
 test -s "$windows_host" || { echo "prepack release: Windows host is missing: $windows_host" >&2; exit 1; }
 webview2_loader=${NIMINO_WEBVIEW2_LOADER:-/opt/nimino/webview2/x64/WebView2Loader.dll}
 test -s "$webview2_loader" || { echo "prepack release: WebView2Loader.dll is missing: $webview2_loader" >&2; exit 1; }
+webview2_setup=${NIMINO_WEBVIEW2_SETUP:-/workspace/tools/ci/setup-windows-webview2.ps1}
+test -s "$webview2_setup" || { echo "prepack release: WebView2 setup script is missing: $webview2_setup" >&2; exit 1; }
 
 root=$(mktemp -d)
 trap 'rm -rf "$root"' EXIT
@@ -59,6 +61,7 @@ for app in youtube gmail google-analytics; do
   cp "$windows_bundle/nimino-sbom.cdx.json" "$assets/${app}-windows-nimino-sbom.cdx.json"
 done
 
+cp "$webview2_setup" "$assets/Nimino-WebView2-Setup.ps1"
 (cd "$assets" && sha256sum -- * > SHA256SUMS)
 printf '%s\n' \
   'Nimino prepack release assets' \
@@ -67,6 +70,10 @@ printf '%s\n' \
   'Linux: Debian (.deb), RPM (.rpm)' \
   'Windows: NSIS (.exe), MSI (.msi)' \
   '' \
-  'Windows packages require the WebView2 Evergreen Runtime.' \
+  'Windows prerequisite (required before installing):' \
+  '1. Download Nimino-WebView2-Setup.ps1 from this release.' \
+  '2. Run it from elevated Windows PowerShell with:' \
+  '   Set-ExecutionPolicy -Scope Process Bypass; & .\Nimino-WebView2-Setup.ps1' \
+  '3. Install the downloaded NSIS or MSI package.' \
   'Verify SHA256SUMS before installation.' \
   > "$output/RELEASE-NOTES.txt"
