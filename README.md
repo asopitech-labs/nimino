@@ -158,6 +158,10 @@ nimino pack https://example.com --out dist/example --host nimino-host
 nimino pack https://example.com --name Example --id tech.example.app --out dist/example --host nimino-host
 ```
 
+URL包装では、利用者がURL以外の内部定義を書く必要はありません。Niminoがホスト名からアプリ名と安定IDを生成し、既定のWindow設定、プロファイル、パッケージ情報を補います。生成マニフェストにサイト固有の認証ドメインやnavigation allow-listは埋め込みません。`nimino-core`が同一サイトとOAuth/SSO遷移を汎用判定し、認証ポップアップはユーザー操作時に明示的なWindowとして生成します。`--name`、`--id`、`--profile`は必要な場合だけ上書き指定します。
+
+そのため、認証が必要なサイトでも、サービスごとに`accounts.google.com`や`googleusercontent.com`を事前列挙する作業は不要です。認証情報とCookieは通常のログイン画面を通じてプロファイルへ保存されます。
+
 See [`docs/api/nimino-pack.md`](docs/api/nimino-pack.md) for manifests, navigation rules, injection, and package formats.
 
 ## Components
@@ -230,7 +234,7 @@ packages/native/   nimino-native
 packages/core/     nimino-core
 packages/wsl/      nimino-wsl client and Windows host
 packages/pack/     nimino-pack library and CLI support
-catalog/           prepack and Popular Packages metadata
+catalog/           Popular Packages metadata
 examples/          small usage examples
 docs/              API, architecture, and ADR documentation
 tools/ci/          reproducible setup and smoke harnesses
