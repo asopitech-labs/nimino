@@ -117,7 +117,6 @@ const
     <property name='Title' type='s' access='read'/>
     <property name='Status' type='s' access='read'/>
     <property name='WindowId' type='u' access='read'/>
-    <property name='IconName' type='s' access='read'/>
     <property name='IconPixmap' type='a(iiay)' access='read'/>
     <property name='OverlayIconName' type='s' access='read'/>
     <property name='OverlayIconPixmap' type='a(iiay)' access='read'/>

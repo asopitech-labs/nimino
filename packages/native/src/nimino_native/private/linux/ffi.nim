@@ -232,7 +232,6 @@ proc g_dbus_method_invocation_return_value*(invocation: ptr GDBusMethodInvocatio
 proc g_dbus_method_invocation_return_dbus_error*(invocation: ptr GDBusMethodInvocation;
                                                  errorName, errorMessage: cstring)
   {.cdecl, importc, dynlib: LibGio.}
-
 proc g_variant_new*(format: cstring): ptr GVariant {.varargs, cdecl, importc, dynlib: LibGlib.}
 proc g_variant_new_boolean*(value: cint): ptr GVariant
   {.cdecl, importc, dynlib: LibGlib.}

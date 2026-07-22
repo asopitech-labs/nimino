@@ -44,13 +44,17 @@ block systemTrayIsExplicitlyUnsupportedOffWindows:
   when defined(windows):
     doAssert configured.isOk
   elif defined(linux) and not defined(niminoWsl):
-    doAssert not configured.isOk
-    doAssert configured.failure.kind == unsupported
-    doAssert configured.failure.detail == app.systemTraySupportDetail()
-    doAssert configured.failure.detail.len > 0
-    let detail = configured.failure.detail.toLowerAscii()
-    doAssert detail.contains("bus") or detail.contains("backend") or
-      detail.contains("watcher")
+    if app.supports(systemTray):
+      doAssert configured.isOk
+      doAssert app.systemTraySupportDetail().contains("StatusNotifierItem")
+    else:
+      doAssert not configured.isOk
+      doAssert configured.failure.kind == unsupported
+      doAssert configured.failure.detail == app.systemTraySupportDetail()
+      doAssert configured.failure.detail.len > 0
+      let detail = configured.failure.detail.toLowerAscii()
+      doAssert detail.contains("bus") or detail.contains("backend") or
+        detail.contains("watcher")
   else:
     doAssert not configured.isOk
     doAssert configured.failure.kind == unsupported
