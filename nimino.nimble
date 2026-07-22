@@ -1,4 +1,4 @@
-version = "0.1.0"
+version = "0.1.1"
 author = "asopitech-labs"
 description = "Nim-native cross-platform Web UI desktop application foundation"
 license = "MIT"
