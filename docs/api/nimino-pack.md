@@ -163,7 +163,7 @@ WSLは認証済みイベントとしてパスを中継します。
 
 `version`は`major.minor.patch`形式（任意のSemVer prerelease/build suffix付き）、`homepage`はHTTP(S) URL、`categories`はDesktop Entry category registryの許可値に検証します。省略時は`version = "0.1.0"`、`description = name`、`categories = ["Network"]`になります。
 
-`[deepLink] schemes`はOSがアプリを起動するURL schemeを明示します。schemeはRFC 3986形式へ正規化（小文字化・重複除去）し、`http`、`https`、`file`、`mailto`などの予約schemeは拒否します。これは`nimino-core.registerCustomProtocol`のWebView内部resource schemeとは別機能です。schemeを指定すると、Linux Desktop Entryへ標準の`MimeType=x-scheme-handler/<scheme>`を追加し、WindowsではHKCUの`Software\\Classes\\<scheme>`へper-user URL Protocolを登録します。
+`[deepLink] schemes`はOSがアプリを起動するURL schemeを明示します。schemeはRFC 3986形式へ正規化（小文字化・重複除去）し、`http`、`https`、`file`、`mailto`などの予約schemeは拒否します。これは`nimino-core.registerCustomProtocol`のWebView内部resource schemeとは別機能です。schemeを指定すると、Linux Desktop Entryへ標準の`MimeType=x-scheme-handler/<scheme>`、WindowsではHKCUのper-user URL Protocol、macOSでは`Contents/Info.plist`の`CFBundleURLTypes`を登録します。
 
 `--out`を指定したbundleには、既存のhost・マニフェスト・起動scriptに加えて、次の配布メタデータを生成します。
 
@@ -241,6 +241,21 @@ nimino package-linux dist/discord --format flatpak --out dist/packages
 
 `<id>-<version>-flatpak/`に、bundleを`bundle/` sourceとして参照するGNOME Platform/SDK 49 manifestを生成します。`make pack-flatpak-test`は専用privileged Compose serviceで`flatpak-builder`→OSTree repo→`.flatpak` exportまで検証します。runtimeの署名とclean target環境でのinstall/run/uninstallはrelease gateです。
 
+### macOS application bundle / DMG
+
+macOS上では、生成済みbundleからApplication bundleまたはDMGを作成できます。
+
+```bash
+nimino package-macos dist/discord --format app --out dist/packages
+nimino package-macos dist/discord --format dmg --out dist/packages
+nimino package-macos dist/discord --format app --out dist/packages \
+  --arch arm64 --sign-identity 'Developer ID Application: Example'
+nimino package-macos dist/discord --format dmg --out dist/packages \
+  --sign-identity 'Developer ID Application: Example' --notary-profile 'nimino-release'
+```
+
+`Contents/Info.plist`にはmanifestのbundle ID、version、deep-link URL scheme、camera/microphone権限用途説明を記録し、Mach-O host、manifest、assetsを`Contents/MacOS`と`Contents/Resources`へ配置します。指定アイコンは`.icns`に限定し、`--arch`でhostが要求アーキテクチャを含むことを検証します。DMGは`hdiutil create`で生成します。`--sign-identity`を指定しない場合は未署名bundleを生成し、指定時だけ`codesign --deep --options runtime`を実行します。`--notary-profile`を指定した場合は、署名済みDMGを`xcrun notarytool submit --wait`へ送り、成功後に`xcrun stapler staple`を実行します。notary profile、Apple証明書、実機Gatekeeper確認はrelease環境で行います。
+
 ## 固定された検証手順
 
 ローカルへNimを導入せず、次のMakeターゲットをDocker経由で実行します。
@@ -251,6 +266,7 @@ make pack-cli-test
 make pack-linux-test
 make pack-appimage-guardrails
 make pack-windows-test
+make pack-macos-test
 make pack-archive-test
 ```
 

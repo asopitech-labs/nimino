@@ -52,6 +52,7 @@ type
   ## expose an activation event leave it unset and report that limitation via
   ## the normal unsupported result from registration.
   NativeNotificationActivatedHandler* = proc(notificationId: string) {.closure.}
+  NativeDeepLinkHandler* = proc(url: string) {.closure.}
 
   NativeCustomProtocolRequest* = object
     ## A request for an application-owned WebView resource scheme.  The
@@ -138,6 +139,7 @@ type
   NativeCookieQueryRequest = ref object
     view: NativeWebView
     url: string
+    cookies: seq[NativeCookie]
     future: Future[NativeResultOf[seq[NativeCookie]]]
 
   NativeCookieMutationKind = enum
@@ -195,6 +197,8 @@ type
     toastActivatorClassCookie: uint32
     toastActivatorFactory: pointer
     notificationActivatedHandler: NativeNotificationActivatedHandler
+    deepLinkHandler: NativeDeepLinkHandler
+    pendingDeepLinks: seq[string]
     customProtocolScheme: string
     customProtocolHandler: NativeCustomProtocolHandler
     nativeMenuItems: seq[NativeMenuItem]
@@ -217,6 +221,7 @@ type
     width: int
     height: int
     profilePath*: string
+    hidden: bool
     platformWindow: pointer
     platformContainer: pointer
     fullscreenActive: bool
@@ -302,6 +307,7 @@ type
     customProtocolRegistered: bool
     activeDownload: pointer
     activeDownloadUrl: string
+    activeDownloadPath: string
     pendingScripts: seq[NativeScriptRequest]
     activeScripts: seq[NativeScriptRequest]
     activeBrowsingDataRequests: seq[NativeBrowsingDataRequest]
@@ -367,6 +373,14 @@ elif defined(windows):
   proc windowsConfigureCustomProtocol(view: NativeWebView): NativeResult
   proc windowsOpenFileDialog*(window: NativeWindow;
                               options: NativeFileDialogOptions): NativeResultOf[seq[string]]
+elif defined(macosx):
+  proc macosEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
+  proc macosDisposeApp(app: NativeApp)
+  proc macosInstallSystemTray(app: NativeApp): NativeResult
+  proc macosUninstallSystemTray(app: NativeApp)
+  proc macosSetNotificationActivated(app: NativeApp;
+                                     handler: NativeNotificationActivatedHandler): NativeResult
+  proc macosSetDeepLinkHandler(app: NativeApp; handler: NativeDeepLinkHandler): NativeResult
 
 proc completeScriptRequest(view: NativeWebView; request: NativeScriptRequest;
                            evaluation: NativeResultOf[string]) =
@@ -487,6 +501,10 @@ proc startScriptRequest(view: NativeWebView; request: NativeScriptRequest) =
     let started = view.windowsEvalJavaScript(request)
     if not started.isOk:
       view.completeScriptRequest(request, failureOf[string](started.failure))
+  elif defined(macosx):
+    let started = view.macosEvalJavaScript(request)
+    if not started.isOk:
+      view.completeScriptRequest(request, failureOf[string](started.failure))
   else:
     view.completeScriptRequest(request, failureOf[string](nativeError(
       unsupported, "webview.evalJavaScript", detail = "native backend is unavailable"
@@ -587,7 +605,19 @@ when defined(windows):
     except CatchableError:
       discard
 
-when defined(windows) or (defined(linux) and not defined(niminoWsl)):
+when defined(macosx):
+  proc dispatchDeepLink(app: NativeApp; url: string) =
+    if app.isNil or url.len == 0:
+      return
+    if app.deepLinkHandler.isNil:
+      app.pendingDeepLinks.add(url)
+      return
+    try:
+      app.deepLinkHandler(url)
+    except CatchableError:
+      discard
+
+when defined(windows) or (defined(linux) and not defined(niminoWsl)) or defined(macosx):
   proc dispatchNativeMenu(app: NativeApp; itemId: uint32) =
     ## The native UI thread invokes this through a Win32/GTK callback. User
     ## code must not unwind through the native callback boundary.
@@ -702,6 +732,9 @@ when defined(linux) and not defined(niminoWsl):
 elif defined(windows):
   import ./private/windows/ffi
   include "private/windows/backend"
+elif defined(macosx):
+  import ./private/macos/ffi
+  include "private/macos/backend"
 
 proc newNativeApp*(options: NativeAppOptions): NativeApp =
   new(result)
@@ -728,6 +761,12 @@ proc newNativeApp*(options: NativeAppOptions): NativeApp =
     result.trayWatcherName = linuxSystemTrayWatcherName()
     if result.trayWatcherName.len > 0:
       result.capabilities.incl(systemTray)
+  elif defined(macosx):
+    result.capabilities.incl(multipleWebViews)
+    result.capabilities.incl(nativeMenu)
+    result.capabilities.incl(nativeNotification)
+    result.capabilities.incl(customProtocol)
+    result.capabilities.incl(systemTray)
 
 proc newNativeApp*(): NativeApp =
   newNativeApp(NativeAppOptions(appId: "tech.asopi.nimino.native"))
@@ -745,6 +784,8 @@ proc supports*(window: NativeWindow; capability: WindowCapability): bool =
     capability in {fullscreen, maximize, alwaysOnTop}
   elif defined(linux) and not defined(niminoWsl):
     capability in {fullscreen, maximize}
+  elif defined(macosx):
+    capability in {fullscreen, maximize, alwaysOnTop}
   else:
     false
 
@@ -758,6 +799,8 @@ proc systemTraySupportDetail*(app: NativeApp): string =
   if app.supports(systemTray):
     when defined(linux) and not defined(niminoWsl):
       return "StatusNotifierItem/dbusmenu is available via " & app.trayWatcherName
+    elif defined(macosx):
+      return "Cocoa NSStatusItem is available"
     else:
       return "system tray is supported by the native backend"
   when defined(linux) and not defined(niminoWsl):
@@ -870,6 +913,15 @@ proc configureNativeMenu*(app: NativeApp; title: string;
     app.nativeMenuTitle = title
     app.nativeMenuConfigured = true
     success()
+  elif defined(macosx):
+    if app.nativeMenuConfigured:
+      return failure(nativeError(invalidState, "app.configureNativeMenu",
+        detail = "the native menu can only be configured once"))
+    app.nativeMenuItems = copied
+    app.nativeMenuHandler = handler
+    app.nativeMenuTitle = title
+    app.nativeMenuConfigured = true
+    success()
   else:
     failure(nativeError(unsupported, "app.configureNativeMenu"))
 
@@ -892,6 +944,8 @@ proc sendNativeNotification*(app: NativeApp;
     app.linuxSendNativeNotification(notification)
   elif defined(windows):
     app.windowsSendNativeNotification(notification)
+  elif defined(macosx):
+    app.macosSendNativeNotification(notification)
   else:
     failure(nativeError(unsupported, "app.sendNativeNotification"))
 
@@ -905,8 +959,31 @@ proc onNotificationActivated*(app: NativeApp;
   when defined(windows):
     app.notificationActivatedHandler = handler
     success()
+  elif defined(macosx):
+    app.notificationActivatedHandler = handler
+    let registered = app.macosSetNotificationActivated(handler)
+    if not registered.isOk:
+      return registered
+    success()
   else:
     failure(nativeError(unsupported, "app.onNotificationActivated"))
+
+proc onDeepLink*(app: NativeApp; handler: NativeDeepLinkHandler): NativeResult =
+  if app.isNil or app.state == finished:
+    return failure(nativeError(invalidState, "app.onDeepLink"))
+  if handler.isNil:
+    return failure(nativeError(invalidArgument, "app.onDeepLink",
+      detail = "a deep-link handler is required"))
+  app.deepLinkHandler = handler
+  when defined(macosx):
+    let registered = app.macosSetDeepLinkHandler(handler)
+    if not registered.isOk:
+      return registered
+  let pending = app.pendingDeepLinks
+  app.pendingDeepLinks.setLen(0)
+  for url in pending:
+    app.dispatchDeepLink(url)
+  success()
 
 proc registerCustomProtocol*(app: NativeApp; scheme: string;
                              handler: NativeCustomProtocolHandler): NativeResult =
@@ -939,6 +1016,8 @@ proc registerCustomProtocol*(app: NativeApp; scheme: string;
   app.customProtocolHandler = handler
   when defined(linux) and not defined(niminoWsl):
     return app.linuxRegisterCustomProtocol()
+  elif defined(macosx):
+    return app.macosRegisterCustomProtocol()
   else:
     success()
 
@@ -998,6 +1077,11 @@ proc newWebView*(window: NativeWindow; userAgent = ""; proxyUrl = "";
       if not created.isOk:
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
+    elif defined(macosx):
+      let created = view.macosCreateView()
+      if not created.isOk:
+        window.views.setLen(window.views.len - 1)
+        return failureOf[NativeWebView](created.failure)
     let zoomed = view.setZoom(view.zoomFactor)
     if not zoomed.isOk:
       window.views.setLen(window.views.len - 1)
@@ -1017,6 +1101,8 @@ proc setUserAgent*(view: NativeWebView; value: string): NativeResult =
     view.linuxSetUserAgent(value)
   elif defined(windows):
     view.windowsSetUserAgent(value)
+  elif defined(macosx):
+    view.macosSetUserAgent(value)
   else:
     failure(nativeError(unsupported, "webview.setUserAgent"))
 
@@ -1040,6 +1126,9 @@ proc setProxy*(view: NativeWebView; value: string): NativeResult =
   elif defined(windows):
     failure(nativeError(invalidState, "webview.setProxy",
       detail = "proxy is a construct-only WebView environment option on Windows"))
+  elif defined(macosx):
+    failure(nativeError(unsupported, "webview.setProxy",
+      detail = "WKWebView uses the system proxy configuration on macOS"))
   else:
     failure(nativeError(unsupported, "webview.setProxy"))
 
@@ -1069,6 +1158,10 @@ proc setZoom*(view: NativeWebView; factor: float): NativeResult =
     let configured = view.windowsSetZoom(factor)
     if configured.isOk: view.zoomFactor = factor
     configured
+  elif defined(macosx):
+    let configured = view.macosSetZoom(factor)
+    if configured.isOk: view.zoomFactor = factor
+    configured
   else:
     failure(nativeError(unsupported, "webview.setZoom"))
 
@@ -1086,6 +1179,10 @@ proc setIgnoreCertificateErrors*(view: NativeWebView; enabled: bool): NativeResu
     let configured = view.windowsSetIgnoreCertificateErrors(enabled)
     if configured.isOk: view.ignoreCertificateErrors = enabled
     configured
+  elif defined(macosx):
+    let configured = view.macosSetIgnoreCertificateErrors(enabled)
+    if configured.isOk: view.ignoreCertificateErrors = enabled
+    configured
   else:
     failure(nativeError(unsupported, "webview.setIgnoreCertificateErrors"))
 
@@ -1099,18 +1196,22 @@ proc setDecorated*(window: NativeWindow; enabled: bool): NativeResult =
     window.linuxSetDecorated(enabled)
   elif defined(windows):
     window.windowsSetDecorated(enabled)
+  elif defined(macosx):
+    window.macosSetDecorated(enabled)
   else:
     failure(nativeError(unsupported, "window.setDecorated"))
 
 proc close*(view: NativeWebView): NativeResult =
   if view.isNil or view.window.isNil or view.state in {closing, closed}:
     return failure(nativeError(invalidState, "webview.close"))
-  when (defined(linux) and not defined(niminoWsl)) or defined(windows):
+  when (defined(linux) and not defined(niminoWsl)) or defined(windows) or defined(macosx):
     let window = view.window
     when defined(linux) and not defined(niminoWsl):
       view.linuxDisposeView()
     elif defined(windows):
       view.windowsDisposeView()
+    elif defined(macosx):
+      view.macosDisposeView()
     for index in countdown(window.views.high, 0):
       if cast[pointer](window.views[index]) == cast[pointer](view):
         window.views.delete(index)
@@ -1128,6 +1229,8 @@ proc setTitle*(window: NativeWindow; title: string): NativeResult =
     return success()
   elif defined(windows):
     return windowsSetTitle(window)
+  elif defined(macosx):
+    return macosSetTitle(window)
   else:
     return success()
 
@@ -1143,6 +1246,8 @@ proc setSize*(window: NativeWindow; width, height: int): NativeResult =
     return success()
   elif defined(windows):
     return windowsSetSize(window)
+  elif defined(macosx):
+    return macosSetSize(window)
   else:
     return success()
 
@@ -1154,6 +1259,9 @@ proc close*(window: NativeWindow): NativeResult =
     return success()
   elif defined(windows):
     return windowsCloseWindow(window)
+  elif defined(macosx):
+    macosDisposeWindow(window)
+    return success()
   else:
     failure(nativeError(unsupported, "window.close"))
 
@@ -1216,6 +1324,9 @@ proc show*(window: NativeWindow): NativeResult =
   elif defined(windows):
     windowsShowWindow(window)
     success()
+  elif defined(macosx):
+    macosShowWindow(window)
+    success()
   else:
     failure(nativeError(unsupported, "window.show"))
 
@@ -1227,6 +1338,9 @@ proc hide*(window: NativeWindow): NativeResult =
     success()
   elif defined(windows):
     windowsHideWindow(window)
+    success()
+  elif defined(macosx):
+    macosHideWindow(window)
     success()
   else:
     failure(nativeError(unsupported, "window.hide"))
@@ -1240,6 +1354,9 @@ proc minimize*(window: NativeWindow): NativeResult =
   elif defined(windows):
     windowsMinimizeWindow(window)
     success()
+  elif defined(macosx):
+    macosMinimizeWindow(window)
+    success()
   else:
     failure(nativeError(unsupported, "window.minimize"))
 
@@ -1252,6 +1369,9 @@ proc maximize*(window: NativeWindow): NativeResult =
   elif defined(windows):
     windowsMaximizeWindow(window)
     success()
+  elif defined(macosx):
+    macosMaximizeWindow(window)
+    success()
   else:
     failure(nativeError(unsupported, "window.maximize"))
 
@@ -1263,6 +1383,9 @@ proc restore*(window: NativeWindow): NativeResult =
     success()
   elif defined(windows):
     windowsRestoreWindow(window)
+    success()
+  elif defined(macosx):
+    macosRestoreWindow(window)
     success()
   else:
     failure(nativeError(unsupported, "window.restore"))
@@ -1277,6 +1400,8 @@ proc setFullscreen*(window: NativeWindow; enabled: bool): NativeResult =
     window.linuxSetFullscreen(enabled)
   elif defined(windows):
     window.windowsSetFullscreen(enabled)
+  elif defined(macosx):
+    window.macosSetFullscreen(enabled)
   else:
     failure(nativeError(unsupported, "window.setFullscreen"))
 
@@ -1290,6 +1415,8 @@ proc setAlwaysOnTop*(window: NativeWindow; enabled: bool): NativeResult =
     window.linuxSetAlwaysOnTop(enabled)
   elif defined(windows):
     window.windowsSetAlwaysOnTop(enabled)
+  elif defined(macosx):
+    window.macosSetAlwaysOnTop(enabled)
   else:
     failure(nativeError(unsupported, "window.setAlwaysOnTop"))
 
@@ -1301,6 +1428,8 @@ proc setResizable*(window: NativeWindow; resizable: bool): NativeResult =
     success()
   elif defined(windows):
     windowsSetResizable(window, resizable)
+  elif defined(macosx):
+    window.macosSetResizable(resizable)
   else:
     failure(nativeError(unsupported, "window.setResizable"))
 
@@ -1309,6 +1438,8 @@ proc setPosition*(window: NativeWindow; x, y: int): NativeResult =
     return failure(nativeError(invalidState, "window.setPosition"))
   when defined(windows):
     windowsSetPosition(window, x, y)
+  elif defined(macosx):
+    macosSetPosition(window, x, y)
   else:
     failure(nativeError(unsupported, "window.setPosition",
       detail = "the current Linux backend cannot move GTK4 windows"))
@@ -1320,6 +1451,9 @@ proc focus*(window: NativeWindow): NativeResult =
     windowsFocusWindow(window)
   elif defined(linux) and not defined(niminoWsl):
     linuxFocusWindow(window)
+    success()
+  elif defined(macosx):
+    macosFocusWindow(window)
     success()
   else:
     failure(nativeError(unsupported, "window.focus"))
@@ -1347,6 +1481,8 @@ proc loadUrl*(view: NativeWebView; url: string): NativeResult =
     return success()
   elif defined(windows):
     return windowsLoadPendingContent(view)
+  elif defined(macosx):
+    return view.macosLoadPendingContent()
   else:
     return success()
 
@@ -1376,6 +1512,8 @@ proc loadHtml*(view: NativeWebView; html: string; baseUrl = ""): NativeResult =
         detail = "WebView2 NavigateToString cannot set a base URL")
       view.dispatchError(error)
       return failure(error)
+    elif defined(macosx):
+      discard
     else:
       let error = nativeError(unsupported, "webview.loadHtml",
         detail = "HTML base URLs are unavailable through the WSL adapter")
@@ -1390,6 +1528,8 @@ proc loadHtml*(view: NativeWebView; html: string; baseUrl = ""): NativeResult =
     return success()
   elif defined(windows):
     return windowsLoadPendingContent(view)
+  elif defined(macosx):
+    return view.macosLoadPendingContent()
   else:
     return success()
 
@@ -1409,6 +1549,8 @@ proc setDocumentStartScript*(view: NativeWebView; script: string): NativeResult 
     return view.linuxConfigureDocumentStartScript()
   elif defined(windows):
     return view.windowsReplaceDocumentStartScript(script)
+  elif defined(macosx):
+    return view.macosConfigureDocumentStartScript()
   else:
     failure(nativeError(unsupported, "webview.setDocumentStartScript"))
 
@@ -1424,6 +1566,8 @@ proc setDevToolsEnabled*(view: NativeWebView; enabled: bool): NativeResult =
     view.linuxSetDevToolsEnabled(enabled)
   elif defined(windows):
     view.windowsSetDevToolsEnabled(enabled)
+  elif defined(macosx):
+    view.macosSetDevToolsEnabled(enabled)
   else:
     failure(nativeError(unsupported, "webview.setDevToolsEnabled"))
 
@@ -1484,6 +1628,16 @@ proc clearBrowsingData*(view: NativeWebView;
     let started = view.linuxClearBrowsingData(request)
     if not started.isOk:
       view.completeBrowsingDataRequest(request, started)
+  elif defined(macosx):
+    if view.state != ready or view.platformView.isNil:
+      result.complete(failure(nativeError(invalidState, "webview.clearBrowsingData",
+        detail = "WKWebView must be ready before browser data can be cleared")))
+      return
+    request.view = view
+    view.activeBrowsingDataRequests.add(request)
+    let started = view.macosClearBrowsingData(request)
+    if not started.isOk:
+      view.completeBrowsingDataRequest(request, started)
   else:
     result.complete(failure(nativeError(unsupported, "webview.clearBrowsingData",
       detail = "live browser data clearing is unavailable on this platform")))
@@ -1521,6 +1675,10 @@ proc getCookies*(view: NativeWebView; url = ""):
       view.completeCookieQuery(request, failureOf[seq[NativeCookie]](started.failure))
   elif defined(linux) and not defined(niminoWsl):
     let started = view.linuxGetCookies(request)
+    if not started.isOk:
+      view.completeCookieQuery(request, failureOf[seq[NativeCookie]](started.failure))
+  elif defined(macosx):
+    let started = view.macosGetCookies(request)
     if not started.isOk:
       view.completeCookieQuery(request, failureOf[seq[NativeCookie]](started.failure))
   else:
@@ -1571,6 +1729,10 @@ proc mutateCookie(view: NativeWebView; cookie: NativeCookie;
     let started = view.linuxMutateCookie(request)
     if not started.isOk:
       view.completeCookieMutation(request, started)
+  elif defined(macosx):
+    let started = view.macosMutateCookie(request)
+    if not started.isOk:
+      view.completeCookieMutation(request, started)
   else:
     view.completeCookieMutation(request, failure(nativeError(unsupported,
       operation, detail = "live cookie mutation is unavailable on this platform")))
@@ -1610,6 +1772,8 @@ proc openFileDialog*(window: NativeWindow;
     )
   elif defined(windows):
     target.complete(window.windowsOpenFileDialog(options))
+  elif defined(macosx):
+    target.complete(window.macosOpenFileDialog(options))
   else:
     target.complete(failureOf[seq[string]](nativeError(unsupported,
       "window.openFileDialog", detail = "native file dialogs are unavailable")))
@@ -1687,6 +1851,12 @@ proc quit*(app: NativeApp): NativeResult =
     if app.state == running:
       return windowsQuit(app)
     return success()
+  elif defined(macosx):
+    if app.state == running:
+      app.macosQuit()
+    elif app.platformApp != nil:
+      app.macosDisposeApp()
+    return success()
   else:
     return success()
 
@@ -1696,7 +1866,7 @@ proc close*(app: NativeApp): NativeResult =
 proc postToUi*(app: NativeApp; callback: NativeUiHandler): NativeResult =
   ## Queues a callback for execution on the native UI thread.  The callback
   ## is never run inline, including when called from that thread.
-  when defined(windows) or (defined(linux) and not defined(niminoWsl)):
+  when defined(windows) or (defined(linux) and not defined(niminoWsl)) or defined(macosx):
     if app.isNil or app.state == finished:
       return failure(nativeError(invalidState, "app.postToUi"))
     if callback.isNil:
@@ -1705,6 +1875,7 @@ proc postToUi*(app: NativeApp; callback: NativeUiHandler): NativeResult =
     acquire(app.uiTaskLock)
     app.uiTasks.add(callback)
     release(app.uiTaskLock)
+    var queuedResult = success()
     when defined(windows):
       if app.state == running:
         for window in app.windows:
@@ -1723,7 +1894,12 @@ proc postToUi*(app: NativeApp; callback: NativeUiHandler): NativeResult =
           app.removeLastUiTask()
           return failure(nativeError(osError, "app.postToUi",
             detail = "GLib timeout source creation failed"))
-    success()
+    elif defined(macosx):
+      let queued = app.macosPostToUi()
+      if not queued.isOk:
+        app.removeLastUiTask()
+      queuedResult = queued
+    queuedResult
   else:
     failure(nativeError(unsupported, "app.postToUi"))
 
@@ -1731,6 +1907,9 @@ proc setIdleHandler*(app: NativeApp; handler: NativeIdleHandler): NativeResult =
   if app.isNil or app.state != created:
     return failure(nativeError(invalidState, "app.setIdleHandler"))
   when defined(windows) or (defined(linux) and not defined(niminoWsl)):
+    app.idleHandler = handler
+    return success()
+  elif defined(macosx):
     app.idleHandler = handler
     return success()
   else:
@@ -1746,5 +1925,7 @@ proc run*(app: NativeApp): NativeResult =
     return linuxRun(app)
   elif defined(windows):
     return windowsRun(app)
+  elif defined(macosx):
+    return macosRun(app)
   else:
     failure(nativeError(unsupported, "app.run", detail = "native backend is unavailable"))

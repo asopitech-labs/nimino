@@ -113,6 +113,7 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
                             multiInstance = false;
                             permissionsAllow: seq[string] = @[];
                             css: seq[string] = @[]; javascript: seq[string] = @[];
+                            deepLinkSchemes: seq[string] = @[];
                             navigationAllow: seq[string] = @[];
                             navigationExternal: seq[string] = @[]):
                             PackResult[PackManifest] =
@@ -153,6 +154,7 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
       startToTray: startToTray, hideOnClose: hideOnClose,
       multiWindow: multiWindow, multiInstance: multiInstance),
     package: metadata,
+    deepLink: PackDeepLinkOptions(schemes: deepLinkSchemes),
     navigationAllow: navigationAllow,
     navigationExternal: navigationExternal,
     permissionsAllow: permissionsAllow,

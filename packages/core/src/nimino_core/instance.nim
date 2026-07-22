@@ -48,8 +48,12 @@ else:
     {.importc: "close".}
   proc niminoFlock(fd, operation: cint): cint
     {.importc: "flock".}
-  proc niminoErrnoLocation(): ptr cint
-    {.importc: "__errno_location".}
+  when defined(macosx):
+    proc niminoErrnoLocation(): ptr cint
+      {.importc: "__error".}
+  else:
+    proc niminoErrnoLocation(): ptr cint
+      {.importc: "__errno_location".}
 
   const
     OpenReadWrite = 0x2.cint

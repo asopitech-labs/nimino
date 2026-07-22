@@ -87,7 +87,15 @@ proc main() =
       activationArguments.add(argument)
     inc index
   if manifestArgument.len == 0:
-    fail("usage: nimino-host --manifest <nimino-manifest.json>", QuitFailure)
+    when defined(macosx):
+      ## A macOS .app uses the host binary itself as CFBundleExecutable.  The
+      ## manifest is adjacent in Contents/Resources, so no shell launcher or
+      ## extra command-line contract is needed for LaunchServices.
+      let executable = absolutePath(getAppFilename())
+      manifestArgument = parentDir(parentDir(executable)) / "Resources" /
+        "nimino-manifest.json"
+    else:
+      fail("usage: nimino-host --manifest <nimino-manifest.json>", QuitFailure)
   let manifestPath = absolutePath(manifestArgument)
   if not fileExists(manifestPath):
     fail("manifest does not exist: " & manifestPath)
@@ -128,6 +136,14 @@ proc main() =
   let deepLinkNode = if manifest.hasKey("deepLink") and manifest["deepLink"].kind == JObject:
       manifest["deepLink"] else: newJObject()
   let allowedDeepLinkSchemes = deepLinkNode.stringArray("schemes")
+  proc deepLinkAllowed(value: string): bool =
+    try:
+      let parsed = parseUri(value)
+      parsed.scheme.len > 0 and parsed.scheme.toLowerAscii() in
+        allowedDeepLinkSchemes.mapIt(it.toLowerAscii()) and
+        value.find({'\r', '\n', '\0'}) < 0
+    except CatchableError:
+      false
   let allowedPermissions = permissions.stringArray("allow")
   let showSystemTray = runtime.boolean("showSystemTray", false)
   let startToTray = runtime.boolean("startToTray", false)
@@ -157,11 +173,19 @@ proc main() =
   ## generic host has no application-specific handler, therefore it reports
   ## the event to stderr for diagnostics while library consumers install
   ## their own callback through nimino-core.
-  when defined(windows):
+  when defined(windows) or defined(macosx):
     let activation = app.onNotificationActivated(proc(notificationId: string) =
       stderr.writeLine("nimino-host: notification activated: " & notificationId))
     if not activation.isOk:
       fail(activation.failure.detail)
+  when defined(macosx):
+    let deepLink = app.onDeepLink(proc(url: string) =
+      if deepLinkAllowed(url):
+        stderr.writeLine("nimino-host: deep link activated: " & url)
+      else:
+        stderr.writeLine("nimino-host: ignored undeclared deep link: " & url))
+    if not deepLink.isOk:
+      fail(deepLink.failure.detail)
   let windowCreated = app.newWindow(CoreWindowOptions(
     title: optionalString(windowNode, "title", appName),
     width: windowNode.integer("width", 1200),
@@ -268,11 +292,7 @@ proc main() =
   if not resizable.isOk:
     fail(resizable.failure.detail)
   for activation in activationArguments:
-    let parsed = try: parseUri(activation)
-    except CatchableError:
-      fail("deep-link activation is malformed")
-    let scheme = parsed.scheme.toLowerAscii()
-    if scheme.len == 0 or scheme notin allowedDeepLinkSchemes.mapIt(it.toLowerAscii()):
+    if not deepLinkAllowed(activation):
       fail("deep-link activation scheme is not declared by the manifest")
     let delivered = app.deliverDeepLink(activation)
     if not delivered.isOk:

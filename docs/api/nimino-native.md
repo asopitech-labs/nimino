@@ -1,6 +1,6 @@
 # `nimino-native` 公開API案
 
-**状態: M2部分実装。`evalJavaScript`、文字列 `onMessage`、`onNavigationStarting`/`onNavigationCompleted`、基本`onError`、`onNewWindowRequested`、CookieManagerの取得・設定・削除は native Windows/Linux と WSL host adapter に実装済みです。Windows/Linuxの開始callbackは同期中止を実装し、新規Windowは暗黙生成せず拒否します。WSL host/client間のpermission/download/navigation decision relayは同期request/response、5秒timeout、deny defaultまで実装済みです。Linuxの通常実WebView経路と、導入済みWindows WebView2 Runtime上のhost経路（HTML/URL/評価/message/title/resize）は確認済みです。CookieManagerはLinux実WebViewで往復確認し、Windowsは公式SDK ABIとの照合とx64クロスコンパイルを確認済みです。実Windows Runtime上のCookieManager往復、実ユーザー操作での新規Window要求、通常Windows GUI CIは未完了です。その他の M2 以降の操作は設計案です。**
+**状態: M2〜M6実装済み。Windows/Linux/macOS native backend と WSL host adapter に、`evalJavaScript`、message/navigation/error/new-window、CookieManager、permission/download callback、native menu/notification、tray、deep link、custom protocol を実装済みです。macOSはAppKit/WKWebView、NSStatusItem、NSUserNotificationCenterDelegate、profile別WKWebsiteDataStore、`.app`/`.dmg` packagingを提供します。macOS GUIは`nimble testMacosSmoke`、packageは`nimble testPackMacos`で確認します。実Windows GUI、Apple署名/notarization、ユーザー操作依存の通知クリック等は環境依存のrelease検証です。**
 
 このAPIはWindow/WebViewと低水準イベントだけを提供します。RPC、プロファイル、権限ポリシー、アセット配信、URL包装、WSL通信を含めません。
 
@@ -196,6 +196,14 @@ discard app.sendNativeNotification(NativeNotification(
   id: "ready", title: "Nimino", body: "Application started"
 ))
 ```
+
+## macOS native backend
+
+macOSはCocoa/WebKitのprivate bridgeで`NSApplication`、`NSWindow`、複数`WKWebView`、native menu、`NSStatusItem` tray、`NSUserNotification`、通知activation、`NSApplication`の`openURLs` deep linkを提供します。`onPermissionRequested`はWKWebKitのmedia capture（camera/microphone）をdeny-defaultで判定し、`onDownloadStarting`/`onDownloadPath`/`onDownloadEvent`はWKDownloadの開始・保存先・進捗・完了/失敗へ接続します。
+
+非incognito WebViewの`profilePath`はSHA-256から安定UUIDを作り、`WKWebsiteDataStore dataStoreForIdentifier:`でprofileごとに分離します。空のprofileは既定store、incognitoはnon-persistent storeです。`transparentWindow`とsystem proxyの動的変更はmacOS WebKitの共通API境界では提供しません。
+
+`nimino package-macos --format app|dmg`はbundle内のmanifest、Mach-O host、assetsをmacOS application bundleへ配置し、manifestのdeep-link schemeとcamera/microphone用途説明を`Info.plist`へ登録します。macOSアイコンは`.icns`を使用します。`--arch`でhostのMach-Oアーキテクチャを検証し、`--sign-identity`を指定した場合のみcodesignを実行します。DMGのnotarizationは`--notary-profile`で明示的に要求できます。
 
 `setDocumentStartScript`は`pending`のViewに一つだけscriptを設定・置換する低水準操作です。ready後の追加・変更は`invalidState`で拒否し、次のナビゲーションへ黙って適用しません。WindowsはWebView2の非同期`AddScriptToExecuteOnDocumentCreated`完了を待ってから保留中の最初の読込を開始し、LinuxはWebKitGTKの`WebKitUserScript`をdocument-startで登録します。どちらも以後のframe/ナビゲーションへ影響し得るため、URL・origin・注入ポリシーはこの層で判断しません。`nimino-core`がその制約を用いてRPC bridgeを限定します。
 

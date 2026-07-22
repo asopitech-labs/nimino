@@ -8,6 +8,7 @@ proc usage() =
   stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
+  stderr.writeLine("       nimino package-macos <bundle> --format <app|dmg> --out <directory> [--arch <arm64|x86_64>] [--sign-identity <identity>] [--notary-profile <keychain-profile>]")
   quit(2)
 
 proc packageLinuxUsage() =
@@ -75,6 +76,41 @@ proc runPackageWindows() =
   let built = buildWindowsPackage(options)
   if not built.isOk:
     stderr.writeLine("nimino package-windows: " & built.error.detail)
+    quit(1)
+  echo built.value
+  quit(0)
+
+proc packageMacosUsage() =
+  usage()
+
+proc runPackageMacos() =
+  if paramCount() < 3:
+    packageMacosUsage()
+  var options = MacosPackageOptions(bundleDirectory: paramStr(2), architecture: "arm64")
+  var hasFormat = false
+  var index = 3
+  while index <= paramCount():
+    if index == paramCount(): packageMacosUsage()
+    let flag = paramStr(index)
+    let value = paramStr(index + 1)
+    case flag
+    of "--format":
+      case value.toLowerAscii()
+      of "app": options.format = macosAppPackage
+      of "dmg": options.format = macosDmgPackage
+      else: packageMacosUsage()
+      hasFormat = true
+    of "--out": options.outputDirectory = value
+    of "--arch": options.architecture = value.toLowerAscii()
+    of "--sign-identity": options.signingIdentity = value
+    of "--notary-profile": options.notaryProfile = value
+    else: packageMacosUsage()
+    index += 2
+  if not hasFormat or options.outputDirectory.len == 0:
+    packageMacosUsage()
+  let built = buildMacosPackage(options)
+  if not built.isOk:
+    stderr.writeLine("nimino package-macos: " & built.error.detail)
     quit(1)
   echo built.value
   quit(0)
@@ -601,6 +637,8 @@ if paramCount() >= 1 and paramStr(1) == "package-linux":
   runPackageLinux()
 if paramCount() >= 1 and paramStr(1) == "package-windows":
   runPackageWindows()
+if paramCount() >= 1 and paramStr(1) == "package-macos":
+  runPackageMacos()
 if paramCount() < 2 or paramStr(1) != "pack":
   usage()
 var loaded: PackResult[PackManifest]
@@ -713,6 +751,7 @@ if sourceIsUrl or sourceIsLocal:
       showSystemTray = showSystemTray, startToTray = startToTray,
       hideOnClose = hideOnClose, multiWindow = multiWindow,
       multiInstance = multiInstance, permissionsAllow = permissionsAllow,
+      deepLinkSchemes = deepLinkSchemes,
       css = css, javascript = javascript, navigationAllow = navigationAllow,
       navigationExternal = navigationExternal)
   else:

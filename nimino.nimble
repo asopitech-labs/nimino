@@ -35,6 +35,15 @@ task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
   ## worker. The smoke itself reports all required completion assertions.
   exec "timeout 45s dbus-run-session -- xvfb-run -a /tmp/nimino-linux-smoke"
 
+task testMacosSmoke, "Run the macOS Cocoa/WKWebView native smoke test":
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-macos-smoke-nimcache --out:/tmp/nimino-macos-smoke --path:packages/native packages/native/tests/test_macos_smoke.nim"
+  exec "perl -e 'alarm 45; exec @ARGV' /tmp/nimino-macos-smoke"
+
+task testPackMacos, "Build and inspect a macOS app bundle and DMG":
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-macos-cli-nimcache --out:/tmp/nimino-pack-macos-cli --path:packages/pack tools/cli/nimino.nim"
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-macos-host-nimcache --out:/tmp/nimino-pack-macos-host --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
+  exec "bash tools/ci/test_pack_macos.sh /tmp/nimino-pack-macos-cli /tmp/nimino-pack-macos-host"
+
 task testLinuxCustomProtocolSmoke, "Run the Linux WebView custom protocol harness under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-linux-custom-protocol-smoke-nimcache --out:/tmp/nimino-linux-custom-protocol-smoke --path:packages/native packages/native/tests/test_linux_custom_protocol_smoke.nim"
   exec "timeout 45s dbus-run-session -- xvfb-run -a /tmp/nimino-linux-custom-protocol-smoke"

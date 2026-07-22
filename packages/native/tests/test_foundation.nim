@@ -31,7 +31,7 @@ block capabilitiesAreExplicit:
   doAssert not available.supports(systemTray)
   let app = newNativeApp()
   doAssert app.supports(webPermissionEvents)
-  when defined(windows) or (defined(linux) and not defined(niminoWsl)):
+  when defined(windows) or (defined(linux) and not defined(niminoWsl)) or defined(macosx):
     doAssert app.supports(multipleWebViews)
   else:
     doAssert not app.supports(multipleWebViews)
@@ -55,6 +55,10 @@ block systemTrayIsExplicitlyUnsupportedOffWindows:
       let detail = configured.failure.detail.toLowerAscii()
       doAssert detail.contains("bus") or detail.contains("backend") or
         detail.contains("watcher")
+  elif defined(macosx):
+    doAssert app.supports(systemTray)
+    doAssert configured.isOk
+    doAssert app.systemTraySupportDetail().contains("NSStatusItem")
   else:
     doAssert not configured.isOk
     doAssert configured.failure.kind == unsupported
@@ -83,6 +87,15 @@ block nativeDesktopIntegrationCapabilitiesAndStatesAreExplicit:
     doAssert app.configureNativeMenu("Nimino", items,
       proc(itemId: uint32) = discard).isOk
     doAssert app.onNotificationActivated(proc(notificationId: string) = discard).isOk
+    let notification = app.sendNativeNotification(NativeNotification(
+      id: "foundation", title: "Nimino", body: "not running"))
+    doAssert not notification.isOk
+    doAssert notification.failure.kind == invalidState
+  elif defined(macosx):
+    doAssert app.supports(nativeMenu)
+    doAssert app.supports(nativeNotification)
+    doAssert app.configureNativeMenu("Nimino", items,
+      proc(itemId: uint32) = discard).isOk
     let notification = app.sendNativeNotification(NativeNotification(
       id: "foundation", title: "Nimino", body: "not running"))
     doAssert not notification.isOk
@@ -125,7 +138,7 @@ block windowAndViewRemainSeparate:
   doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
   doAssert window.value.onCloseRequested(proc(): bool = true).isOk
   doAssert window.value.onClosed(proc() = discard).isOk
-  when defined(windows) or (defined(linux) and not defined(niminoWsl)):
+  when defined(windows) or (defined(linux) and not defined(niminoWsl)) or defined(macosx):
     let secondView = window.value.newWebView()
     doAssert secondView.isOk
     doAssert secondView.value.close().isOk
@@ -170,6 +183,10 @@ block nativeWindowControlCapabilitiesAreExplicit:
     let topmost = window.value.setAlwaysOnTop(true)
     doAssert not topmost.isOk
     doAssert topmost.failure.kind == unsupported
+  elif defined(macosx):
+    doAssert window.value.supports(maximize)
+    doAssert window.value.supports(fullscreen)
+    doAssert window.value.supports(alwaysOnTop)
   else:
     doAssert not window.value.supports(maximize)
     doAssert not window.value.supports(fullscreen)
@@ -201,6 +218,9 @@ block htmlBaseUrlIsValidatedBeforeNativeCreation:
   doAssert malformedBase.failure.kind == invalidArgument
   doAssert malformedBaseNotified
   when defined(linux) and not defined(niminoWsl):
+    doAssert view.value.loadHtml("<main>Foundation</main>",
+      baseUrl = "https://example.test/assets/").isOk
+  elif defined(macosx):
     doAssert view.value.loadHtml("<main>Foundation</main>",
       baseUrl = "https://example.test/assets/").isOk
   else:
@@ -236,7 +256,7 @@ block liveBrowserDataClearingRequiresAReadyNativeWebView:
   doAssert cleared.finished
   let result = cleared.read()
   doAssert not result.isOk
-  when defined(linux) and not defined(niminoWsl):
+  when defined(linux) and not defined(niminoWsl) or defined(macosx):
     doAssert result.failure.kind == invalidState
   else:
     doAssert result.failure.kind == unsupported

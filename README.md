@@ -27,7 +27,7 @@ No Nim, Docker, or local GUI SDK installation is required for the online path.
 3. Enter the website URL and target package. Application name and stable ID are optional; Nimino derives them from the URL when omitted.
 4. Download the generated artifact from the completed workflow.
 
-The workflow is defined in [`nimino-pack-online.yml`](.github/workflows/nimino-pack-online.yml). It uses the pinned Docker toolchain and produces a bundle, package, checksum file, and SBOM. Supported targets are Linux `.deb`, Linux `.rpm`, and Windows NSIS or MSI.
+The workflow is defined in [`nimino-pack-online.yml`](.github/workflows/nimino-pack-online.yml). It uses the pinned Docker toolchain and produces a bundle, package, checksum file, and SBOM. Supported targets are Linux `.deb`, Linux `.rpm`, Windows NSIS/MSI, and macOS `.app`/`.dmg` when run on macOS.
 
 ### Ready-made site installers
 
@@ -75,6 +75,9 @@ When building locally, run these commands inside the Docker development environm
 nimino package-linux dist/youtube --format deb --out dist/packages \
   --arch amd64 --maintainer 'Nimino <noreply@nimino.invalid>'
 nimino package-windows dist/youtube --format nsis --out dist/packages
+# macOS host
+nimino package-macos dist/youtube --format app --out dist/packages
+nimino package-macos dist/youtube --format dmg --out dist/packages
 ```
 
 ```bash
@@ -199,7 +202,7 @@ See [`docs/api/nimino-pack.md`](docs/api/nimino-pack.md) for manifests, navigati
 | Windows | Win32 + WebView2 Evergreen Runtime | Supported development target; GUI smoke requires a logged-in Windows desktop. |
 | Native Linux | GTK 4 + WebKitGTK 6.0 | Supported development target; tested in the Docker GUI harness. |
 | WSL 2 | WSL Nim client + Windows host + WebView2 | Supported development target; requires functional Windows Interop. |
-| macOS | Cocoa + WKWebView | Planned; no macOS implementation is included yet. |
+| macOS | Cocoa + WKWebView | Native backend and `.app`/`.dmg` generation implemented; use `make macos-smoke` and `nimble testPackMacos`. Signing/notarization require explicit Apple credentials. |
 
 Nimino does not use `webview/webview`, Photino.Native, Tauri, Electron, WRY, TAO, CEF, Qt WebEngine, Sciter, or an embedded Chromium runtime.
 
@@ -269,7 +272,7 @@ reference/         ignored Tauri/Pake reference checkouts
 
 ## Project status
 
-The Windows, Linux, WSL, RPC, profile, navigation, permission, download, desktop integration, and packaging paths are under active development. macOS, signed public releases, and clean-machine installer upgrade verification are not complete. The README describes the supported workflow; detailed implementation decisions and remaining risks belong in the architecture and ADR documents.
+The Windows, Linux, WSL, macOS, RPC, profile, navigation, permission, download, desktop integration, and packaging paths are under active development. macOS signing/notarization and clean-machine installer upgrade verification require an Apple release environment and are explicit release steps. The README describes the supported workflow; detailed implementation decisions and remaining risks belong in the architecture and ADR documents.
 
 ## License
 

@@ -1244,6 +1244,25 @@ proc onDeepLink*(app: App; handler: DeepLinkHandler): CoreResult =
     return coreFailure(coreError(invalidArgument, "app.onDeepLink",
       detail = "a deep-link handler is required"))
   app.deepLinkHandler = handler
+  case app.backend
+  of nativeBackend:
+    let registered = native.onDeepLink(app.nativeApp,
+      proc(url: string) =
+        try:
+          let parsed = parseUri(url)
+          if parsed.scheme.len == 0 or url.find({'\r', '\n', '\0'}) >= 0:
+            return
+        except CatchableError:
+          return
+        if not app.deepLinkHandler.isNil:
+          try: app.deepLinkHandler(url)
+          except CatchableError: discard
+        else:
+          app.pendingDeepLinks.add(url))
+    if not registered.isOk:
+      return coreFailure(registered.failure.mapNativeError())
+  of wslBackend:
+    discard
   let pending = app.pendingDeepLinks
   app.pendingDeepLinks.setLen(0)
   for url in pending:
@@ -2574,6 +2593,8 @@ proc openExternally*(window: Window; url: string): CoreResult =
     elif defined(linux):
       let command = if window.app.backend == wslBackend: "wslview" else: "xdg-open"
       process = startProcess(command, args = @[url], options = {poUsePath, poStdErrToStdOut})
+    elif defined(macosx):
+      process = startProcess("open", args = @[url], options = {poUsePath, poStdErrToStdOut})
     else:
       return coreFailure(coreError(platformUnavailable, "window.openExternally"))
   except CatchableError as error:
