@@ -155,8 +155,8 @@ nimino package-linux dist/discord --format rpm --out dist/packages \
 Debian control metadataには`libgtk-4-1`と`libwebkitgtk-6.0-4`、RPM specには`gtk4`と
 `webkitgtk6.0`をruntime依存として記録します。`apt`/`dnf`が依存を解決するため、利用者へ
 GTK/WebKitGTKの手動導入を要求しません。依存名は対象ディストリビューションの標準パッケージ
-名に固定しており、別名しか提供しないディストリビューションではその形式のパッケージ生成を
-成功扱いにしません。
+名に固定しています。別名しか提供しないディストリビューションでは、パッケージマネージャーが
+依存解決エラーを表示するため、未導入のままインストール成功とは扱いません。
 
 ```bash
 nimino package-linux dist/discord --format appimage --out dist/packages --arch amd64
