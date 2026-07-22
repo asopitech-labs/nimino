@@ -19,6 +19,7 @@ type
     bundleDirectory*: string
     outputDirectory*: string
     format*: WindowsPackageFormat
+    architecture*: string
 
   WindowsBundleMetadata = object
     id: string
@@ -546,6 +547,9 @@ proc buildMsi(options: WindowsPackageOptions; metadata: WindowsBundleMetadata): 
   success(outputPath)
 
 proc buildWindowsPackage*(options: WindowsPackageOptions): PackResult[string] =
+  if options.architecture.len > 0 and options.architecture notin ["x64", "amd64"]:
+    return failure[string](unsupportedFeature,
+      "Windows ARM64 packaging requires an ARM64 host executable and signer; the Linux pack builder currently supports x64 only")
   let metadata = options.bundleDirectory.readWindowsBundleMetadata()
   if not metadata.isOk:
     return failure[string](metadata.error.kind, metadata.error.detail)

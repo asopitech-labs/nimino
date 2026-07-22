@@ -4,10 +4,10 @@ import nimino_pack
 
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino pack --config <manifest.toml|config.json> [--out <directory>] [--host <executable>] [--targets <deb,rpm,appimage,flatpak,nsis,msi>]")
+  stderr.writeLine("       nimino pack --config <manifest.toml|config.json> [--out <directory>] [--host <executable>] [--targets <deb,rpm,appimage,flatpak,zst,nsis,msi>[,-arm64]...]")
   stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
-  stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
+  stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak|zst> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
+  stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory> [--arch <x64|arm64>]")
   quit(2)
 
 proc packageLinuxUsage() =
@@ -30,6 +30,7 @@ proc runPackageLinux() =
       of "rpm": options.format = rpmPackage
       of "appimage": options.format = appImagePackage
       of "flatpak": options.format = flatpakPackage
+      of "zst": options.format = zstPackage
       else: packageLinuxUsage()
       hasFormat = true
     of "--out": options.outputDirectory = value
@@ -68,6 +69,7 @@ proc runPackageWindows() =
       else: packageWindowsUsage()
       hasFormat = true
     of "--out": options.outputDirectory = value
+    of "--arch": options.architecture = value.toLowerAscii()
     else: packageWindowsUsage()
     index += 2
   if not hasFormat or options.outputDirectory.len == 0:
@@ -842,6 +844,10 @@ if not validatedLoaded.isOk:
   stderr.writeLine("nimino pack: " & validatedLoaded.error.detail)
   quit(1)
 loaded = validatedLoaded
+if targets.len == 0 and loaded.value.package.targets.len > 0:
+  for target in loaded.value.package.targets.split(','):
+    if target.strip().len > 0:
+      targets.add(target.strip().toLowerAscii())
 if hostPath.len > 0 and not fileExists(hostPath):
   stderr.writeLine("nimino pack: host executable does not exist")
   quit(1)
@@ -1002,20 +1008,29 @@ else:
       quit(1)
     for target in targets:
       var artifact: PackResult[string]
-      case target
-      of "deb", "rpm", "appimage", "flatpak":
-        let format = case target
+      var base = target
+      var architecture = "amd64"
+      if base.endsWith("-arm64"):
+        architecture = "arm64"
+        base.setLen(base.len - "-arm64".len)
+      elif base.endsWith("-amd64"):
+        base.setLen(base.len - "-amd64".len)
+      case base
+      of "deb", "rpm", "appimage", "flatpak", "zst":
+        let format = case base
           of "deb": debPackage
           of "rpm": rpmPackage
           of "appimage": appImagePackage
-          else: flatpakPackage
+          of "flatpak": flatpakPackage
+          else: zstPackage
         artifact = buildLinuxPackage(LinuxPackageOptions(bundleDirectory: directory,
-          outputDirectory: packageDirectory, format: format, architecture: "amd64",
+          outputDirectory: packageDirectory, format: format, architecture: architecture,
           maintainer: packaged.package.publisher, license: "Proprietary"))
       of "nsis", "msi":
-        let format = if target == "nsis": nsisPackage else: msiPackage
+        let format = if base == "nsis": nsisPackage else: msiPackage
         artifact = buildWindowsPackage(WindowsPackageOptions(bundleDirectory: directory,
-          outputDirectory: packageDirectory, format: format))
+          outputDirectory: packageDirectory, format: format,
+          architecture: if architecture == "amd64": "x64" else: architecture))
       else:
         stderr.writeLine("nimino pack: unsupported target: " & target)
         quit(1)
