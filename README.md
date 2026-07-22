@@ -49,7 +49,7 @@ When a prepack release is published, download the installer directly from the [N
 | Fedora/RPM | `youtube-*.rpm`, `gmail-*.rpm`, `google-analytics-*.rpm` |
 | Windows | `youtube-*-setup.exe`, `gmail-*-setup.exe`, `google-analytics-*-setup.exe` (NSIS) or the matching `.msi` |
 
-The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. Verify the checksum before installing. Until the first signed release is published, the gallery has definitions and build automation but no official binary download.
+The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The initial [`v0.1.0` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.0) is available now. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
 
 The definitions live in [`catalog/prepacks/`](catalog/prepacks/) and are covered by `make pack-prepack-test`. To create a runnable bundle, provide a compiled Nimino host:
 
