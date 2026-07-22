@@ -85,6 +85,8 @@ type
     windowUserAgents: Table[uint64, string]
     windowProxyUrls: Table[uint64, string]
     windowIncognito: Table[uint64, bool]
+    windowZoomFactors: Table[uint64, float]
+    windowIgnoreCertificateErrors: Table[uint64, bool]
     uiStartRequested: bool
     pendingMessages: seq[HostWebMessage]
     pendingErrors: seq[HostNativeError]
@@ -143,6 +145,8 @@ proc forgetWindow(adapter: HostAdapter; windowId: uint64) =
   adapter.windowUserAgents.del(windowId)
   adapter.windowProxyUrls.del(windowId)
   adapter.windowIncognito.del(windowId)
+  adapter.windowZoomFactors.del(windowId)
+  adapter.windowIgnoreCertificateErrors.del(windowId)
 
 proc errorAction(detail: string): ProtocolResultOf[HostAction] {.inline.} =
   failureOf[HostAction](protocolError(invalidMessage, detail))
@@ -319,6 +323,18 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
     else:
       successOf("")
   let incognito = payload.optionalBool("incognito", false)
+  let ignoreCertificateErrors = payload.optionalBool("ignoreCertificateErrors", false)
+  let zoomFactor = if payload.hasKey("zoomFactor"):
+      if payload["zoomFactor"].kind in {JInt, JFloat}:
+        let value = payload["zoomFactor"].getFloat()
+        if value < 0.25 or value > 5.0:
+          failureOf[float](protocolError(invalidMessage, "zoomFactor must be between 0.25 and 5.0"))
+        else:
+          successOf(value)
+      else:
+        failureOf[float](protocolError(invalidMessage, "zoomFactor must be a number"))
+    else:
+      successOf(1.0)
   let multiWindow = payload.optionalBool("multiWindow", true)
   let hideOnClose = payload.optionalBool("hideOnClose", false)
   let enableDragDrop = payload.optionalBool("enableDragDrop", false)
@@ -346,6 +362,10 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
     return failureOf[HostAction](proxyUrl.failure)
   if not incognito.isOk:
     return failureOf[HostAction](incognito.failure)
+  if not ignoreCertificateErrors.isOk:
+    return failureOf[HostAction](ignoreCertificateErrors.failure)
+  if not zoomFactor.isOk:
+    return failureOf[HostAction](zoomFactor.failure)
   if not multiWindow.isOk:
     return failureOf[HostAction](multiWindow.failure)
   if not hideOnClose.isOk:
@@ -423,6 +443,8 @@ proc handleWindowCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResult
   adapter.windowUserAgents[windowId] = userAgent.value
   adapter.windowProxyUrls[windowId] = proxyUrl.value
   adapter.windowIncognito[windowId] = incognito.value
+  adapter.windowZoomFactors[windowId] = zoomFactor.value
+  adapter.windowIgnoreCertificateErrors[windowId] = ignoreCertificateErrors.value
   successOf(HostAction(kind: noHostAction, payload: encodedId("windowId", windowId)))
 
 proc handleWindowSetTitle(adapter: HostAdapter; payload: JsonNode): ProtocolResultOf[HostAction] =
@@ -663,9 +685,13 @@ proc handleWebViewCreate(adapter: HostAdapter; payload: JsonNode): ProtocolResul
   let created = adapter.windows[windowId.value].newWebView(
     userAgent = adapter.windowUserAgents.getOrDefault(windowId.value, ""),
     proxyUrl = adapter.windowProxyUrls.getOrDefault(windowId.value, ""),
-    incognito = adapter.windowIncognito.getOrDefault(windowId.value, false))
+    incognito = adapter.windowIncognito.getOrDefault(windowId.value, false),
+    ignoreCertificateErrors = adapter.windowIgnoreCertificateErrors.getOrDefault(windowId.value, false))
   if not created.isOk:
     return nativeFailure("native.webview.create", created)
+  let zoomed = created.value.setZoom(adapter.windowZoomFactors.getOrDefault(windowId.value, 1.0))
+  if not zoomed.isOk:
+    return nativeFailure("native.webview.setZoom", zoomed)
 
   let webViewId = adapter.nextWebViewId
   inc adapter.nextWebViewId

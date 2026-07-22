@@ -151,6 +151,9 @@ type
     userAgent*: string
     proxyUrl*: string
     incognito*: bool
+    ## WebView zoom factor. 1.0 is the platform default.
+    zoomFactor*: float
+    ignoreCertificateErrors*: bool
     ## Opt in to native file-drop events. Disabled by default so WebView
     ## content retains the platform drag/drop behavior unless requested.
     enableDragDrop*: bool
@@ -1331,6 +1334,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         "userAgent": options.userAgent,
         "proxyUrl": options.proxyUrl,
         "incognito": options.incognito,
+        "zoomFactor": (if options.zoomFactor <= 0: 1.0 else: options.zoomFactor),
+        "ignoreCertificateErrors": options.ignoreCertificateErrors,
         "enableDragDrop": options.enableDragDrop,
         "multiWindow": options.multiWindow,
         "hideOnClose": options.hideOnClose
@@ -1375,9 +1380,20 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     return coreFailureOf[Window](nativeWindow.failure.mapNativeError())
   let nativeView = native.newWebView(nativeWindow.value,
     userAgent = options.userAgent, proxyUrl = options.proxyUrl,
-    incognito = options.incognito)
+    incognito = options.incognito,
+    ignoreCertificateErrors = options.ignoreCertificateErrors)
   if not nativeView.isOk:
     return coreFailureOf[Window](nativeView.failure.mapNativeError())
+  let zoomFactor = if options.zoomFactor <= 0: 1.0 else: options.zoomFactor
+  let zoomed = nativeView.value.setZoom(zoomFactor)
+  if not zoomed.isOk:
+    discard nativeWindow.value.close()
+    return coreFailureOf[Window](zoomed.failure.mapNativeError())
+  if options.ignoreCertificateErrors:
+    let certs = nativeView.value.setIgnoreCertificateErrors(true)
+    if not certs.isOk:
+      discard nativeWindow.value.close()
+      return coreFailureOf[Window](certs.failure.mapNativeError())
   if options.hideWindowDecorations:
     let decorations = nativeWindow.value.setDecorated(false)
     if not decorations.isOk:

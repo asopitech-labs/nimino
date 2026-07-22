@@ -841,6 +841,15 @@ proc controllerSetBounds*(controller: pointer; bounds: WinRect): HResult {.inlin
   )
   dispatch(controller, bounds)
 
+proc controllerSetZoomFactor*(controller: pointer; factor: cdouble): HResult {.inline.} =
+  ## ICoreWebView2Controller::put_ZoomFactor (slot 8 in the official SDK).
+  if controller.isNil:
+    return E_POINTER
+  let dispatch = cast[proc(self: pointer; value: cdouble): HResult {.stdcall.}] (
+    cast[ptr ComInterface](controller).vtable[8]
+  )
+  dispatch(controller, factor)
+
 proc controllerClose*(controller: pointer): HResult {.inline.} =
   let dispatch = cast[proc(self: pointer): HResult {.stdcall.}](
     cast[ptr ComInterface](controller).vtable[24]

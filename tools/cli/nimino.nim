@@ -4,8 +4,8 @@ import nimino_pack
 
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino pack --config <manifest.toml> [--out <directory>] [--host <executable>]")
-  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack --config <manifest.toml|config.json> [--out <directory>] [--host <executable>] [--targets <deb,rpm,appimage,flatpak,nsis,msi>]")
+  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory>")
   quit(2)
@@ -96,6 +96,7 @@ proc manifestJson(manifest: PackManifest): JsonNode =
     },
     "deepLink": {"schemes": manifest.deepLink.schemes},
     "window": {
+      "title": manifest.window.title,
       "width": manifest.window.width,
       "height": manifest.window.height,
       "resizable": manifest.window.resizable,
@@ -108,7 +109,9 @@ proc manifestJson(manifest: PackManifest): JsonNode =
     "webview": {
       "userAgent": manifest.webview.userAgent,
       "proxyUrl": manifest.webview.proxyUrl,
-      "incognito": manifest.webview.incognito
+      "incognito": manifest.webview.incognito,
+      "zoom": int(manifest.webview.zoomFactor * 100.0),
+      "ignoreCertificateErrors": manifest.webview.ignoreCertificateErrors
     },
     "runtime": {
       "showSystemTray": manifest.runtime.showSystemTray,
@@ -611,12 +614,13 @@ if source == "--config":
 let sourceIsUrl = source.toLowerAscii().startsWith("http://") or
   source.toLowerAscii().startsWith("https://")
 let sourceIsManifest = fileExists(source) and
-  source.toLowerAscii().endsWith(".toml")
+  (source.toLowerAscii().endsWith(".toml") or source.toLowerAscii().endsWith(".json"))
 let sourceIsLocal = (fileExists(source) or dirExists(source)) and not sourceIsManifest
 var localSourcePath = ""
 var localUseLocalFile = false
 if sourceIsUrl or sourceIsLocal:
   var name = ""
+  var title = ""
   var id = ""
   var profile = "default"
   var icon = ""
@@ -631,6 +635,8 @@ if sourceIsUrl or sourceIsLocal:
   var userAgent = ""
   var proxyUrl = ""
   var incognito = false
+  var zoom = 100
+  var ignoreCertificateErrors = false
   var showSystemTray = false
   var startToTray = false
   var hideOnClose = false
@@ -652,6 +658,7 @@ if sourceIsUrl or sourceIsLocal:
     let value = if hasValue: paramStr(index + 1) else: "true"
     case flag
     of "--name": name = value
+    of "--title": title = value
     of "--id": id = value
     of "--profile": profile = value
     of "--width":
@@ -669,6 +676,11 @@ if sourceIsUrl or sourceIsLocal:
     of "--user-agent": userAgent = value
     of "--proxy-url": proxyUrl = value
     of "--incognito": incognito = parseCliBool(value)
+    of "--zoom":
+      try: zoom = parseInt(value)
+      except ValueError: usage()
+      if zoom < 25 or zoom > 500: usage()
+    of "--ignore-certificate-errors": ignoreCertificateErrors = parseCliBool(value)
     of "--show-system-tray": showSystemTray = parseCliBool(value)
     of "--start-to-tray": startToTray = parseCliBool(value)
     of "--hide-on-close": hideOnClose = parseCliBool(value)
@@ -681,34 +693,37 @@ if sourceIsUrl or sourceIsLocal:
     of "--inject-css": css.add(value)
     of "--inject-js": javascript.add(value)
     of "--allow-url": navigationAllow.add(value)
+    of "--safe-domain": navigationAllow.add("https://" & value & "/**")
     of "--external-url": navigationExternal.add(value)
     of "--json": discard
-    of "--out", "--host": discard
+    of "--out", "--host", "--targets": discard
     else: usage()
     if hasValue: index += 2 else: inc index
   if sourceIsLocal:
     localSourcePath = source
     localUseLocalFile = useLocalFile
-    loaded = generateLocalManifest(source, name = name, id = id, profile = profile,
+    loaded = generateLocalManifest(source, name = name, id = id, profile = profile, title = title,
       icon = icon, width = width,
       height = height, resizable = resizable, fullscreen = fullscreen,
       maximized = maximized, alwaysOnTop = alwaysOnTop,
       hideWindowDecorations = hideWindowDecorations, userAgent = userAgent,
       enableDragDrop = enableDragDrop,
-      proxyUrl = proxyUrl, incognito = incognito,
+      proxyUrl = proxyUrl, incognito = incognito, zoom = zoom,
+      ignoreCertificateErrors = ignoreCertificateErrors,
       showSystemTray = showSystemTray, startToTray = startToTray,
       hideOnClose = hideOnClose, multiWindow = multiWindow,
       multiInstance = multiInstance, permissionsAllow = permissionsAllow,
       css = css, javascript = javascript, navigationAllow = navigationAllow,
       navigationExternal = navigationExternal)
   else:
-    loaded = generateManifest(source, name = name, id = id, profile = profile,
+    loaded = generateManifest(source, name = name, id = id, profile = profile, title = title,
       icon = icon, deepLinkSchemes = deepLinkSchemes, width = width,
       height = height, resizable = resizable, fullscreen = fullscreen,
       maximized = maximized, alwaysOnTop = alwaysOnTop,
       hideWindowDecorations = hideWindowDecorations, userAgent = userAgent,
       enableDragDrop = enableDragDrop,
-      proxyUrl = proxyUrl, incognito = incognito,
+      proxyUrl = proxyUrl, incognito = incognito, zoom = zoom,
+      ignoreCertificateErrors = ignoreCertificateErrors,
       showSystemTray = showSystemTray, startToTray = startToTray,
       hideOnClose = hideOnClose, multiWindow = multiWindow,
       multiInstance = multiInstance, permissionsAllow = permissionsAllow,
@@ -723,6 +738,7 @@ var output = manifestJson(loaded.value).pretty()
 var outputDirectory = ""
 var hostPath = ""
 var jsonOutput = false
+var targets: seq[string]
 var index = optionStart
 while index <= paramCount():
   let flag = paramStr(index)
@@ -735,12 +751,16 @@ while index <= paramCount():
   of "--host":
     if not hasValue: usage()
     hostPath = paramStr(index + 1)
-  of "--config", "--name", "--id", "--profile", "--width", "--height", "--resizable",
+  of "--targets":
+    if not hasValue: usage()
+    for target in paramStr(index + 1).split(','):
+      if target.strip().len > 0: targets.add(target.strip().toLowerAscii())
+  of "--config", "--name", "--id", "--profile", "--title", "--width", "--height", "--resizable",
      "--fullscreen", "--maximize", "--always-on-top", "--hide-window-decorations",
      "--enable-drag-drop",
-     "--user-agent", "--proxy-url", "--incognito", "--show-system-tray",
+     "--user-agent", "--proxy-url", "--incognito", "--zoom", "--ignore-certificate-errors", "--show-system-tray",
      "--start-to-tray", "--hide-on-close", "--multi-window", "--multi-instance",
-     "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--external-url",
+     "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--safe-domain", "--external-url",
      "--use-local-file":
     if not sourceIsUrl and not sourceIsLocal: usage()
   of "--json":
@@ -898,8 +918,37 @@ else:
   let uninstallScriptPath = directory / "uninstall-windows.ps1"
   if not writeGenerated(uninstallScriptPath, windowsUninstallScript(packaged, windowsHostName)):
     quit(1)
+  var artifacts = newJArray()
+  if targets.len > 0:
+    let packageDirectory = directory / "packages"
+    try: createDir(packageDirectory)
+    except OSError:
+      stderr.writeLine("nimino pack: unable to create package output directory")
+      quit(1)
+    for target in targets:
+      var artifact: PackResult[string]
+      case target
+      of "deb", "rpm", "appimage", "flatpak":
+        let format = case target
+          of "deb": debPackage
+          of "rpm": rpmPackage
+          of "appimage": appImagePackage
+          else: flatpakPackage
+        artifact = buildLinuxPackage(LinuxPackageOptions(bundleDirectory: directory,
+          outputDirectory: packageDirectory, format: format, architecture: "amd64"))
+      of "nsis", "msi":
+        let format = if target == "nsis": nsisPackage else: msiPackage
+        artifact = buildWindowsPackage(WindowsPackageOptions(bundleDirectory: directory,
+          outputDirectory: packageDirectory, format: format))
+      else:
+        stderr.writeLine("nimino pack: unsupported target: " & target)
+        quit(1)
+      if not artifact.isOk:
+        stderr.writeLine("nimino pack: " & artifact.error.detail)
+        quit(1)
+      artifacts.add(%artifact.value)
   if jsonOutput:
     echo (%*{"manifest": manifestPath, "directory": directory,
-      "localEntry": packaged.localEntry}).pretty()
+      "localEntry": packaged.localEntry, "artifacts": artifacts}).pretty()
   else:
     echo manifestPath

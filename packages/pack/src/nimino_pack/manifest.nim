@@ -1,4 +1,4 @@
-import std/[os, strutils, uri]
+import std/[json, os, strutils, uri]
 
 type
   PackErrorKind* = enum
@@ -19,6 +19,7 @@ type
       error*: PackError
 
   PackWindowOptions* = object
+    title*: string
     width*: int
     height*: int
     resizable*: bool
@@ -32,6 +33,8 @@ type
     userAgent*: string
     proxyUrl*: string
     incognito*: bool
+    zoomFactor*: float
+    ignoreCertificateErrors*: bool
 
   PackRuntimeOptions* = object
     showSystemTray*: bool
@@ -307,6 +310,8 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
         "unknown permission: " & permission)
   if normalized.window.width <= 0 or normalized.window.height <= 0:
     return failure[PackManifest](invalidManifest, "window dimensions must be positive")
+  if not validMetadataText(normalized.window.title):
+    return failure[PackManifest](invalidManifest, "window.title must not contain control characters")
   if not validPackageVersion(normalized.package.version):
     return failure[PackManifest](invalidManifest,
       "package.version must use a semantic version such as 1.2.3")
@@ -323,6 +328,10 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
   if not validateProxyUrl(normalized.webview.proxyUrl):
     return failure[PackManifest](invalidManifest,
       "webview.proxyUrl must be an http, https, or socks5 URL without credentials")
+  if normalized.webview.zoomFactor <= 0.0 or normalized.webview.zoomFactor < 0.25 or
+      normalized.webview.zoomFactor > 5.0:
+    return failure[PackManifest](invalidManifest,
+      "webview.zoomFactor must be between 0.25 and 5.0")
   for category in normalized.package.categories:
     if category notin DesktopCategories:
       return failure[PackManifest](invalidManifest,
@@ -342,6 +351,7 @@ proc parse*(text: string): PackResult[PackManifest] =
   var manifest = PackManifest(
     profile: "default",
     window: PackWindowOptions(width: 1200, height: 800, resizable: true),
+    webview: PackWebViewOptions(zoomFactor: 1.0),
     package: PackPackageMetadata(version: "0.1.0", categories: @["Network"]))
   var section = ""
   for rawLine in text.splitLines():
@@ -383,6 +393,7 @@ proc parse*(text: string): PackResult[PackManifest] =
       else: return failure[PackManifest](invalidManifest, "unknown root key: " & key)
     of "window":
       case key
+      of "title": manifest.window.title = unquote(value)
       of "width":
         let parsed = parsePositiveInt(value, "window.width")
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
@@ -424,6 +435,15 @@ proc parse*(text: string): PackResult[PackManifest] =
         let parsed = parseBool(value)
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
         manifest.webview.incognito = parsed.value
+      of "zoom", "zoom-percent":
+        try:
+          manifest.webview.zoomFactor = parseFloat(value.strip()) / 100.0
+        except ValueError:
+          return failure[PackManifest](invalidManifest, "webview.zoom must be a number")
+      of "ignore-certificate-errors", "ignorecertificateerrors":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.webview.ignoreCertificateErrors = parsed.value
       else: return failure[PackManifest](invalidManifest, "unknown webview key: " & key)
     of "runtime":
       let parsed = parseBool(value)
@@ -453,6 +473,9 @@ proc parse*(text: string): PackResult[PackManifest] =
       of "navigation":
         case key
         of "allow": manifest.navigationAllow = parsed.value
+        of "safe-domain":
+          for domain in parsed.value:
+            manifest.navigationAllow.add("https://" & domain & "/**")
         of "external": manifest.navigationExternal = parsed.value
         else: return failure[PackManifest](invalidManifest, "unknown key: " & section & "." & key)
       of "permissions":
@@ -477,6 +500,40 @@ proc loadManifest*(path: string): PackResult[PackManifest] =
   if path.len == 0 or not fileExists(path):
     return failure[PackManifest](ioFailure, "manifest file does not exist")
   try:
-    parse(readFile(path))
+    let source = readFile(path)
+    if path.toLowerAscii().endsWith(".json"):
+      let node = parseJson(source)
+      if node.kind != JObject:
+        return failure[PackManifest](invalidManifest, "JSON config must be an object")
+      let getString = proc(key: string; fallback = ""): string =
+        if node.hasKey(key) and node[key].kind == JString: node[key].getStr() else: fallback
+      let getBool = proc(key: string; fallback: bool): bool =
+        if node.hasKey(key) and node[key].kind == JBool: node[key].getBool() else: fallback
+      let getInt = proc(key: string; fallback: int): int =
+        if node.hasKey(key) and node[key].kind == JInt: node[key].getInt() else: fallback
+      var manifest = PackManifest(
+        name: getString("name"), id: getString("identifier", getString("id")),
+        url: getString("url"), icon: getString("icon"), profile: getString("profile", "default"),
+        window: PackWindowOptions(width: getInt("width", 1200), height: getInt("height", 800),
+          resizable: getBool("resizable", true), fullscreen: getBool("fullscreen", false),
+          maximized: getBool("maximize", getBool("maximized", false)),
+          alwaysOnTop: getBool("always_on_top", getBool("alwaysOnTop", false)),
+          hideWindowDecorations: getBool("hide_window_decorations", false),
+          enableDragDrop: getBool("enable_drag_drop", false)),
+        webview: PackWebViewOptions(userAgent: getString("user_agent", getString("userAgent")),
+          proxyUrl: getString("proxy_url", getString("proxyUrl")),
+          incognito: getBool("incognito", false), zoomFactor: getInt("zoom", 100).float / 100.0,
+          ignoreCertificateErrors: getBool("ignore_certificate_errors", false)),
+        runtime: PackRuntimeOptions(showSystemTray: getBool("show_system_tray", false),
+          startToTray: getBool("start_to_tray", false), hideOnClose: getBool("hide_on_close", false),
+          multiWindow: getBool("multi_window", true), multiInstance: getBool("multi_instance", false)),
+        package: PackPackageMetadata(version: getString("app_version", "0.1.0"),
+          description: getString("description"), publisher: getString("publisher", "Nimino"),
+          homepage: getString("homepage", getString("url")), categories: @[
+            "Network"]))
+      if node.hasKey("title") and node["title"].kind == JString:
+        manifest.window.title = node["title"].getStr()
+      return manifest.validate()
+    parse(source)
   except OSError:
     failure[PackManifest](ioFailure, "manifest file could not be read")

@@ -27,6 +27,15 @@ nimino pack ./site/index.html --use-local-file --out build/site-bundle --host ni
 URL指定でも`--width`、`--height`、`--resizable`、`--fullscreen`、`--maximize`、
 `--always-on-top`、`--hide-window-decorations`、`--user-agent`、`--allow-permission`、
 `--enable-drag-drop`、`--inject-css`、`--inject-js`、`--allow-url`、`--external-url`を指定できます。複雑な設定はTOMLへ移せます。
+Windowタイトルは`--title`で変更できます。Pake形式のJSON設定ファイルも読み込めます。
+
+```json
+{"url":"https://example.com","name":"Example","identifier":"app.example.desktop","title":"Example","width":1200,"height":800,"incognito":true}
+```
+
+```bash
+nimino pack --config pake.json --out dist/example --host nimino-host
+```
 
 `--user-agent`はWindows WebView2の`ICoreWebView2Settings2`とLinux WebKitGTKの
 `WebKitSettings`へ適用します。`--proxy-url`はLinuxのWebKitNetworkSessionとWindows WebView2の
@@ -44,6 +53,14 @@ WebView2の`ICoreWebView2ControllerOptions`へ適用します。WSL hostもWindo
 nimino pack discord.toml --out dist/discord --host nimino-host
 # Pake互換の明示的な設定ファイル表記
 nimino pack --config discord.toml --out dist/discord --host nimino-host
+```
+
+bundle生成と配布物生成を一度に行う場合は`--targets`を使います。MacOSターゲットは
+このリポジトリでは扱わず、Windows/Linuxの指定だけを受け付けます。
+
+```bash
+nimino pack https://example.com --out dist/example --host nimino-host \
+  --targets deb,rpm,nsis,msi --json
 ```
 
 YouTube、Gmail、Google Analyticsのready-made installerは、`v*`タグで起動する
@@ -64,7 +81,7 @@ $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.1/Nimino-Web
 
 
 `--out`を使う場合は、実行可能hostを同梱して独立bundleにするため`--host <nimino-host>`が必須です。
-省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`は不要です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。HTTP(S)または`data:`アイコンはpack時に最大8 MiBまで取得し、bundle直下へステージングします。取得できないURLや空・過大なpayloadは成功扱いにしません。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定やパッケージ情報はURLから生成され、ナビゲーションの既定値はコアの同一サイト＋認証遷移ポリシーです。サイト固有のルールが必要な場合だけTOMLマニフェストで上書きします。生成物の機械処理が必要な場合は`--json`を付けるとmanifest path・bundle directory・local entryをJSONで標準出力へ返します。
+省略した場合は、検証済みマニフェストJSONを標準出力へ出力します。URL直接入力では`--name`と`--id`は不要です。`--icon`は任意のアイコンURLまたはパスとして指定でき、既存のローカルファイルは生成物へコピーしてファイル名をマニフェストへ記録します。HTTP(S)または`data:`アイコンはpack時に最大8 MiBまで取得し、bundle直下へステージングします。取得できないURLや空・過大なpayloadは成功扱いにしません。`[injection]`のローカルCSS/JavaScriptも生成物へ同梱し、参照をファイル名へ正規化します。Window設定やパッケージ情報はURLから生成され、ナビゲーションの既定値はコアの同一サイト＋認証遷移ポリシーです。サイト固有のルールが必要な場合だけTOMLマニフェストで上書きします。生成物の機械処理が必要な場合は`--json`を付けるとmanifest path・bundle directory・local entry・artifactsをJSONで標準出力へ返します。
 
 PakeのCLI包装フローを参考にしているが、生成物はNimino hostと`nimino-core`を使用し、Pake/Tauriを実行時依存にしません。
 

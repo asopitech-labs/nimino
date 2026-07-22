@@ -410,6 +410,8 @@ proc webkit_settings_set_enable_developer_extras*(settings: ptr WebKitSettings;
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_settings_set_user_agent*(settings: ptr WebKitSettings; userAgent: cstring)
   {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_web_view_set_zoom_level*(view: ptr WebKitWebView; zoomLevel: cdouble)
+  {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_web_view_get_type*(): culong
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_network_session_new*(dataDirectory, cacheDirectory: cstring):
@@ -420,6 +422,9 @@ proc webkit_network_session_new_ephemeral*(): ptr WebKitNetworkSession
 proc webkit_network_session_set_proxy_settings*(session: ptr WebKitNetworkSession;
                                                 mode: cint;
                                                 settings: ptr WebKitNetworkProxySettings)
+  {.cdecl, importc, dynlib: LibWebKit.}
+proc webkit_network_session_set_tls_errors_policy*(session: ptr WebKitNetworkSession;
+                                                   policy: cint)
   {.cdecl, importc, dynlib: LibWebKit.}
 proc webkit_network_proxy_settings_new*(defaultProxy: cstring;
                                         ignoreHosts: ptr cstring): ptr WebKitNetworkProxySettings

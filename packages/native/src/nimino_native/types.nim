@@ -251,6 +251,8 @@ type
     userAgent: string
     proxyUrl: string
     incognito: bool
+    zoomFactor: float
+    ignoreCertificateErrors: bool
     documentStartScriptId: string
     documentStartScriptUpdatePending: bool
     platformView: pointer
@@ -314,6 +316,8 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
   proc linuxSetUserAgent(view: NativeWebView; value: string): NativeResult
   proc linuxSetProxy(view: NativeWebView; value: string): NativeResult
+  proc linuxSetZoom(view: NativeWebView; factor: float): NativeResult
+  proc linuxSetIgnoreCertificateErrors(view: NativeWebView; enabled: bool): NativeResult
   proc linuxSetFullscreen(window: NativeWindow; enabled: bool): NativeResult
   proc linuxSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult
   proc linuxSetDecorated(window: NativeWindow; enabled: bool): NativeResult
@@ -348,6 +352,8 @@ elif defined(windows):
                            request: NativeCookieMutationRequest): NativeResult
   proc windowsSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
   proc windowsSetUserAgent(view: NativeWebView; value: string): NativeResult
+  proc windowsSetZoom(view: NativeWebView; factor: float): NativeResult
+  proc windowsSetIgnoreCertificateErrors(view: NativeWebView; enabled: bool): NativeResult
   proc windowsSetFullscreen(window: NativeWindow; enabled: bool): NativeResult
   proc windowsSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult
   proc windowsSetDecorated(window: NativeWindow; enabled: bool): NativeResult
@@ -950,6 +956,9 @@ proc unregisterCustomProtocol*(app: NativeApp): NativeResult =
   app.customProtocolHandler = nil
   success()
 
+proc setZoom*(view: NativeWebView; factor: float): NativeResult
+proc setIgnoreCertificateErrors*(view: NativeWebView; enabled: bool): NativeResult
+
 proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
                 profilePath = ""):
     NativeResultOf[NativeWindow] =
@@ -971,11 +980,12 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
   successOf(window)
 
 proc newWebView*(window: NativeWindow; userAgent = ""; proxyUrl = "";
-                 incognito = false): NativeResultOf[NativeWebView] =
+                 incognito = false; ignoreCertificateErrors = false): NativeResultOf[NativeWebView] =
   if window.isNil or window.state in {closing, closed}:
     return failureOf[NativeWebView](nativeError(invalidState, "webview.create"))
   let view = NativeWebView(window: window, state: pending, devToolsEnabled: true,
-    userAgent: userAgent, proxyUrl: proxyUrl, incognito: incognito)
+    userAgent: userAgent, proxyUrl: proxyUrl, incognito: incognito,
+    zoomFactor: 1.0, ignoreCertificateErrors: ignoreCertificateErrors)
   window.views.add(view)
   if window.app.state == running:
     when defined(linux) and not defined(niminoWsl):
@@ -988,6 +998,10 @@ proc newWebView*(window: NativeWindow; userAgent = ""; proxyUrl = "";
       if not created.isOk:
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
+    let zoomed = view.setZoom(view.zoomFactor)
+    if not zoomed.isOk:
+      window.views.setLen(window.views.len - 1)
+      return failureOf[NativeWebView](zoomed.failure)
   successOf(view)
 
 proc setUserAgent*(view: NativeWebView; value: string): NativeResult =
@@ -1037,6 +1051,43 @@ proc setIncognito*(view: NativeWebView; enabled: bool): NativeResult =
     return success()
   failure(nativeError(invalidState, "webview.setIncognito",
     detail = "incognito is a construct-only WebView session option"))
+
+proc setZoom*(view: NativeWebView; factor: float): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.setZoom"))
+  if factor < 0.25 or factor > 5.0:
+    return failure(nativeError(invalidArgument, "webview.setZoom",
+      detail = "zoom factor must be between 0.25 and 5.0"))
+  if view.state == pending:
+    view.zoomFactor = factor
+    return success()
+  when defined(linux) and not defined(niminoWsl):
+    let configured = view.linuxSetZoom(factor)
+    if configured.isOk: view.zoomFactor = factor
+    configured
+  elif defined(windows):
+    let configured = view.windowsSetZoom(factor)
+    if configured.isOk: view.zoomFactor = factor
+    configured
+  else:
+    failure(nativeError(unsupported, "webview.setZoom"))
+
+proc setIgnoreCertificateErrors*(view: NativeWebView; enabled: bool): NativeResult =
+  if view.isNil or view.state in {closing, closed}:
+    return failure(nativeError(invalidState, "webview.setIgnoreCertificateErrors"))
+  if view.state == pending:
+    view.ignoreCertificateErrors = enabled
+    return success()
+  when defined(linux) and not defined(niminoWsl):
+    let configured = view.linuxSetIgnoreCertificateErrors(enabled)
+    if configured.isOk: view.ignoreCertificateErrors = enabled
+    configured
+  elif defined(windows):
+    let configured = view.windowsSetIgnoreCertificateErrors(enabled)
+    if configured.isOk: view.ignoreCertificateErrors = enabled
+    configured
+  else:
+    failure(nativeError(unsupported, "webview.setIgnoreCertificateErrors"))
 
 proc setDecorated*(window: NativeWindow; enabled: bool): NativeResult =
   if window.isNil or window.state in {closing, closed}:

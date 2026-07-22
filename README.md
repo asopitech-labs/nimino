@@ -157,6 +157,13 @@ nimino pack https://example.com --name Example --id tech.example.app --out dist/
 # Declarative TOML (also accepted as `nimino pack <manifest.toml>`)
 nimino pack --config app.toml --out build/app --host nimino-host
 
+# Pake-style JSON config is also accepted
+nimino pack --config pake.json --out build/app --host nimino-host
+
+# Build the bundle and supported Windows/Linux installers together
+nimino pack https://example.com --out build/example --host nimino-host \
+  --targets deb,rpm,nsis,msi --json
+
 # Local static site (directory must contain index.html)
 nimino pack ./dist --name ExampleLocal --out build/example-local --host nimino-host
 

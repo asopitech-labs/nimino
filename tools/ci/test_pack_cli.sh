@@ -57,6 +57,11 @@ grep -q '"nimino"' "$root/out/nimino-manifest.json"
 
 "$nimino" pack --config "$root/input.toml" --out "$root/config-out" --host "$root/host"
 grep -q 'Demo' "$root/config-out/nimino-manifest.json"
+printf '%s\n' '{"url":"https://example.com","name":"JsonDemo","identifier":"app.nimino.json","title":"Json Window","width":900,"zoom":125}' > "$root/config.json"
+"$nimino" pack --config "$root/config.json" --out "$root/json-config-out" --host "$root/host"
+grep -q 'JsonDemo' "$root/json-config-out/nimino-manifest.json"
+grep -q 'Json Window' "$root/json-config-out/nimino-manifest.json"
+grep -q '"zoom": 125' "$root/json-config-out/nimino-manifest.json"
 grep -q '"installScope": "perUser"' "$root/out/nimino-windows-installer.json"
 grep -Eq '"toastActivatorClsid": "[0-9A-Fa-f-]{36}"' "$root/out/nimino-windows-installer.json"
 grep -q 'System.AppUserModel.ToastActivatorCLSID' "$root/out/register-windows-shortcut.ps1"
@@ -177,7 +182,7 @@ printf '%s\n' \
 ! "$nimino" pack "$root/missing-inject.toml" --out "$root/missing-inject-out" --host "$root/host"
 test ! -e "$root/missing-inject-out"
 
-"$nimino" pack https://example.com --name DemoOptions --id app.nimino.demo-options \
+"$nimino" pack https://example.com --name DemoOptions --id app.nimino.demo-options --title 'Options Window' --zoom 125 \
   --width 1440 --height 900 --resizable false --fullscreen --maximize \
   --hide-window-decorations --enable-drag-drop --incognito false --multi-window \
   --allow-permission notifications --inject-css "$root/custom.css" \
@@ -193,3 +198,5 @@ grep -q 'support.example.com' "$root/options-out/nimino-manifest.json"
 grep -q '"fullscreen": true' "$root/options-out/nimino-manifest.json"
 grep -q '"maximized": true' "$root/options-out/nimino-manifest.json"
 grep -q '"enableDragDrop": true' "$root/options-out/nimino-manifest.json"
+grep -q '"title": "Options Window"' "$root/options-out/nimino-manifest.json"
+grep -q '"zoom": 125' "$root/options-out/nimino-manifest.json"

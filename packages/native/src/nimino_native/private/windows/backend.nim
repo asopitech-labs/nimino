@@ -436,18 +436,23 @@ proc environmentOptionsPutAllowSingleSignOn(self: pointer;
   cast[ptr EnvironmentOptions](self).allowSingleSignOnUsingOSPrimaryAccount = value
   S_OK
 
-proc newEnvironmentOptions(proxyUrl: string): pointer =
+proc newEnvironmentOptions(proxyUrl: string; ignoreCertificateErrors = false): pointer =
   let options = cast[ptr EnvironmentOptions](alloc0(sizeof(EnvironmentOptions)))
   if options == nil:
     return nil
   options.vtable = addr environmentOptionsVTable
   options.references.store(1, moRelaxed)
   options.allowSingleSignOnUsingOSPrimaryAccount = 0
-  if proxyUrl.len > 0:
+  if proxyUrl.len > 0 or ignoreCertificateErrors:
     ## Chromium's --proxy-server switch is passed through the documented
     ## ICoreWebView2EnvironmentOptions::AdditionalBrowserArguments property.
     ## The URL is validated by the public Nim API before this point.
-    let arguments = "--proxy-server=" & proxyUrl
+    var arguments = ""
+    if proxyUrl.len > 0:
+      arguments = "--proxy-server=" & proxyUrl
+    if ignoreCertificateErrors:
+      if arguments.len > 0: arguments.add(' ')
+      arguments.add("--ignore-certificate-errors")
     let argumentValue: WideCString = newWideCString(arguments)
     if setEnvironmentOptionString(options.additionalBrowserArguments,
         argumentValue) < 0:
@@ -1318,6 +1323,25 @@ proc windowsSetDevToolsEnabled(view: NativeWebView; enabled: bool): NativeResult
   if not succeeded(status):
     return failure(hresultError("webview.setDevToolsEnabled", status))
   success()
+
+proc windowsSetZoom(view: NativeWebView; factor: float): NativeResult =
+  if view.isNil or view.platformController.isNil:
+    return failure(nativeError(invalidState, "webview.setZoom"))
+  let status = controllerSetZoomFactor(view.platformController, cdouble(factor))
+  if not succeeded(status):
+    return failure(hresultError("webview.setZoom", status))
+  success()
+
+proc windowsSetIgnoreCertificateErrors(view: NativeWebView; enabled: bool): NativeResult =
+  ## WebView2 exposes this as an environment argument and therefore it must be
+  ## selected before environment creation. The public setter remains explicit
+  ## so callers get a deterministic unsupported-state result after startup.
+  if view.isNil:
+    return failure(nativeError(invalidState, "webview.setIgnoreCertificateErrors"))
+  if view.state == pending:
+    return success()
+  failure(nativeError(unsupported, "webview.setIgnoreCertificateErrors",
+    detail = "WebView2 certificate policy is construct-only"))
 
 proc windowsSetUserAgent(view: NativeWebView; value: string): NativeResult =
   if view.isNil or view.platformView.isNil:
@@ -2349,8 +2373,10 @@ proc windowsStartWebView(view: NativeWebView): NativeResult =
     view.window.app.webView2CreateEnvironment
   )
   let folder = newWideCString(view.window.app.webView2UserDataFolder)
-  let options = if view.proxyUrl.len > 0: newEnvironmentOptions(view.proxyUrl) else: nil
-  if view.proxyUrl.len > 0 and options.isNil:
+  let options = if view.proxyUrl.len > 0 or view.ignoreCertificateErrors:
+      newEnvironmentOptions(view.proxyUrl, view.ignoreCertificateErrors)
+    else: nil
+  if (view.proxyUrl.len > 0 or view.ignoreCertificateErrors) and options.isNil:
     discard environmentRelease(handler)
     return failure(nativeError(osError, "webview.proxy",
       detail = "cannot allocate WebView2 environment options"))
@@ -2657,6 +2683,11 @@ proc controllerInvoke(self: pointer; errorCode: HResult;
     let userAgent = view.windowsSetUserAgent(view.userAgent)
     if not userAgent.isOk:
       view.window.app.windowsFail(userAgent.failure)
+      return S_OK
+  if view.zoomFactor != 1.0:
+    let zoom = view.windowsSetZoom(view.zoomFactor)
+    if not zoom.isOk:
+      view.window.app.windowsFail(zoom.failure)
       return S_OK
   let navigationStarting = view.windowsConfigureNavigationStarting()
   if not navigationStarting.isOk:

@@ -41,11 +41,12 @@ proc generatedId(host: string): string =
 
 proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
                       icon = ""; deepLinkSchemes: seq[string] = @[];
-                      width = 1200; height = 800; resizable = true;
+                      title = ""; width = 1200; height = 800; resizable = true;
                       fullscreen = false; maximized = false;
                       alwaysOnTop = false; hideWindowDecorations = false;
                       enableDragDrop = false;
-                      userAgent = ""; proxyUrl = ""; incognito = false;
+                      userAgent = ""; proxyUrl = ""; incognito = false; zoom = 100;
+                      ignoreCertificateErrors = false;
                       showSystemTray = false; startToTray = false;
                       hideOnClose = false; multiWindow = true;
                       multiInstance = false;
@@ -79,11 +80,12 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
       url: url,
       icon: icon,
       profile: if profile.strip().len > 0: profile.strip() else: "default",
-      window: PackWindowOptions(width: width, height: height, resizable: resizable,
+      window: PackWindowOptions(title: title, width: width, height: height, resizable: resizable,
         fullscreen: fullscreen, maximized: maximized, alwaysOnTop: alwaysOnTop,
         hideWindowDecorations: hideWindowDecorations, enableDragDrop: enableDragDrop),
       webview: PackWebViewOptions(userAgent: userAgent, proxyUrl: proxyUrl,
-        incognito: incognito),
+        incognito: incognito, zoomFactor: zoom.float / 100.0,
+        ignoreCertificateErrors: ignoreCertificateErrors),
       runtime: PackRuntimeOptions(showSystemTray: showSystemTray,
         startToTray: startToTray, hideOnClose: hideOnClose,
         multiWindow: multiWindow, multiInstance: multiInstance),
@@ -98,13 +100,14 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
     failure[PackManifest](invalidManifest, "URL-only generation received an invalid URL")
 
 proc generateLocalManifest*(source: string; name = ""; id = "";
-                            profile = "default";
+                            profile = "default"; title = "";
                             icon = ""; width = 1200; height = 800;
                             resizable = true; fullscreen = false;
                             maximized = false; alwaysOnTop = false;
                             hideWindowDecorations = false; userAgent = "";
                             enableDragDrop = false;
-                            proxyUrl = ""; incognito = false;
+                            proxyUrl = ""; incognito = false; zoom = 100;
+                            ignoreCertificateErrors = false;
                             showSystemTray = false; startToTray = false;
                             hideOnClose = false; multiWindow = true;
                             multiInstance = false;
@@ -140,11 +143,12 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
     localEntry: entry,
     icon: icon,
     profile: if profile.strip().len > 0: profile.strip() else: "default",
-    window: PackWindowOptions(width: width, height: height, resizable: resizable,
+    window: PackWindowOptions(title: title, width: width, height: height, resizable: resizable,
       fullscreen: fullscreen, maximized: maximized, alwaysOnTop: alwaysOnTop,
       hideWindowDecorations: hideWindowDecorations, enableDragDrop: enableDragDrop),
     webview: PackWebViewOptions(userAgent: userAgent, proxyUrl: proxyUrl,
-      incognito: incognito),
+      incognito: incognito, zoomFactor: zoom.float / 100.0,
+      ignoreCertificateErrors: ignoreCertificateErrors),
     runtime: PackRuntimeOptions(showSystemTray: showSystemTray,
       startToTray: startToTray, hideOnClose: hideOnClose,
       multiWindow: multiWindow, multiInstance: multiInstance),

@@ -659,6 +659,27 @@ proc linuxSetProxy(view: NativeWebView; value: string): NativeResult =
   webkit_network_proxy_settings_free(settings)
   success()
 
+proc linuxSetZoom(view: NativeWebView; factor: float): NativeResult =
+  if view.isNil or view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.setZoom"))
+  if factor < 0.25 or factor > 5.0:
+    return failure(nativeError(invalidArgument, "webview.setZoom",
+      detail = "zoom factor must be between 0.25 and 5.0"))
+  webkit_web_view_set_zoom_level(cast[ptr WebKitWebView](view.platformView), cdouble(factor))
+  success()
+
+proc linuxSetIgnoreCertificateErrors(view: NativeWebView; enabled: bool): NativeResult =
+  if view.isNil or view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.setIgnoreCertificateErrors"))
+  let session = webkit_web_view_get_network_session(
+    cast[ptr WebKitWebView](view.platformView))
+  if session.isNil:
+    return failure(nativeError(webViewError, "webview.setIgnoreCertificateErrors",
+      detail = "WebKitNetworkSession is unavailable"))
+  ## WebKitTLSErrorsPolicy: fail=0, ignore=1. This is an explicit opt-in only.
+  webkit_network_session_set_tls_errors_policy(session, if enabled: 1 else: 0)
+  success()
+
 proc linuxBrowsingDataTypes(kinds: set[NativeBrowsingDataKind]): uint32 =
   ## Keep this mapping deliberately narrow: WebKitGTK exposes IndexedDB and
   ## service-worker registrations as independent WebsiteDataTypes, while
@@ -1557,6 +1578,9 @@ proc linuxCreateView(view: NativeWebView): NativeResult =
   if view.userAgent.len > 0:
     let userAgent = view.linuxSetUserAgent(view.userAgent)
     if not userAgent.isOk: return userAgent
+  if view.zoomFactor != 1.0:
+    let zoom = view.linuxSetZoom(view.zoomFactor)
+    if not zoom.isOk: return zoom
   let messaging = view.linuxConfigureMessageBridge()
   if not messaging.isOk: return messaging
   let documentStartScript = view.linuxConfigureDocumentStartScript()
@@ -1663,6 +1687,10 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
     let userAgent = view.linuxSetUserAgent(view.userAgent)
     if not userAgent.isOk:
       return userAgent
+  if view.zoomFactor != 1.0:
+    let zoom = view.linuxSetZoom(view.zoomFactor)
+    if not zoom.isOk:
+      return zoom
   let messaging = view.linuxConfigureMessageBridge()
   if not messaging.isOk:
     return messaging

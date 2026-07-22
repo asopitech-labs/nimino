@@ -96,6 +96,7 @@ proc newWebView*(window: NativeWindow): NativeResultOf[NativeWebView]
 proc close*(view: NativeWebView): NativeResult
 proc loadUrl*(view: NativeWebView, url: string): NativeResult
 proc loadHtml*(view: NativeWebView, html: string, baseUrl = ""): NativeResult
+proc setZoom*(view: NativeWebView, factor: float): NativeResult
 proc setDocumentStartScript*(view: NativeWebView, script: string): NativeResult
 proc evalJavaScript*(view: NativeWebView, script: string): Future[NativeResultOf[string]]
 proc getCookies*(view: NativeWebView, url = ""): Future[NativeResultOf[seq[NativeCookie]]]

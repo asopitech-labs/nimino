@@ -137,6 +137,12 @@ proc main() =
   let userAgent = optionalString(webview, "userAgent", "")
   let proxyUrl = optionalString(webview, "proxyUrl", "")
   let incognito = webview.boolean("incognito", false)
+  let zoomFactor = if webview.hasKey("zoom") and webview["zoom"].kind in {JInt, JFloat}:
+      webview["zoom"].getFloat() / 100.0
+    else: 1.0
+  if zoomFactor < 0.25 or zoomFactor > 5.0:
+    fail("manifest webview.zoom must be between 25 and 500")
+  let ignoreCertificateErrors = webview.boolean("ignoreCertificateErrors", false)
   for permission in allowedPermissions:
     if permission notin ["microphone", "camera", "notifications", "geolocation",
                          "clipboard", "screenCapture"]:
@@ -157,7 +163,7 @@ proc main() =
     if not activation.isOk:
       fail(activation.failure.detail)
   let windowCreated = app.newWindow(CoreWindowOptions(
-    title: appName,
+    title: optionalString(windowNode, "title", appName),
     width: windowNode.integer("width", 1200),
     height: windowNode.integer("height", 800),
     profile: profile,
@@ -169,6 +175,8 @@ proc main() =
     userAgent: userAgent,
     proxyUrl: proxyUrl,
     incognito: incognito,
+    zoomFactor: zoomFactor,
+    ignoreCertificateErrors: ignoreCertificateErrors,
     multiWindow: multiWindow,
     hideOnClose: hideOnClose,
     injectionCss: root.readInjection(injection.stringArray("css")),
