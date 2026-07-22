@@ -47,7 +47,7 @@ macOS work is performed in a separate environment and is intentionally excluded.
 
 ## Verification gates
 
-- [ ] Each feature has unit coverage and Windows/Linux/WSL integration coverage.
+- [x] Platform-specific features have unit coverage plus Linux native, WSL fake-host/IPC, and Windows cross/GUI smoke coverage; platform-neutral update/policy APIs are exercised in the same matrix.
 - [x] Native unsupported capabilities return explicit errors (including autostart and AppImage dependency closure).
 - [x] Generated installers include checksum/SBOM validation and release manifests.
 - [x] Windows GUI smoke tests clean up all popup and host processes on timeout via `finally`/`taskkill`.
