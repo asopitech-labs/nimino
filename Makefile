@@ -101,9 +101,9 @@ pack-sites-test: image ## YouTube/Gmail/Google AnalyticsのURL-only bundleを検
 
 	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble buildPackCli && nimble testPackSites'
 
-pack-site-release-test: image ## 3つのレビュー済みWebサイトからLinux/Windows installerを生成する
+pack-site-release-test: image ## 3つのレビュー済みWebサイトの配布物を再ビルドし検証する
 
-	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble buildSiteRelease'
+	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble testSiteRelease'
 
 pack-linux-test: image ## nimino-packのDebian/RPM生成とFlatpak contextを検証する
 
