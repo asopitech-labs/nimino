@@ -74,6 +74,7 @@ proc buildFlatpakManifest*(options: FlatpakManifestOptions): PackResult[string] 
       "runtime": runtime,
       "runtime-version": runtimeVersion,
       "sdk": sdk,
+      "branch": "stable",
       "command": "run-nimino.sh",
       "finish-args": [
         "--share=network",
@@ -86,6 +87,7 @@ proc buildFlatpakManifest*(options: FlatpakManifestOptions): PackResult[string] 
         "buildsystem": "simple",
         "build-commands": [
           "install -Dm755 run-nimino.sh /app/bin/run-nimino.sh",
+          "install -d /app/lib/nimino",
           "cp -a . /app/lib/nimino"
         ],
         "sources": [{"type": "dir", "path": "bundle"}]

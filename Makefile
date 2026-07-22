@@ -98,7 +98,7 @@ pack-linux-test: image ## nimino-packのDebian/RPM生成とFlatpak contextを検
 
 pack-flatpak-test: image ## nimino-packのFlatpak runtime/SDK上で実bundle生成を検証する
 
-	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble buildPackCli && nimble testPackFlatpak'
+	$(COMPOSE) run --rm nimino-flatpak bash -lc 'export PATH=/opt/nim/bin:$$PATH; nimble buildPackCli && nimble testPackFlatpak'
 
 pack-online-test: image ## URLからbundleとDebian artifactを生成するオンラインpack smoke
 

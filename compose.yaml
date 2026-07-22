@@ -10,8 +10,17 @@ services:
     volumes:
       - .:/workspace
       - nimble-cache:/root/.cache/nimble
+      - flatpak-cache:/var/lib/flatpak
     init: true
     tty: true
 
+  # flatpak-builder launches bubblewrap and needs a user namespace.  Keep this
+  # privilege isolated to the explicit Flatpak packaging smoke target.
+  nimino-flatpak:
+    extends:
+      service: nimino-dev
+    privileged: true
+
 volumes:
   nimble-cache:
+  flatpak-cache:

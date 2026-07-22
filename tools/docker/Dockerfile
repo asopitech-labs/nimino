@@ -7,6 +7,8 @@ ARG WEBVIEW2_SDK_VERSION=1.0.3967.48
 ARG WEBVIEW2_SDK_SHA256=c66357ac7f324ec9bcafe5241706a023b4122d8c22300c31de4b0eb220db689e
 ARG APPIMAGETOOL_VERSION=1.9.1
 ARG APPIMAGETOOL_X86_64_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+ARG LINUXDEPLOY_VERSION=1-alpha-20240109-1
+ARG LINUXDEPLOY_X86_64_SHA256=c86d6540f1df31061f02f539a2d3445f8d7f85cc3994eee1e74cd1ac97b76df0
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -16,13 +18,23 @@ RUN apt-get update \
       gcc-mingw-w64-x86-64 \
       git \
       nsis \
+      flatpak \
+      flatpak-builder \
+      ostree \
+      patchelf \
+      pax-utils \
       pkg-config \
       rpm \
       desktop-file-utils \
       squashfs-tools \
+      bubblewrap \
+      xdg-dbus-proxy \
       libgtk-4-dev \
       libwebkitgtk-6.0-dev \
+      libgdk-pixbuf2.0-bin \
       minisign \
+      msitools \
+      wixl \
       unzip \
       xauth \
       xvfb \
@@ -56,5 +68,19 @@ RUN curl --fail --location --retry 3 --silent --show-error \
       > /usr/local/bin/appimagetool \
     && chmod 0755 /usr/local/bin/appimagetool \
     && rm /tmp/appimagetool-x86_64.AppImage
+
+# linuxdeploy is pinned to a dated release rather than the mutable
+# `continuous` channel.  APPIMAGE_EXTRACT_AND_RUN keeps Docker independent of
+# FUSE while retaining linuxdeploy's normal CLI contract.
+RUN curl --fail --location --retry 3 --silent --show-error \
+      --output /tmp/linuxdeploy-x86_64.AppImage \
+      https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_VERSION}/linuxdeploy-x86_64.AppImage \
+    && echo "${LINUXDEPLOY_X86_64_SHA256}  /tmp/linuxdeploy-x86_64.AppImage" | sha256sum --check --status \
+    && install -d /opt/nimino/linuxdeploy \
+    && install -m 0755 /tmp/linuxdeploy-x86_64.AppImage /opt/nimino/linuxdeploy/linuxdeploy-x86_64.AppImage \
+    && printf '%s\n' '#!/bin/sh' 'exec env APPIMAGE_EXTRACT_AND_RUN=1 /opt/nimino/linuxdeploy/linuxdeploy-x86_64.AppImage "$@"' \
+      > /usr/local/bin/linuxdeploy \
+    && chmod 0755 /usr/local/bin/linuxdeploy \
+    && rm /tmp/linuxdeploy-x86_64.AppImage
 
 WORKDIR /workspace
