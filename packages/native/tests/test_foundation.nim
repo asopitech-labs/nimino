@@ -144,6 +144,17 @@ block lifecycleStateQueriesAreExplicit:
   doAssert not view.value.isReady()
   doAssert not view.value.isClosed()
 
+block webViewSessionOptionsAreCapturedBeforeRun:
+  let app = newNativeApp()
+  let window = app.newWindow("Session options", 320, 200)
+  doAssert window.isOk
+  let view = window.value.newWebView(userAgent = "NiminoTest/1.0",
+    proxyUrl = "http://proxy.example:8080", incognito = true)
+  doAssert view.isOk
+  doAssert view.value.setUserAgent("NiminoTest/2.0").isOk
+  doAssert view.value.setProxy("http://proxy.example:8081").isOk
+  doAssert view.value.setIncognito(false).isOk
+
 block nativeWindowControlCapabilitiesAreExplicit:
   let app = newNativeApp()
   let window = app.newWindow("Window controls", 320, 200)
