@@ -52,13 +52,23 @@ When a prepack release is published, download the installer directly from the [N
 
 The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The initial [`v0.1.0` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.0) is available now. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
 
-**Windows prerequisite — mandatory before running the `.exe` or `.msi`:** install and verify the WebView2 Evergreen Runtime first. The recommended one-liner downloads the pinned Release asset, verifies its SHA-256, and executes it with UAC elevation:
+**Windows prerequisite — mandatory before running the `.exe` or `.msi`:** install and verify the WebView2 Evergreen Runtime first. The following 422-character command is technically one physical line, but it is a SHA-256-verified bootstrap command rather than a short, memorable installer one-liner:
 
 ```powershell
 $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1'; $p=Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $p; if ((Get-FileHash -Algorithm SHA256 $p).Hash -ne 'FBB373CC34D49F8B1FBA0792363103455EEE30608D16F7BBD32E78197E1D6F8A') { throw 'WebView2 setup script SHA-256 mismatch' }; Set-ExecutionPolicy -Scope Process Bypass; & $p
 ```
 
 The script checks for and installs the WebView2 Evergreen Runtime with UAC elevation, then verifies the installed version. `WebView2Loader.dll` is included in the application package, but the Evergreen Runtime itself is not bundled in the installer. Do not skip this step. If you prefer a file-based flow, download `Nimino-WebView2-Setup.ps1` from the Release asset list and run it from **Windows PowerShell as Administrator** with `Set-ExecutionPolicy -Scope Process Bypass`.
+
+For a readable two-step equivalent in Administrator PowerShell:
+
+```powershell
+$p = Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'
+Invoke-WebRequest -UseBasicParsing 'https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1' -OutFile $p
+if ((Get-FileHash -Algorithm SHA256 $p).Hash -ne 'FBB373CC34D49F8B1FBA0792363103455EEE30608D16F7BBD32E78197E1D6F8A') { throw 'WebView2 setup script SHA-256 mismatch' }
+Set-ExecutionPolicy -Scope Process Bypass
+& $p
+```
 
 The definitions live in [`catalog/prepacks/`](catalog/prepacks/) and are covered by `make pack-prepack-test`. To create a runnable bundle, provide a compiled Nimino host:
 

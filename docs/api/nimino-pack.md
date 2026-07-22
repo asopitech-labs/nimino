@@ -42,7 +42,8 @@ bundleを再生成する場合の低水準手順です。
 
 Windows installerを実行する前に、WebView2 Evergreen Runtimeの導入が必須です。
 `v0.1.0`のRelease assetをSHA-256検証付きでURLから取得・実行するPowerShell
-ワンライナーは次のとおりです（管理者PowerShellで実行します）。
+コマンドは次のとおりです（管理者PowerShellで実行します）。これは物理的には一行ですが、
+Rustup/uvのような短いワンライナーではなく、検証付きbootstrapコマンドです。
 
 ```powershell
 $u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1'; $p=Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $p; if ((Get-FileHash -Algorithm SHA256 $p).Hash -ne 'FBB373CC34D49F8B1FBA0792363103455EEE30608D16F7BBD32E78197E1D6F8A') { throw 'WebView2 setup script SHA-256 mismatch' }; Set-ExecutionPolicy -Scope Process Bypass; & $p
