@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$HostExecutable,
   [switch]$AbnormalClientEof,
-  [switch]$VerifyNewWindow
+  [switch]$VerifyNewWindow,
+  [string]$InitialUrl = "about:blank"
 )
 
 ## Keep this value in sync with packages/wsl/src/nimino_wsl/protocol/versioning.nim.
@@ -148,10 +149,30 @@ function Read-Frame {
 }
 
 function Read-Response([string]$requestId) {
+  if ($script:pendingFrames.Count -gt 0) {
+    $matched = $null
+    $remaining = New-Object System.Collections.Queue
+    while ($script:pendingFrames.Count -gt 0) {
+      $candidate = $script:pendingFrames.Dequeue()
+      if ($null -eq $matched -and $candidate.kind -eq "response" -and
+          $candidate.requestId -eq $requestId) {
+        $matched = $candidate
+      }
+      else {
+        $remaining.Enqueue($candidate)
+      }
+    }
+    while ($remaining.Count -gt 0) {
+      $script:pendingFrames.Enqueue($remaining.Dequeue())
+    }
+    if ($null -ne $matched) {
+      return $matched
+    }
+  }
   ## A WebView callback can be emitted before ExecuteScript's completion
   ## callback. Preserve those events for the assertion that follows instead
   ## of treating the transport ordering as a protocol error.
-  for ($attempt = 0; $attempt -lt 8; $attempt++) {
+  for ($attempt = 0; $attempt -lt 64; $attempt++) {
     $message = Read-ProtocolFrame
     if ($message.kind -eq "response" -and $message.requestId -eq $requestId) {
       return $message
@@ -192,7 +213,7 @@ function Get-WebViewErrorText($message) {
 }
 
 function Wait-ForNavigationCompleted([string]$webViewId) {
-  for ($attempt = 0; $attempt -lt 8; $attempt++) {
+  for ($attempt = 0; $attempt -lt 64; $attempt++) {
     $message = Read-Frame
     if ($message.kind -eq "event" -and $message.method -eq "native.webview.error") {
       throw "WebView reported an error: $(Get-WebViewErrorText $message)"
@@ -213,7 +234,7 @@ function Wait-ForNavigationCompleted([string]$webViewId) {
 }
 
 function Wait-ForWebMessage([string]$webViewId, [string]$expectedMessage) {
-  for ($attempt = 0; $attempt -lt 8; $attempt++) {
+  for ($attempt = 0; $attempt -lt 64; $attempt++) {
     $message = Read-Frame
     if ($message.kind -eq "event" -and $message.method -eq "native.webview.error") {
       throw "WebView reported an error: $(Get-WebViewErrorText $message)"
@@ -230,7 +251,7 @@ function Wait-ForWebMessage([string]$webViewId, [string]$expectedMessage) {
 }
 
 function Wait-ForWindowClosed([string]$windowId) {
-  for ($attempt = 0; $attempt -lt 8; $attempt++) {
+  for ($attempt = 0; $attempt -lt 64; $attempt++) {
     $message = Read-Frame
     if ($message.kind -ne "event" -or $message.method -ne "native.window.closed") {
       continue
@@ -245,7 +266,7 @@ function Wait-ForWindowClosed([string]$windowId) {
 
 function Wait-ForNavigationCancelled([string]$webViewId, [string]$expectedUrl) {
   $sawStart = $false
-  for ($attempt = 0; $attempt -lt 12; $attempt++) {
+  for ($attempt = 0; $attempt -lt 64; $attempt++) {
     $message = Read-Frame
     if ($message.kind -ne "event") { continue }
     if ($message.method -eq "native.webview.navigationStarting") {
@@ -268,7 +289,7 @@ function Wait-ForNavigationCancelled([string]$webViewId, [string]$expectedUrl) {
 function Wait-ForNewWindowRequest([string]$webViewId) {
   $sawTrigger = $false
   $sawNewWindowRequest = $false
-  for ($attempt = 0; $attempt -lt 16; $attempt++) {
+  for ($attempt = 0; $attempt -lt 64; $attempt++) {
     $message = Read-Frame
     if ($message.kind -eq "event" -and $message.method -eq "native.webview.error") {
       throw "WebView reported an error: $(Get-WebViewErrorText $message)"
@@ -329,7 +350,7 @@ try {
     payload = '{"title":"WSL smoke","width":800,"height":600,"appId":"tech.asopi.nimino.smoke","profile":"windows-gui"}'; error = ""; timeoutMs = 5000
   }
   Write-Frame $windowRequest
-  $windowResponse = Read-Frame
+  $windowResponse = Read-Response "2"
   if ($windowResponse.kind -ne "response" -or $windowResponse.requestId -ne "2" -or
       -not [string]::IsNullOrEmpty($windowResponse.error)) {
     throw "Host did not create a window: $($windowResponse.error)"
@@ -342,7 +363,7 @@ try {
     requestId = "3"; eventId = "0"; method = "native.webview.create"
     payload = (ConvertTo-Json -Compress @{ windowId = $windowId }); error = ""; timeoutMs = 5000
   }
-  $webViewResponse = Read-Frame
+  $webViewResponse = Read-Response "3"
   if ($webViewResponse.kind -ne "response" -or $webViewResponse.requestId -ne "3" -or
       -not [string]::IsNullOrEmpty($webViewResponse.error) -or
       [string]::IsNullOrEmpty(($webViewResponse.payload | ConvertFrom-Json).webViewId)) {
@@ -357,7 +378,7 @@ try {
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "globalThis.__niminoDocumentStart = 'ready';" })
     error = ""; timeoutMs = 5000
   }
-  $documentStartResponse = Read-Frame
+  $documentStartResponse = Read-Response "4"
   if ($documentStartResponse.kind -ne "response" -or $documentStartResponse.requestId -ne "4" -or
       -not [string]::IsNullOrEmpty($documentStartResponse.error)) {
     throw "Host did not register the document-start script"
@@ -370,7 +391,7 @@ try {
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; allow = @("**"); deny = @("https://example.com/**") })
     error = ""; timeoutMs = 5000
   }
-  $rulesResponse = Read-Frame
+  $rulesResponse = Read-Response "5"
   if ($rulesResponse.kind -ne "response" -or $rulesResponse.requestId -ne "5" -or
       -not [string]::IsNullOrEmpty($rulesResponse.error)) {
     throw "Host did not register navigation rules"
@@ -383,7 +404,7 @@ try {
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; html = "<script>document.title = globalThis.__niminoDocumentStart === 'ready' ? 'Nimino WebView2 Runtime Smoke' : 'missing document-start script';</script><main>ready</main>" })
     error = ""; timeoutMs = 5000
   }
-  $loadResponse = Read-Frame
+  $loadResponse = Read-Response "6"
   if ($loadResponse.kind -ne "response" -or $loadResponse.requestId -ne "6" -or
       -not [string]::IsNullOrEmpty($loadResponse.error)) {
     throw "Host did not start WebView HTML loading"
@@ -398,7 +419,7 @@ try {
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "document.title" })
     error = ""; timeoutMs = 5000
   }
-  $evaluation = Read-Frame
+  $evaluation = Read-Response "7"
   if ($evaluation.kind -ne "response" -or $evaluation.requestId -ne "7" -or
       -not [string]::IsNullOrEmpty($evaluation.error)) {
     throw "Host did not evaluate JavaScript in the WebView"
@@ -415,7 +436,7 @@ try {
     payload = (ConvertTo-Json -Compress @{ windowId = $windowId; title = "Nimino Window Updated" })
     error = ""; timeoutMs = 5000
   }
-  $titleResponse = Read-Frame
+  $titleResponse = Read-Response "8"
   if ($titleResponse.kind -ne "response" -or $titleResponse.requestId -ne "8" -or
       -not [string]::IsNullOrEmpty($titleResponse.error)) {
     throw "Host did not update the native window title"
@@ -428,7 +449,7 @@ try {
     payload = (ConvertTo-Json -Compress @{ windowId = $windowId; width = 1000; height = 700 })
     error = ""; timeoutMs = 5000
   }
-  $sizeResponse = Read-Frame
+  $sizeResponse = Read-Response "9"
   if ($sizeResponse.kind -ne "response" -or $sizeResponse.requestId -ne "9" -or
       -not [string]::IsNullOrEmpty($sizeResponse.error)) {
     throw "Host did not resize the native window"
@@ -441,7 +462,7 @@ try {
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "JSON.stringify({ width: innerWidth, height: innerHeight })" })
     error = ""; timeoutMs = 5000
   }
-  $viewportEvaluation = Read-Frame
+  $viewportEvaluation = Read-Response "10"
   if ($viewportEvaluation.kind -ne "response" -or $viewportEvaluation.requestId -ne "10" -or
       -not [string]::IsNullOrEmpty($viewportEvaluation.error)) {
     throw "Host did not evaluate the resized WebView viewport"
@@ -455,10 +476,10 @@ try {
   Write-Frame @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
     requestId = "11"; eventId = "0"; method = "native.webview.loadUrl"
-    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; url = "about:blank" })
+    payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; url = $InitialUrl })
     error = ""; timeoutMs = 5000
   }
-  $urlResponse = Read-Frame
+  $urlResponse = Read-Response "11"
   if ($urlResponse.kind -ne "response" -or $urlResponse.requestId -ne "11" -or
       -not [string]::IsNullOrEmpty($urlResponse.error)) {
     throw "Host did not start WebView URL loading"
@@ -473,7 +494,7 @@ try {
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "chrome.webview.postMessage('nimino-native-message')" })
     error = ""; timeoutMs = 5000
   }
-  $messageEvaluation = Read-Frame
+  $messageEvaluation = Read-Response "12"
   if ($messageEvaluation.kind -ne "response" -or $messageEvaluation.requestId -ne "12" -or
       -not [string]::IsNullOrEmpty($messageEvaluation.error)) {
     throw "Host did not execute the WebView message script"
@@ -487,7 +508,7 @@ try {
     payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; url = "https://example.com/private/token" })
     error = ""; timeoutMs = 5000
   }
-  $deniedResponse = Read-Frame
+  $deniedResponse = Read-Response "13"
   if ($deniedResponse.kind -ne "response" -or $deniedResponse.requestId -ne "13" -or
       -not [string]::IsNullOrEmpty($deniedResponse.error)) {
     throw "Host rejected the navigation request before WebView2 could evaluate policy"
@@ -559,7 +580,7 @@ try {
       payload = (ConvertTo-Json -Compress @{ windowId = $windowId; title = $newWindowTitle })
       error = ""; timeoutMs = 5000
     }
-    $newWindowTitleResponse = Read-Frame
+    $newWindowTitleResponse = Read-Response "18"
     if ($newWindowTitleResponse.kind -ne "response" -or $newWindowTitleResponse.requestId -ne "18" -or
         -not [string]::IsNullOrEmpty($newWindowTitleResponse.error)) {
       throw "Host did not set the new-window test title"
@@ -574,7 +595,7 @@ try {
       payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; html = $newWindowHtml })
       error = ""; timeoutMs = 5000
     }
-    $newWindowLoadResponse = Read-Frame
+    $newWindowLoadResponse = Read-Response "19"
     if ($newWindowLoadResponse.kind -ne "response" -or $newWindowLoadResponse.requestId -ne "19" -or
         -not [string]::IsNullOrEmpty($newWindowLoadResponse.error)) {
       throw "Host did not load the new-window test page"
@@ -588,7 +609,7 @@ try {
       payload = (ConvertTo-Json -Compress @{ webViewId = $webViewId; script = "chrome.webview.postMessage('new-window-page-ready')" })
       error = ""; timeoutMs = 5000
     }
-    $newWindowBridgeResponse = Read-Frame
+    $newWindowBridgeResponse = Read-Response "20"
     if ($newWindowBridgeResponse.kind -ne "response" -or $newWindowBridgeResponse.requestId -ne "20" -or
         -not [string]::IsNullOrEmpty($newWindowBridgeResponse.error)) {
       throw "Host did not execute the new-window page bridge preflight"

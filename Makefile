@@ -4,8 +4,9 @@ COMPOSE ?= docker compose
 SERVICE ?= nimino-dev
 WSL_SMOKE_TIMEOUT ?= 120
 WSL_INTERACTIVE_TIMEOUT ?= 300
+WSL_PREPACK_TIMEOUT ?= 180
 
-.PHONY: help setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-prepack-test pack-cli-test pack-prepacks-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-prepack-test pack-cli-test pack-prepacks-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-prepack-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -176,6 +177,14 @@ wsl-host-smoke: image ## WSLからWindows hostのWebView2生成・HTML・JavaScr
 
 	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
 	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)") || { status=$$?; taskkill.exe /IM nimino-wsl-host.exe /T /F >/dev/null 2>&1 || true; exit $$status; }
+
+wsl-prepack-smoke: image ## YouTube/Gmail/Google Analyticsの実サイトWebView2読込を確認する
+
+	$(COMPOSE) run --rm $(SERVICE) nimble buildWslHostArtifact
+	@for url in "https://www.youtube.com/" "https://mail.google.com/mail/u/0/" "https://analytics.google.com/analytics/web/"; do \
+		echo "Nimino prepack URL smoke: $$url"; \
+		(timeout --foreground $(WSL_PREPACK_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -InitialUrl "$$url") || { status=$$?; taskkill.exe /IM nimino-wsl-host.exe /T /F >/dev/null 2>&1 || true; exit $$status; }; \
+	done
 
 wsl-host-abnormal-smoke: image ## WSL clientのstdin異常終了時にWindows hostが終了することを確認する
 
