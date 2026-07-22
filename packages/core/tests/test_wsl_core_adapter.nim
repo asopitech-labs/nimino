@@ -24,7 +24,7 @@ let customProtocol = app.registerCustomProtocol("nimino", proc(
 doAssert customProtocol.isOk
 let window = app.newWindow(CoreWindowOptions(title: "WSL core test", width: 320,
   height: 200, proxyUrl: "http://127.0.0.1:8080", incognito: true,
-  enableDragDrop: true))
+  enableDragDrop: true, zoomFactor: 1.25, ignoreCertificateErrors: true))
 doAssert window.isOk
 var droppedPaths: seq[string]
 doAssert window.value.onFileDrop(proc(paths: seq[string]) = droppedPaths = paths).isOk

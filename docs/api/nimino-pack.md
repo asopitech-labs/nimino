@@ -41,6 +41,9 @@ nimino pack --config pake.json --out dist/example --host nimino-host
 `WebKitSettings`へ適用します。`--proxy-url`はLinuxのWebKitNetworkSessionとWindows WebView2の
 `ICoreWebView2EnvironmentOptions`へ、`--incognito`はLinuxのephemeral NetworkSessionとWindows
 WebView2の`ICoreWebView2ControllerOptions`へ適用します。WSL hostもWindows側へ設定を中継します。
+`--zoom`は25〜500%でWebView2 Controller/WebKitGTKへ適用し、`--ignore-certificate-errors`は
+明示指定時だけWebView2の追加ブラウザ引数またはWebKitGTKのTLS policyを変更します。後者は
+開発・検証用途に限定し、本番配布では指定しないでください。
 `--multi-instance`を指定しない場合はアプリID単位で単一インスタンスを取得し、指定した場合だけ
 複数プロセスを許可します。Windows/Linux/WSLで同じ制御を行い、ロック取得失敗は明示エラーです。
 ドラッグ＆ドロップは`--enable-drag-drop`で明示的に有効化し、`window.onFileDrop`へ絶対パスの配列を

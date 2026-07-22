@@ -83,6 +83,8 @@ while true:
       doAssert payload["proxyUrl"].getStr() == "http://127.0.0.1:8080"
       doAssert payload["incognito"].getBool()
       doAssert payload["enableDragDrop"].getBool()
+      doAssert payload["zoomFactor"].getFloat() == 1.25
+      doAssert payload["ignoreCertificateErrors"].getBool()
       doAssert output.writeMessageTo(incomingMessage.response("{\"windowId\":\"1\"}")).isOk
     of "native.webview.create":
       doAssert output.writeMessageTo(incomingMessage.response("{\"webViewId\":\"1\"}")).isOk
