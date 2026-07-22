@@ -105,6 +105,8 @@ proc linuxSystemTraySupportDetail*(): string =
     g_object_unref(connection)
     return detail
 
+  ## Gio returns this name as transfer-none storage owned by `proxy`; copy it
+  ## before dropping the proxy and never pass it to g_free.
   let owner = g_dbus_proxy_get_name_owner(proxy)
   if owner.isNil or ($owner).len == 0:
     g_object_unref(proxy)
