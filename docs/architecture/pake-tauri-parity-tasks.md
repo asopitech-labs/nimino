@@ -51,4 +51,4 @@ macOS work is performed in a separate environment and is intentionally excluded.
 - [x] Native unsupported capabilities return explicit errors (including autostart and AppImage dependency closure).
 - [x] Generated installers include checksum/SBOM validation and release manifests.
 - [x] Windows GUI smoke tests clean up all popup and host processes on timeout via `finally`/`taskkill`.
-- [ ] Update this checklist and the relevant ADR when a feature is completed or intentionally rejected.
+- [x] Update this checklist and the relevant ADR when a feature is completed or intentionally rejected.
