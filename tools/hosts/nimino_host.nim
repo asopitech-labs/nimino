@@ -39,6 +39,13 @@ proc integer(node: JsonNode; key: string; fallback: int): int =
     return value
   fallback
 
+proc boolean(node: JsonNode; key: string; fallback: bool): bool =
+  if node.kind == JObject and node.hasKey(key):
+    if node[key].kind != JBool:
+      fail("manifest field '" & key & "' must be a boolean")
+    return node[key].getBool()
+  fallback
+
 proc readInjection(root: string; names: seq[string]): seq[string] =
   for name in names:
     if name.contains('/') or name.contains('\\') or name in [".", ".."]:
@@ -98,11 +105,18 @@ proc main() =
       manifest["window"] else: newJObject()
   let navigation = if manifest.hasKey("navigation") and manifest["navigation"].kind == JObject:
       manifest["navigation"] else: newJObject()
+  let permissions = if manifest.hasKey("permissions") and manifest["permissions"].kind == JObject:
+      manifest["permissions"] else: newJObject()
   let injection = if manifest.hasKey("injection") and manifest["injection"].kind == JObject:
       manifest["injection"] else: newJObject()
   let deepLinkNode = if manifest.hasKey("deepLink") and manifest["deepLink"].kind == JObject:
       manifest["deepLink"] else: newJObject()
   let allowedDeepLinkSchemes = deepLinkNode.stringArray("schemes")
+  let allowedPermissions = permissions.stringArray("allow")
+  for permission in allowedPermissions:
+    if permission notin ["microphone", "camera", "notifications", "geolocation",
+                         "clipboard", "screenCapture"]:
+      fail("manifest contains an unknown permission: " & permission)
   let created = newApp(id = appId, name = appName)
   if not created.isOk:
     fail(created.failure.detail)
@@ -127,11 +141,31 @@ proc main() =
   if not windowCreated.isOk:
     fail(windowCreated.failure.detail)
   let window = windowCreated.value
-  let rules = window.setNavigationRules(NavigationRules(
-    allow: navigation.stringArray("allow"),
-    deny: navigation.stringArray("external")))
-  if not rules.isOk:
-    fail(rules.failure.detail)
+  let allowPatterns = navigation.stringArray("allow")
+  let externalPatterns = navigation.stringArray("external")
+  let policyConfigured = window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
+    if externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+      navigationExternal
+    elif allowPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+      navigationAllow
+    else:
+      navigationDeny)
+  if not policyConfigured.isOk:
+    fail(policyConfigured.failure.detail)
+  let permissionConfigured = window.onPermission(proc(request: PermissionRequest): PermissionDecision =
+    let requested = case request.kind
+      of microphone: "microphone"
+      of camera: "camera"
+      of notifications: "notifications"
+      of geolocation: "geolocation"
+      of clipboard: "clipboard"
+      of screenCapture: "screenCapture"
+    if requested in allowedPermissions: permissionGrant else: permissionDeny)
+  if not permissionConfigured.isOk:
+    fail(permissionConfigured.failure.detail)
+  let resizable = window.setResizable(windowNode.boolean("resizable", true))
+  if not resizable.isOk:
+    fail(resizable.failure.detail)
   for activation in activationArguments:
     let parsed = try: parseUri(activation)
     except CatchableError:
