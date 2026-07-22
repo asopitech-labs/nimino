@@ -7,6 +7,9 @@ import std/[algorithm, json, os, osproc, strutils]
 
 import ./manifest
 
+const webView2AppGuid = "F3017226-FE2A-4295-8BDF-00C3A9A7E4C5"
+const webView2BootstrapperUrl = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+
 type
   WindowsPackageFormat* = enum
     nsisPackage
@@ -237,6 +240,7 @@ proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: st
   let shortcut = "$SMPROGRAMS\\Nimino\\" & metadata.id & ".lnk"
   let source = bundleDirectory / "*"
   result = "Unicode true\n" &
+    "!include LogicLib.nsh\n" &
     "RequestExecutionLevel user\n" &
     "SetCompressor /SOLID lzma\n" &
     "Name \"" & metadata.displayName.nsisString() & "\"\n" &
@@ -245,6 +249,29 @@ proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: st
     "InstallDirRegKey HKCU \"" & uninstallKey & "\" \"InstallLocation\"\n" &
     "Page directory\nPage instfiles\nUninstPage uninstConfirm\nUninstPage instfiles\n\n" &
     "Section \"Install\"\n" &
+    "  ; Match Tauri's downloadBootstrapper mode: install Evergreen Runtime only when absent.\n" &
+    "  ReadRegStr $4 HKLM \"SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{" &
+      webView2AppGuid & "}\" \"pv\"\n" &
+    "  StrCmp $4 \"\" 0 webview2_done\n" &
+    "  ReadRegStr $4 HKLM \"SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{" &
+      webView2AppGuid & "}\" \"pv\"\n" &
+    "  StrCmp $4 \"\" 0 webview2_done\n" &
+    "  ReadRegStr $4 HKCU \"SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{" &
+      webView2AppGuid & "}\" \"pv\"\n" &
+    "  StrCmp $4 \"\" 0 webview2_done\n" &
+    "  Delete \"$TEMP\\MicrosoftEdgeWebView2Setup.exe\"\n" &
+    "  NSISdl::download \"" & webView2BootstrapperUrl & "\" \"$TEMP\\MicrosoftEdgeWebView2Setup.exe\"\n" &
+    "  Pop $0\n" &
+    "  StrCmp $0 \"success\" 0 webview2_download_failed\n" &
+    "  ExecWait '\"$TEMP\\MicrosoftEdgeWebView2Setup.exe\" /silent /install' $1\n" &
+    "  StrCmp $1 \"0\" 0 webview2_install_failed\n" &
+    "  Delete \"$TEMP\\MicrosoftEdgeWebView2Setup.exe\"\n" &
+    "  Goto webview2_done\n" &
+    "webview2_download_failed:\n" &
+    "  Abort \"Unable to download the WebView2 Evergreen Runtime\"\n" &
+    "webview2_install_failed:\n" &
+    "  Abort \"Unable to install the WebView2 Evergreen Runtime\"\n" &
+    "webview2_done:\n" &
     "  SetShellVarContext current\n" &
     "  SetOutPath \"$INSTDIR\"\n" &
     "  File /r \"" & source.nsisString() & "\"\n" &
@@ -383,6 +410,25 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
     "    <MajorUpgrade Schedule='afterInstallInitialize' AllowDowngrades='no'\n" &
     "                  DowngradeErrorMessage='A newer version of this application is already installed.' />\n" &
     "    <Media Id='1' Cabinet='nimino.cab' EmbedCab='yes' />\n" &
+    "    <!-- Match Pake/Tauri: bootstrap WebView2 only when the Evergreen Runtime is absent. -->\n" &
+    "    <Property Id='WVRTINSTALLED'>\n" &
+    "      <RegistrySearch Id='WVRTInstalledSystem64' Root='HKLM' Key='SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{" &
+      webView2AppGuid & "}' Name='pv' Type='raw' Win64='yes' />\n" &
+    "      <RegistrySearch Id='WVRTInstalledSystem32' Root='HKLM' Key='SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{" &
+      webView2AppGuid & "}' Name='pv' Type='raw' Win64='no' />\n" &
+    "      <RegistrySearch Id='WVRTInstalledUser' Root='HKCU' Key='SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{" &
+      webView2AppGuid & "}' Name='pv' Type='raw' />\n" &
+    "    </Property>\n" &
+    "    <Property Id='NIMINO_POWERSHELL'>[SystemFolder]WindowsPowerShell\\v1.0\\powershell.exe</Property>\n" &
+    "    <CustomAction Id='DownloadAndInvokeBootstrapper' Property='NIMINO_POWERSHELL' Execute='deferred' " &
+      "ExeCommand=\"-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command &quot;$$ErrorActionPreference='Stop'; " &
+      "try { [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12 } catch {}; " &
+      "Invoke-WebRequest -UseBasicParsing -Uri '" & webView2BootstrapperUrl & "' -OutFile (Join-Path $$env:TEMP 'MicrosoftEdgeWebView2Setup.exe'); " &
+      "$$p=Start-Process -FilePath (Join-Path $$env:TEMP 'MicrosoftEdgeWebView2Setup.exe') -ArgumentList '/silent','/install' -Wait -PassThru; " &
+      "if ($$p.ExitCode -ne 0) { exit $$p.ExitCode }&quot;\" Return='check' />\n" &
+    "    <InstallExecuteSequence>\n" &
+    "      <Custom Action='DownloadAndInvokeBootstrapper' Before='InstallFinalize'>NOT(REMOVE OR WVRTINSTALLED)</Custom>\n" &
+    "    </InstallExecuteSequence>\n" &
     "    <Directory Id='TARGETDIR' Name='SourceDir'>\n" &
     "      <Directory Id='LocalAppDataFolder' Name='LocalAppData'>\n" &
     "        <Directory Id='NiminoFolder' Name='Nimino'>\n" &

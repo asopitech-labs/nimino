@@ -70,13 +70,10 @@ printf '%s\n' \
   'Linux: Debian (.deb), RPM (.rpm)' \
   'Windows: NSIS (.exe), MSI (.msi)' \
   '' \
-  'Windows prerequisite (required before installing):' \
-  'Shortest command (convenience mode): run the README irm URL | iex bootstrap.' \
-  'Managed installation (if winget is available):' \
-  '  winget install --id Microsoft.EdgeWebView2Runtime --exact --silent --accept-source-agreements --accept-package-agreements' \
-  'The URL convenience command has no local SHA-256 check.' \
-  'Strict path: verify SHA256SUMS, then run the downloaded setup script from elevated PowerShell.' \
-  'After the runtime is confirmed, install the downloaded NSIS or MSI package.' \
-  'WebView2Loader.dll is bundled; the Evergreen Runtime itself is not bundled.' \
+  'Windows installer behavior:' \
+  '  NSIS/MSI checks the WebView2 Evergreen Runtime and downloads the Microsoft Bootstrapper when missing.' \
+  '  Internet access is required for the first-time Runtime download.' \
+  '  WebView2Loader.dll is bundled with each Windows application package.' \
+  'Manual SHA-256-verified setup is documented in README for repair and development.' \
   'Verify SHA256SUMS before installation.' \
   > "$output/RELEASE-NOTES.txt"

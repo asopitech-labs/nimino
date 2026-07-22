@@ -47,36 +47,13 @@ When a prepack release is published, download the installer directly from the [N
 | --- | --- |
 | Debian/Ubuntu | `youtube-*.deb`, `gmail-*.deb`, `google-analytics-*.deb` |
 | Fedora/RPM | `youtube-*.rpm`, `gmail-*.rpm`, `google-analytics-*.rpm` |
-| Windows | `youtube-*-setup.exe`, `gmail-*-setup.exe`, `google-analytics-*-setup.exe` (NSIS) or the matching `.msi` |
-| Windows prerequisite | `Nimino-WebView2-Setup.ps1` or the URL one-liner below (required before the Windows installer) |
+| Windows | `youtube-*-setup.exe`, `gmail-*-setup.exe`, `google-analytics-*-setup.exe` (NSIS) or matching `.msi`; the installer checks and installs WebView2 when needed |
 
 The [`Nimino Prepack Release`](.github/workflows/nimino-prepack-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, and `SHA256SUMS` to the GitHub Release. The initial [`v0.1.0` release](https://github.com/asopitech-labs/nimino/releases/tag/v0.1.0) is available now. Verify the checksum before installing; the Popular Packages catalog remains separate until release signing and provenance verification are complete.
 
-**Windows prerequisite — mandatory before running the `.exe` or `.msi`:** install and verify the WebView2 Evergreen Runtime first.
+**Windows installer behavior:** NSIS and MSI installers check the WebView2 Evergreen Runtime and download the official Microsoft Bootstrapper only when the runtime is missing. Internet access is required for that first-time download. `WebView2Loader.dll` is bundled with the application.
 
-**Shortest command (convenience mode):** run the Nimino URL bootstrap below from PowerShell. It is a true one-liner, but it evaluates the downloaded script and does not perform a local SHA-256 check:
-
-```powershell
-irm 'https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1' | iex
-```
-
-**Managed installation (recommended where `winget` is available):** Windows Package Manager installs the runtime as a package instead of evaluating a remote script. Run it from **Administrator PowerShell**:
-
-```powershell
-winget install --id Microsoft.EdgeWebView2Runtime --exact --silent --accept-source-agreements --accept-package-agreements
-```
-
-The URL convenience command evaluates the downloaded PowerShell in memory; for security-sensitive or audited environments, use the SHA-256-verified command below instead.
-
-For the strict path, use the following 422-character SHA-256-verified bootstrap command:
-
-```powershell
-$u='https://github.com/asopitech-labs/nimino/releases/download/v0.1.0/Nimino-WebView2-Setup.ps1'; $p=Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $p; if ((Get-FileHash -Algorithm SHA256 $p).Hash -ne 'FBB373CC34D49F8B1FBA0792363103455EEE30608D16F7BBD32E78197E1D6F8A') { throw 'WebView2 setup script SHA-256 mismatch' }; Set-ExecutionPolicy -Scope Process Bypass; & $p
-```
-
-The script checks for and installs the WebView2 Evergreen Runtime with UAC elevation, then verifies the installed version. `WebView2Loader.dll` is included in the application package, but the Evergreen Runtime itself is not bundled in the installer. Do not skip this step. If you prefer a file-based flow, download `Nimino-WebView2-Setup.ps1` from the Release asset list and run it from **Windows PowerShell as Administrator** with `Set-ExecutionPolicy -Scope Process Bypass`.
-
-For a readable two-step equivalent in Administrator PowerShell:
+For manual repair or development setup, use the optional verified script:
 
 ```powershell
 $p = Join-Path $env:TEMP 'Nimino-WebView2-Setup.ps1'

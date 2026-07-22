@@ -47,6 +47,9 @@ grep -q 'Software.*Classes.*foo+bar' "$root/bundle/install-windows.ps1"
 grep -q 'URL Protocol' "$root/bundle/install-windows.ps1"
 test "$(od -An -tx1 -N2 "$setup" | tr -d '[:space:]')" = '4d5a'
 grep -Fx 'RequestExecutionLevel user' "$script"
+grep -F 'NSISdl::download "https://go.microsoft.com/fwlink/p/?LinkId=2124703"' "$script"
+grep -F 'ReadRegStr $4 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"' "$script"
+grep -F 'ExecWait '\''"$TEMP\MicrosoftEdgeWebView2Setup.exe" /silent /install'\''' "$script"
 grep -Fx 'InstallDir "$LOCALAPPDATA\Nimino\app.nimino.windows-demo"' "$script"
 grep -Fx '  File /r "/tmp/nimino-pack-windows-test/bundle/*"' "$script"
 grep -Fx '  WriteUninstaller "$INSTDIR\uninstall.exe"' "$script"
@@ -75,6 +78,8 @@ msiinfo tables "$msi" | grep -Fx 'File'
 msiinfo tables "$msi" | grep -Fx 'Registry'
 msiinfo tables "$msi" | grep -Fx 'Shortcut'
 msiinfo tables "$msi" | grep -Fx 'Upgrade'
+msiinfo export "$msi" CustomAction | grep -F 'DownloadAndInvokeBootstrapper'
+msiinfo export "$msi" CustomAction | grep -F 'MicrosoftEdgeWebView2Setup.exe'
 msiinfo export "$msi" Registry | grep -F 'Windows\CurrentVersion\Uninstall\app.nimino.windows-demo'
 msiinfo export "$msi" Shortcut | grep -F 'run-nimino.cmd'
 msiextract -l "$msi" | grep -F 'nimino-manifest.json'
