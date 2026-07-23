@@ -1,4 +1,4 @@
-import std/os
+import std/[os, strutils]
 import nimino_pack
 
 let parsed = parse("""
@@ -66,6 +66,25 @@ doAssert parsed.value.permissionsAllow == @["microphone", "notifications"]
 doAssert parsed.value.package.version == "1.2.3"
 doAssert parsed.value.package.categories == @["Network", "Utility"]
 doAssert parsed.value.deepLink.schemes == @["nimino", "foo+bar"]
+
+## Pake's generated identifiers are stable, honor an explicit ID, and keep
+## differently named wrappers for the same site in separate desktop/profile
+## namespaces.
+let workGmail = generateManifest("https://gmail.com", name = "Work Gmail")
+let personalGmail = generateManifest("https://gmail.com", name = "Personal Gmail")
+doAssert workGmail.isOk
+doAssert personalGmail.isOk
+doAssert workGmail.value.id != personalGmail.value.id
+let explicitGmail = generateManifest("https://gmail.com", name = "Work Gmail",
+  id = "com.example.work-gmail")
+doAssert explicitGmail.isOk
+doAssert explicitGmail.value.id == "com.example.work-gmail"
+let digitLeadingIdentifier = generateManifest("https://gmail.com", id = "123.invalid")
+doAssert not digitLeadingIdentifier.isOk
+let numericHost = generateManifest("https://123.example.com", name = "123 Client")
+doAssert numericHost.isOk
+for segment in numericHost.value.id.split('.'):
+  doAssert segment[0] in {'a'..'z', 'A'..'Z', '_'}
 
 ## Pake only emits start_to_tray when a system tray is enabled. Keep a
 ## portable Nimino manifest launchable instead of deferring this conflict to

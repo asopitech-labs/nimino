@@ -28,6 +28,15 @@ proc hostToken(host: string): string =
   if result.len == 0:
     result = "site"
 
+proc identifierSegment(value: string): string =
+  result = hostToken(value)
+  ## D-Bus and desktop application identifiers require every segment to begin
+  ## with a letter or underscore. URL hosts and user-supplied app names can
+  ## legitimately begin with a digit, so give those generated segments a
+  ## stable alphabetic prefix.
+  if result[0] notin {'a'..'z', 'A'..'Z', '_'}:
+    result = "app-" & result
+
 proc generatedName(host: string): string =
   var normalized = host.toLowerAscii().strip(chars = {'.'})
   if normalized.startsWith("www."):
@@ -36,8 +45,13 @@ proc generatedName(host: string): string =
   let label = if labels.len > 0 and labels[0].len > 0: labels[0] else: "site"
   titleWord(label.replace('-', ' ').replace('_', ' '))
 
-proc generatedId(host: string): string =
-  "com.nimino." & hostToken(host)
+proc generatedId(host: string; name = ""): string =
+  result = "com.nimino." & identifierSegment(host)
+  if name.strip().len > 0:
+    ## Apps wrapping the same site need distinct default identity/profile
+    ## roots. Preserve an explicit --id unchanged; this applies only to the
+    ## generated identifier path.
+    result.add("." & identifierSegment(name))
 
 proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
                       icon = ""; deepLinkSchemes: seq[string] = @[];
@@ -66,8 +80,9 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
     if scheme notin ["http", "https"] or parsed.hostname.len == 0:
       return failure[PackManifest](invalidManifest,
         "URL-only generation requires an http or https URL")
-    let appName = if name.strip().len > 0: name.strip() else: generatedName(parsed.hostname)
-    let appId = if id.strip().len > 0: id.strip() else: generatedId(parsed.hostname)
+    let requestedName = name.strip()
+    let appName = if requestedName.len > 0: requestedName else: generatedName(parsed.hostname)
+    let appId = if id.strip().len > 0: id.strip() else: generatedId(parsed.hostname, requestedName)
     let metadata = PackPackageMetadata(
       version: "0.1.0",
       description: appName & " web application",
@@ -130,10 +145,11 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
     return failure[PackManifest](invalidManifest,
       "local directory must contain an index.html entry")
   let base = if isDirectory: extractFilename(absolute) else: splitFile(absolute).name
-  let appName = if name.strip().len > 0: name.strip() else:
+  let requestedName = name.strip()
+  let appName = if requestedName.len > 0: requestedName else:
     titleWord(base.replace('-', ' ').replace('_', ' '))
   let appId = if id.strip().len > 0: id.strip() else:
-    "com.nimino." & hostToken(base)
+    generatedId(base, requestedName)
   let metadata = PackPackageMetadata(
     version: "0.1.0",
     description: appName & " local web application",

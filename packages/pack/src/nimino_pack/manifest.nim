@@ -223,6 +223,14 @@ proc validPathComponent(value: string): bool =
       return false
   true
 
+proc validApplicationId(value: string): bool =
+  if not validPathComponent(value):
+    return false
+  for segment in value.split('.'):
+    if segment.len == 0 or segment[0] notin {'a'..'z', 'A'..'Z', '_'}:
+      return false
+  true
+
 proc validMetadataText(value: string): bool =
   for character in value:
     if ord(character) < 0x20 or ord(character) == 0x7f:
@@ -329,9 +337,9 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
   if normalized.name.len == 0 or normalized.id.len == 0 or
       normalized.name.strip().len == 0 or invalidName:
     return failure[PackManifest](invalidManifest, "name and id are required")
-  for component in [normalized.id, normalized.profile]:
-    if not validPathComponent(component):
-      return failure[PackManifest](invalidManifest, "id and profile must be safe path components")
+  if not validApplicationId(normalized.id) or not validPathComponent(normalized.profile):
+    return failure[PackManifest](invalidManifest,
+      "id must use dot-separated letter/underscore-leading segments and profile must be a safe path component")
   if normalized.localEntry.len > 0:
     if normalized.url.len > 0:
       return failure[PackManifest](invalidManifest,
