@@ -73,10 +73,12 @@ grep -q '"nimino"' "$root/out/nimino-manifest.json"
 "$nimino" pack --config "$root/input.toml" --out "$root/config-out" --host "$root/host"
 grep -q 'Demo' "$root/config-out/nimino-manifest.json"
 "$nimino" pack --config "$root/input.toml" --name Override --width 1111 \
-  --multi-window false --out "$root/config-override-out" --host "$root/host"
+  --multi-window false --internal-url-regex '^https://app[.]example[.]com' \
+  --out "$root/config-override-out" --host "$root/host"
 grep -q 'Override' "$root/config-override-out/nimino-manifest.json"
 grep -q '"width": 1111' "$root/config-override-out/nimino-manifest.json"
 grep -q '"multiWindow": false' "$root/config-override-out/nimino-manifest.json"
+grep -F '"internalUrlRegex": "^https://app[.]example[.]com"' "$root/config-override-out/nimino-manifest.json"
 printf '%s\n' '{"url":"https://example.com","name":"JsonDemo","identifier":"app.nimino.json","title":"Json Window","width":900,"zoom":125}' > "$root/config.json"
 "$nimino" pack --config "$root/config.json" --out "$root/json-config-out" --host "$root/host"
 grep -q 'JsonDemo' "$root/json-config-out/nimino-manifest.json"
