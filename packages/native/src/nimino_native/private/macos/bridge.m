@@ -1,6 +1,7 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 #import <UserNotifications/UserNotifications.h>
+#import <Carbon/Carbon.h>
 #import <Network/Network.h>
 #import <Security/Security.h>
 #import <dispatch/dispatch.h>
@@ -93,16 +94,19 @@ struct MacAppContext {
   MacMenuCallback menuCallback;
   MacMenuCallback trayCallback;
   MacIdleCallback shortcutCallback;
-  id shortcutMonitor;
-  id localShortcutMonitor;
+  EventHotKeyRef shortcutHotKey;
+  EventHandlerRef shortcutHandler;
   NSString *shortcutKey;
   NSUInteger shortcutModifiers;
+  NSTimeInterval shortcutLastActivation;
   NSString *scheme;
   NiminoSchemeHandler *schemeHandler;
   MacSchemeCallback schemeCallback;
   MacNotificationCallback notificationCallback;
   MacDeepLinkCallback deepLinkCallback;
   MacReopenCallback reopenCallback;
+  NSString *instanceNotificationName;
+  id instanceObserver;
 };
 
 struct MacWindowContext {
@@ -208,6 +212,20 @@ static BOOL niminoCookieMatchesURL(NSHTTPCookie *cookie, NSURL *url) {
   }
 }
 @end
+
+static OSStatus nimino_macos_shortcut_handler(EventHandlerCallRef nextHandler,
+                                               EventRef event, void *userData) {
+  (void)nextHandler; (void)event;
+  MacAppContext *context = (MacAppContext *)userData;
+  if (!context || !context->shortcutCallback) return noErr;
+  NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+  /* Carbon can report the same key through more than one event source. Match
+   * Pake's short debounce so a global activation toggles only once. */
+  if (now - context->shortcutLastActivation < 0.3) return noErr;
+  context->shortcutLastActivation = now;
+  context->shortcutCallback(context->userData);
+  return noErr;
+}
 
 /* The timer target stores only the context.  The callback is held in the
  * context's userData-independent field below to keep Objective-C objects out
@@ -623,14 +641,18 @@ void nimino_macos_app_dispose(void *opaque) {
   }
   context->windows = NULL;
   [context->application setMainMenu:nil];
+  if (context->instanceObserver)
+    [[NSDistributedNotificationCenter defaultCenter] removeObserver:context->instanceObserver];
+  [context->instanceObserver release]; context->instanceObserver = nil;
+  [context->instanceNotificationName release]; context->instanceNotificationName = nil;
   if (context->statusItem)
     [[NSStatusBar systemStatusBar] removeStatusItem:context->statusItem];
   [context->statusItem release]; context->statusItem = nil;
   [context->trayTarget release]; context->trayTarget = nil;
-  [NSEvent removeMonitor:context->shortcutMonitor];
-  [NSEvent removeMonitor:context->localShortcutMonitor];
-  context->shortcutMonitor = nil;
-  context->localShortcutMonitor = nil;
+  if (context->shortcutHotKey) UnregisterEventHotKey(context->shortcutHotKey);
+  if (context->shortcutHandler) RemoveEventHandler(context->shortcutHandler);
+  context->shortcutHotKey = NULL;
+  context->shortcutHandler = NULL;
   [context->shortcutKey release]; context->shortcutKey = nil;
   [context->menu release]; context->menu = nil;
   [context->menuTarget release]; context->menuTarget = nil;
@@ -678,6 +700,8 @@ void nimino_macos_app_install_menu(void *opaque, const char *title, uint32_t *id
   NSString *currentGroup = nil;
   NSMenu *submenu = nil;
   NSMenuItem *root = nil;
+  NSMenu *windowsMenu = nil;
+  NSMenu *helpMenu = nil;
   for (int i = 0; i < count; i++) {
     NSString *itemTitle = titles[i] ? [NSString stringWithUTF8String:titles[i]] : @"";
     NSString *group = groups && groups[i] && groups[i][0]
@@ -692,9 +716,17 @@ void nimino_macos_app_install_menu(void *opaque, const char *title, uint32_t *id
       submenu.autoenablesItems = NO;
       [root setSubmenu:submenu];
       [main addItem:root];
+      if ([group isEqualToString:@"Window"])
+        windowsMenu = submenu;
+      else if ([group isEqualToString:@"Help"])
+        helpMenu = submenu;
     }
     NSString *predefinedName = predefined && predefined[i] ?
       [NSString stringWithUTF8String:predefined[i]] : @"";
+    if ([predefinedName isEqualToString:@"separator"]) {
+      [submenu addItem:[NSMenuItem separatorItem]];
+      continue;
+    }
     SEL predefinedAction = nil;
     if ([predefinedName isEqualToString:@"about"]) predefinedAction = @selector(orderFrontStandardAboutPanel:);
     else if ([predefinedName isEqualToString:@"hide"]) predefinedAction = @selector(hide:);
@@ -749,6 +781,11 @@ void nimino_macos_app_install_menu(void *opaque, const char *title, uint32_t *id
   [currentGroup release];
   [submenu release];
   [root release];
+  /* AppKit augments the registered Window menu with the platform's Move,
+   * Resize, Tile, and window-cycling commands.  Merely displaying a submenu
+   * titled \"Window\" does not opt into that behavior. */
+  [context->application setWindowsMenu:windowsMenu];
+  [context->application setHelpMenu:helpMenu];
   [context->application setMainMenu:main];
   context->menu = main;
 }
@@ -757,6 +794,8 @@ void nimino_macos_app_remove_menu(void *opaque) {
   MacAppContext *context = (MacAppContext *)opaque;
   if (!context) return;
   [context->application setMainMenu:nil];
+  [context->application setWindowsMenu:nil];
+  [context->application setHelpMenu:nil];
   [context->menu release]; context->menu = nil;
   [context->menuTarget release]; context->menuTarget = nil;
   context->menuCallback = NULL;
@@ -773,7 +812,14 @@ int nimino_macos_app_install_tray(void *opaque, uint32_t *ids, const char **titl
   context->trayTarget.tray = YES;
   context->trayCallback = (MacMenuCallback)callback;
   context->statusItem = [[[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength] retain];
-  context->statusItem.button.title = @"Nimino";
+  NSImage *defaultIcon = [NSApp applicationIconImage];
+  if (defaultIcon) {
+    context->statusItem.button.image = defaultIcon;
+    context->statusItem.button.title = @"";
+  } else {
+    context->statusItem.button.title = @"Nimino";
+  }
+  context->statusItem.button.toolTip = [NSProcessInfo processInfo].processName ?: @"Nimino";
   context->statusItem.button.target = context->trayTarget;
   context->statusItem.button.action = @selector(activateButton:);
   NSMenu *menu = [[[NSMenu alloc] initWithTitle:@"Nimino"] autorelease];
@@ -811,12 +857,31 @@ int nimino_macos_app_set_tray_icon(void *opaque, const char *path) {
   return 1;
 }
 
-static BOOL nimino_macos_shortcut_matches(MacAppContext *context, NSEvent *event) {
-  if (!context || !event || !context->shortcutKey) return NO;
-  NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
-  if (flags != context->shortcutModifiers) return NO;
-  NSString *characters = event.charactersIgnoringModifiers.lowercaseString;
-  return [characters isEqualToString:context->shortcutKey];
+static UInt32 nimino_macos_key_code(NSString *key) {
+  if ([key isEqualToString:@" "]) return kVK_Space;
+  if (key.length != 1) return UINT32_MAX;
+  unichar value = [key characterAtIndex:0];
+  if (value >= 'a' && value <= 'z') {
+    /* The ANSI virtual-key constants are not alphabetically ordered. Keep a
+     * compact explicit map rather than deriving hardware codes from Unicode. */
+    switch (value) {
+      case 'a': return kVK_ANSI_A; case 'b': return kVK_ANSI_B; case 'c': return kVK_ANSI_C;
+      case 'd': return kVK_ANSI_D; case 'e': return kVK_ANSI_E; case 'f': return kVK_ANSI_F;
+      case 'g': return kVK_ANSI_G; case 'h': return kVK_ANSI_H; case 'i': return kVK_ANSI_I;
+      case 'j': return kVK_ANSI_J; case 'k': return kVK_ANSI_K; case 'l': return kVK_ANSI_L;
+      case 'm': return kVK_ANSI_M; case 'n': return kVK_ANSI_N; case 'o': return kVK_ANSI_O;
+      case 'p': return kVK_ANSI_P; case 'q': return kVK_ANSI_Q; case 'r': return kVK_ANSI_R;
+      case 's': return kVK_ANSI_S; case 't': return kVK_ANSI_T; case 'u': return kVK_ANSI_U;
+      case 'v': return kVK_ANSI_V; case 'w': return kVK_ANSI_W; case 'x': return kVK_ANSI_X;
+      case 'y': return kVK_ANSI_Y; case 'z': return kVK_ANSI_Z;
+    }
+  }
+  if (value >= '0' && value <= '9') {
+    static const UInt32 digitCodes[] = { kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3,
+      kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9 };
+    return digitCodes[value - '0'];
+  }
+  return UINT32_MAX;
 }
 
 int nimino_macos_app_set_activation_shortcut(void *opaque, const char *shortcut, void *callback) {
@@ -846,35 +911,42 @@ int nimino_macos_app_set_activation_shortcut(void *opaque, const char *shortcut,
       return 0;
   }
   if (!key || modifiers == 0) return 0;
-  [NSEvent removeMonitor:context->shortcutMonitor];
-  [NSEvent removeMonitor:context->localShortcutMonitor];
-  context->shortcutMonitor = nil;
-  context->localShortcutMonitor = nil;
+  if (context->shortcutHotKey) UnregisterEventHotKey(context->shortcutHotKey);
+  if (context->shortcutHandler) RemoveEventHandler(context->shortcutHandler);
+  context->shortcutHotKey = NULL;
+  context->shortcutHandler = NULL;
   [context->shortcutKey release];
   context->shortcutKey = [key copy];
   context->shortcutModifiers = modifiers;
   context->shortcutCallback = (MacIdleCallback)callback;
-  context->shortcutMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskKeyDown
-    handler:^(NSEvent *event) {
-      if (nimino_macos_shortcut_matches(context, event) && context->shortcutCallback)
-        context->shortcutCallback(context->userData);
-    }];
-  context->localShortcutMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
-    handler:^NSEvent *(NSEvent *event) {
-      if (nimino_macos_shortcut_matches(context, event) && context->shortcutCallback)
-        context->shortcutCallback(context->userData);
-      return event;
-    }];
-  return context->shortcutMonitor || context->localShortcutMonitor ? 1 : 0;
+  UInt32 keyCode = nimino_macos_key_code(key);
+  if (keyCode == UINT32_MAX) return 0;
+  UInt32 carbonModifiers = 0;
+  if (modifiers & NSEventModifierFlagCommand) carbonModifiers |= cmdKey;
+  if (modifiers & NSEventModifierFlagControl) carbonModifiers |= controlKey;
+  if (modifiers & NSEventModifierFlagShift) carbonModifiers |= shiftKey;
+  if (modifiers & NSEventModifierFlagOption) carbonModifiers |= optionKey;
+  EventTypeSpec eventType = { kEventClassKeyboard, kEventHotKeyPressed };
+  if (InstallEventHandler(GetApplicationEventTarget(), nimino_macos_shortcut_handler,
+      1, &eventType, context, &context->shortcutHandler) != noErr)
+    return 0;
+  EventHotKeyID identifier = { 'NIMN', 1 };
+  if (RegisterEventHotKey(keyCode, carbonModifiers, identifier,
+      GetApplicationEventTarget(), 0, &context->shortcutHotKey) != noErr) {
+    RemoveEventHandler(context->shortcutHandler);
+    context->shortcutHandler = NULL;
+    return 0;
+  }
+  return 1;
 }
 
 void nimino_macos_app_remove_activation_shortcut(void *opaque) {
   MacAppContext *context = (MacAppContext *)opaque;
   if (!context) return;
-  [NSEvent removeMonitor:context->shortcutMonitor];
-  [NSEvent removeMonitor:context->localShortcutMonitor];
-  context->shortcutMonitor = nil;
-  context->localShortcutMonitor = nil;
+  if (context->shortcutHotKey) UnregisterEventHotKey(context->shortcutHotKey);
+  if (context->shortcutHandler) RemoveEventHandler(context->shortcutHandler);
+  context->shortcutHotKey = NULL;
+  context->shortcutHandler = NULL;
   [context->shortcutKey release]; context->shortcutKey = nil;
   context->shortcutCallback = NULL;
 }
@@ -919,6 +991,35 @@ int nimino_macos_app_set_reopen_callback(void *opaque, void *callback) {
   MacAppContext *context = (MacAppContext *)opaque;
   if (!context || !callback || !context->applicationDelegate) return 0;
   context->reopenCallback = (MacReopenCallback)callback;
+  return 1;
+}
+
+int nimino_macos_app_set_instance_activation(void *opaque, const char *appId,
+                                             void *callback) {
+  MacAppContext *context = (MacAppContext *)opaque;
+  if (!context || !appId || !appId[0] || !callback) return 0;
+  if (context->instanceObserver)
+    [[NSDistributedNotificationCenter defaultCenter] removeObserver:context->instanceObserver];
+  [context->instanceObserver release]; context->instanceObserver = nil;
+  [context->instanceNotificationName release];
+  context->instanceNotificationName = [[NSString alloc] initWithFormat:@"io.nimino.instance.%s", appId];
+  context->reopenCallback = (MacReopenCallback)callback;
+  NSString *name = context->instanceNotificationName;
+  context->instanceObserver = [[[NSDistributedNotificationCenter defaultCenter]
+    addObserverForName:name object:nil queue:[NSOperationQueue mainQueue]
+    usingBlock:^(NSNotification *note) {
+      (void)note;
+      if (context->reopenCallback)
+        context->reopenCallback(context->userData);
+    }] retain];
+  return context->instanceObserver ? 1 : 0;
+}
+
+int nimino_macos_app_activate_existing_instance(const char *appId) {
+  if (!appId || !appId[0]) return 0;
+  NSString *name = [NSString stringWithFormat:@"io.nimino.instance.%s", appId];
+  [[NSDistributedNotificationCenter defaultCenter] postNotificationName:name object:nil
+    userInfo:nil deliverImmediately:YES];
   return 1;
 }
 
@@ -1182,6 +1283,7 @@ int nimino_macos_view_load_html(void *opaque,const char *html,const char *baseUr
 int nimino_macos_view_set_document_start_script(void *opaque,const char *source){MacViewContext*c=opaque;if(!c||!c->webView)return 0;WKUserContentController*m=c->webView.configuration.userContentController;[m removeAllUserScripts];if(source&&source[0]){WKUserScript*s=[[WKUserScript alloc]initWithSource:[NSString stringWithUTF8String:source] injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO];[m addUserScript:s];[s release];}return 1;}
 int nimino_macos_view_eval_javascript(void *opaque,const char *source,void *request){MacViewContext*c=opaque;if(!c||c->disposed||!c->webView||!c->evalCallback)return 0;MacEvalCallback callback=c->evalCallback;void*userData=c->userData;macViewRetainCallback(c);[c->webView evaluateJavaScript:[NSString stringWithUTF8String:source] completionHandler:^(id result,NSError*error){int succeeded=error?0:1;NSString*value=[niminoJSONDescription(result) copy];NSString*detail=[error.localizedDescription copy];dispatch_async(dispatch_get_main_queue(),^{if(callback)callback(userData,request,value?value.UTF8String:"",succeeded,detail?detail.UTF8String:"");[value release];[detail release];macViewReleaseCallback(c);});}];return 1;}
 int nimino_macos_view_clear_browsing_data(void *opaque,uint32_t kinds,void *request,void *doneCallback){MacViewContext*c=opaque;if(!c||c->disposed||!c->webView)return 0;NSMutableSet*types=[NSMutableSet set];if(kinds&1)[types addObject:WKWebsiteDataTypeCookies];if(kinds&2)[types addObject:WKWebsiteDataTypeLocalStorage];if(kinds&4){[types addObject:WKWebsiteDataTypeMemoryCache];[types addObject:WKWebsiteDataTypeDiskCache];}MacClearCallback done=(MacClearCallback)doneCallback;void*userData=c->userData;macViewRetainCallback(c);[c->webView.configuration.websiteDataStore removeDataOfTypes:types modifiedSince:[NSDate dateWithTimeIntervalSince1970:0] completionHandler:^{if(done)done(userData,request,1);macViewReleaseCallback(c);}];return 1;}
+int nimino_macos_view_clear_browsing_data_and_reload(void *opaque,uint32_t kinds){MacViewContext*c=opaque;if(!c||c->disposed||!c->webView)return 0;NSMutableSet*types=[NSMutableSet set];if(kinds&1)[types addObject:WKWebsiteDataTypeCookies];if(kinds&2)[types addObject:WKWebsiteDataTypeLocalStorage];if(kinds&4){[types addObject:WKWebsiteDataTypeMemoryCache];[types addObject:WKWebsiteDataTypeDiskCache];}macViewRetainCallback(c);[c->webView.configuration.websiteDataStore removeDataOfTypes:types modifiedSince:[NSDate dateWithTimeIntervalSince1970:0] completionHandler:^{if(!c->disposed&&c->webView)[c->webView reload];macViewReleaseCallback(c);}];return 1;}
 int nimino_macos_view_get_cookies(void *opaque,const char *url,void *request,void *itemCallback,void *doneCallback){MacViewContext*c=opaque;if(!c||c->disposed||!c->webView)return 0;MacCookieCallback item=(MacCookieCallback)itemCallback;MacCookiesDoneCallback done=(MacCookiesDoneCallback)doneCallback;void*userData=c->userData;macViewRetainCallback(c);[c->webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie*>*cookies){NSURL*filter=url&&url[0]?[NSURL URLWithString:[NSString stringWithUTF8String:url]]:nil;for(NSHTTPCookie*cookie in cookies){if(filter&&!niminoCookieMatchesURL(cookie,filter))continue;if(item)item(userData,request,niminoString(cookie.name),niminoString(cookie.value),niminoString(cookie.domain),niminoString(cookie.path),cookie.isSecure,cookie.isHTTPOnly,(int64_t)cookie.expiresDate.timeIntervalSince1970);}if(done)done(userData,request,1);macViewReleaseCallback(c);}];return 1;}
 static int nimino_cookie_operation(void*opaque,const char*n,const char*v,const char*d,const char*p,int secure,int httpOnly,int64_t expires,void*request,int remove,void*doneCallback){MacViewContext*c=opaque;if(!c||c->disposed||!c->webView)return 0;NSMutableDictionary*properties=[@{NSHTTPCookieName:[NSString stringWithUTF8String:n],NSHTTPCookieValue:[NSString stringWithUTF8String:v],NSHTTPCookieDomain:[NSString stringWithUTF8String:d],NSHTTPCookiePath:p&&p[0]?[NSString stringWithUTF8String:p]:@"/"} mutableCopy];if(expires>0)properties[NSHTTPCookieExpires]=[NSDate dateWithTimeIntervalSince1970:expires];NSHTTPCookie*cookie=[NSHTTPCookie cookieWithProperties:properties];[properties release];if(!cookie)return 0;WKHTTPCookieStore*s=c->webView.configuration.websiteDataStore.httpCookieStore;MacCookiesDoneCallback done=(MacCookiesDoneCallback)doneCallback;void*userData=c->userData;macViewRetainCallback(c);void(^completion)(void)=^{if(done)done(userData,request,1);macViewReleaseCallback(c);};if(remove)[s deleteCookie:cookie completionHandler:completion];else[s setCookie:cookie completionHandler:completion];return 1;}
 int nimino_macos_view_set_cookie(void*o,const char*n,const char*v,const char*d,const char*p,int s,int h,int64_t e,void*r,void*done){return nimino_cookie_operation(o,n,v,d,p,s,h,e,r,0,done);}

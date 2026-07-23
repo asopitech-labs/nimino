@@ -242,6 +242,8 @@ type
     title: string
     width: int
     height: int
+    minWidth: int
+    minHeight: int
     profilePath*: string
     hidden: bool
     platformWindow: pointer
@@ -859,6 +861,18 @@ proc systemTraySupportDetail*(app: NativeApp): string =
 proc isReady*(window: NativeWindow): bool {.inline.} =
   not window.isNil and window.state == ready
 
+proc activateExistingInstance*(appId: string): NativeResult =
+  ## Best-effort activation used after the process-wide single-instance lock
+  ## reports that an existing macOS process owns this application ID.
+  if appId.len == 0:
+    return failure(nativeError(invalidArgument, "app.activateExistingInstance"))
+  when defined(macosx):
+    if macosAppActivateExistingInstance(appId.cstring) == 0:
+      return failure(nativeError(osError, "app.activateExistingInstance"))
+    success()
+  else:
+    failure(nativeError(unsupported, "app.activateExistingInstance"))
+
 proc isClosed*(window: NativeWindow): bool {.inline.} =
   window.isNil or window.state == closed
 
@@ -1146,6 +1160,16 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
     titleBarOverlay: false
   )
   app.windows.add(window)
+  ## Popups and menu-created windows are requested after the native event loop
+  ## has started.  macOS must create the NSWindow immediately; otherwise the
+  ## subsequent WebView creation sees a nil platform window and New Window
+  ## silently fails for packaged localEntry apps.
+  if app.state == running:
+    when defined(macosx):
+      let created = window.macosCreateWindow()
+      if not created.isOk:
+        app.windows.setLen(app.windows.len - 1)
+        return failureOf[NativeWindow](created.failure)
   successOf(window)
 
 proc newWebView*(window: NativeWindow; userAgent = ""; proxyUrl = "";

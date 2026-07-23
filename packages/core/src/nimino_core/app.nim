@@ -565,6 +565,20 @@ proc defaultNavigationDecision*(entryUrl, requestUrl: string): NavigationDecisio
   ## authentication transition remain in the WebView; unrelated top-level
   ## destinations are sent to the external browser.  Explicit manifest rules
   ## still override this policy when an app genuinely needs custom routing.
+  ## A packaged local app is loaded through `file:`.  Such URLs intentionally
+  ## have no hostname, so the HTTP(S) same-site comparison below must not turn
+  ## the initial document (or an explicit additional window) into a deny.
+  ## `file:` documents are application-owned resources selected by the
+  ## packager; external HTTP(S) destinations remain subject to the normal
+  ## external-navigation path.
+  try:
+    let entry = parseUri(entryUrl)
+    let request = parseUri(requestUrl)
+    if entry.scheme.toLowerAscii() == "file":
+      return if request.scheme.toLowerAscii() == "file": navigationAllow
+             else: navigationDeny
+  except CatchableError:
+    return navigationDeny
   let entryHost = navigationHost(entryUrl)
   let requestHost = navigationHost(requestUrl)
   if entryHost.len == 0 or requestHost.len == 0:
@@ -764,10 +778,26 @@ proc injectionDocumentStartSource(window: Window): string =
       "if (blocked.has(key) || (key === 'f' && event.shiftKey)) { event.preventDefault(); " &
       "event.stopPropagation(); } }, true); })();")
   if window.enableFind:
-    source.add("(() => { if (globalThis.nimino && globalThis.nimino.find) return; " &
-      "const find = (text, backwards = false) => { if (!text) return false; " &
-      "if (typeof globalThis.find === 'function') return globalThis.find(text, backwards, false, true, false, false, false); " &
-      "return false; }; globalThis.nimino = globalThis.nimino || {}; globalThis.nimino.find = find; })();")
+    source.add("(() => { if (globalThis.nimino && globalThis.nimino.findPanel) return; " &
+      "const state = { query:'', panel:null, input:null }; " &
+      "const search = (backwards=false) => { if (!state.query || typeof globalThis.find !== 'function') return false; " &
+      "return globalThis.find(state.query, backwards, false, true, false, false, false); }; " &
+      "const ensure = () => { if (state.panel) return; const panel=document.createElement('form'); " &
+      "panel.setAttribute('role','search'); panel.setAttribute('aria-label','Find in page'); " &
+      "Object.assign(panel.style,{position:'fixed',top:'12px',right:'12px',zIndex:'2147483647',display:'flex',gap:'6px'," &
+      "alignItems:'center',padding:'8px',borderRadius:'8px',background:'#202124',color:'#fff',boxShadow:'0 4px 16px #0006',font:'13px -apple-system,sans-serif'}); " &
+      "const input=document.createElement('input'); input.type='search'; input.setAttribute('aria-label','Find'); " &
+      "Object.assign(input.style,{width:'210px',padding:'5px',borderRadius:'4px',border:'1px solid #666'}); " &
+      "const button=(label,backwards) => { const b=document.createElement('button'); b.type='button'; b.textContent=label; " &
+      "b.addEventListener('click',()=>search(backwards)); return b; }; const close=document.createElement('button'); " &
+      "close.type='button'; close.textContent='×'; close.setAttribute('aria-label','Close find'); " &
+      "close.addEventListener('click',()=>{panel.hidden=true;}); input.addEventListener('input',()=>{state.query=input.value;search(false);}); " &
+      "input.addEventListener('keydown',(event)=>{if(event.key==='Enter'){event.preventDefault();search(event.shiftKey);}else if(event.key==='Escape'){panel.hidden=true;}}); " &
+      "panel.addEventListener('submit',(event)=>{event.preventDefault();search(false);}); panel.append(input,button('‹',true),button('›',false),close); " &
+      "(document.body||document.documentElement).appendChild(panel); state.panel=panel;state.input=input; }; " &
+      "const api={open:()=>{ensure();state.panel.hidden=false;state.input.focus();state.input.select();},next:()=>search(false),previous:()=>search(true),close:()=>{if(state.panel)state.panel.hidden=true;}}; " &
+      "globalThis.nimino=globalThis.nimino||{}; globalThis.nimino.find=(text,backwards=false)=>{state.query=String(text||'');if(state.input)state.input.value=state.query;return search(backwards);}; " &
+      "globalThis.nimino.findPanel=api; })();")
   source
 
 proc documentStartBridgeSource(url: string): string =
@@ -1151,8 +1181,10 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
     of instanceAcquired:
       instanceLock = acquired.lock
     of instanceAlreadyHeld:
+      when defined(macosx):
+        discard native.activateExistingInstance(options.id)
       return coreFailureOf[App](coreError(invalidState, "app.create",
-        detail = acquired.detail))
+        detail = acquired.detail & (when defined(macosx): "; requested activation of the existing macOS instance" else: "")))
     of instanceUnavailable:
       return coreFailureOf[App](coreError(osError, "app.create",
         detail = acquired.detail))
@@ -2330,6 +2362,29 @@ proc clearWebViewProfileData*(window: Window;
     else:
       target.complete(coreFailure(coreError(platformUnavailable,
         "window.clearWebViewProfileData")))
+
+proc clearWebViewProfileDataAndReload*(window: Window;
+                                       kinds: set[WebViewProfileDataKind]): CoreResult =
+  ## macOS menu helper: WebKit data removal completes asynchronously.  Let the
+  ## native bridge reload only from that completion handler, so a page cannot
+  ## race the clear by recreating cache entries first.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.clearWebViewProfileDataAndReload"))
+  if kinds == {}:
+    return coreFailure(coreError(invalidArgument, "window.clearWebViewProfileDataAndReload",
+      detail = "at least one WebView profile data kind is required"))
+  when defined(macosx):
+    if window.app.backend != nativeBackend or window.nativeView.isNil:
+      return coreFailure(coreError(platformUnavailable, "window.clearWebViewProfileDataAndReload"))
+    var nativeKinds: set[native.NativeBrowsingDataKind]
+    for kind in kinds:
+      case kind
+      of webViewCookies: nativeKinds.incl(native.nativeBrowsingCookies)
+      of webViewLocalStorage: nativeKinds.incl(native.nativeBrowsingLocalStorage)
+      of webViewCache: nativeKinds.incl(native.nativeBrowsingCache)
+    native.macosClearBrowsingDataAndReload(window.nativeView, nativeKinds).fromNative()
+  else:
+    coreFailure(coreError(platformUnavailable, "window.clearWebViewProfileDataAndReload"))
 
 proc toNativeCookie(cookie: ProfileCookie): native.NativeCookie =
   native.NativeCookie(name: cookie.name, value: cookie.value,

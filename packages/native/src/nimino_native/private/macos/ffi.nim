@@ -6,6 +6,7 @@
 
 {.compile: "bridge.m".}
 {.passL: "-framework Cocoa".}
+{.passL: "-framework Carbon".}
 {.passL: "-framework WebKit".}
 {.passL: "-framework UserNotifications".}
 {.passL: "-framework Network".}
@@ -41,6 +42,10 @@ proc macosAppSetDeepLinkCallback*(app: pointer; callback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_app_set_deep_link_callback".}
 proc macosAppSetReopenCallback*(app: pointer; callback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_app_set_reopen_callback".}
+proc macosAppSetInstanceActivation*(app: pointer; appId: cstring; callback: MacCallback): cint
+  {.cdecl, importc: "nimino_macos_app_set_instance_activation".}
+proc macosAppActivateExistingInstance*(appId: cstring): cint
+  {.cdecl, importc: "nimino_macos_app_activate_existing_instance".}
 proc macosAppSendNotification*(app: pointer; id, title, body: cstring): cint
   {.cdecl, importc: "nimino_macos_app_send_notification".}
 proc macosAppSetDockBadge*(app: pointer; label: cstring): cint
@@ -110,6 +115,8 @@ proc macosViewEvalJavaScript*(view: pointer; script: cstring; request: pointer):
 proc macosViewClearBrowsingData*(view: pointer; kinds: uint32; request: pointer;
                                  doneCallback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_view_clear_browsing_data".}
+proc macosViewClearBrowsingDataAndReload*(view: pointer; kinds: uint32): cint
+  {.cdecl, importc: "nimino_macos_view_clear_browsing_data_and_reload".}
 proc macosViewGetCookies*(view: pointer; url: cstring; request: pointer;
                           itemCallback, doneCallback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_view_get_cookies".}

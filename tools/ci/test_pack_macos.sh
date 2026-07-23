@@ -42,6 +42,32 @@ fi
 if [ "${NIMINO_TEST_MACOS_LAUNCH:-0}" = 1 ]; then
   open -n "$app"
   sleep 3
+  host_process="$app/Contents/MacOS/com.nimino.macos.smoke"
+  first_count=$(pgrep -f "$host_process" | wc -l | tr -d ' ')
+  test "$first_count" -eq 1
+  ## The generated host implements Pake-style single-instance activation.
+  ## A second LaunchServices request must focus the original process rather
+  ## than leave a second host alive.
+  open -n "$app"
+  sleep 2
+  second_count=$(pgrep -f "$host_process" | wc -l | tr -d ' ')
+  test "$second_count" -eq 1
+  if [ "${NIMINO_TEST_MACOS_GUI:-0}" = 1 ]; then
+    ## Exercise the actual AppKit menu rather than merely checking that it was
+    ## configured. This covers localEntry's File > New Window action on a
+    ## GUI-login macOS runner with Accessibility permission.
+    osascript -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to set frontmost to true' \
+      -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to click menu bar item "File" of menu bar 1' \
+      -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to click menu item "New Window" of menu "File" of menu bar item "File" of menu bar 1'
+    sleep 1
+    gui_window_count=$(osascript -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to count windows')
+    test "$gui_window_count" -ge 2
+    osascript -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to click menu bar item "File" of menu bar 1' \
+      -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to click menu item "Clear Cache & Reload" of menu "File" of menu bar item "File" of menu bar 1'
+    sleep 1
+    gui_window_count=$(osascript -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to count windows')
+    test "$gui_window_count" -ge 2
+  fi
   pkill -f "$app/Contents/MacOS/com.nimino.macos.smoke" || true
   sleep 1
   open -n "$app" --args nimino://macos-package-smoke

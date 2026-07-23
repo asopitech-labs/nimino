@@ -320,6 +320,12 @@ proc macosCreateWindow(window: NativeWindow): NativeResult =
     let configured = window.macosSetTitleBarOverlay(true)
     if not configured.isOk:
       return configured
+  if window.minWidth > 0 or window.minHeight > 0:
+    let minimum = window.macosSetMinimumSize(
+      if window.minWidth > 0: window.minWidth else: window.width,
+      if window.minHeight > 0: window.minHeight else: window.height)
+    if not minimum.isOk:
+      return minimum
   for view in window.views:
     let created = view.macosCreateView()
     if not created.isOk:
@@ -420,6 +426,13 @@ proc macosSetMinimumSize(window: NativeWindow; width, height: int): NativeResult
   if width <= 0 or height <= 0:
     return failure(nativeError(invalidArgument, "window.setMinimumSize",
       detail = "minimum size must be positive"))
+  window.minWidth = width
+  window.minHeight = height
+  ## Core applies creation options before `macosRun` creates NSWindow.  Keep
+  ## the requested values on NativeWindow and apply them during creation,
+  ## matching the other deferred macOS window setters.
+  if window.platformWindow.isNil:
+    return success()
   if macosWindowSetMinimumSize(window.platformWindow, width.cint, height.cint) == 0:
     return macosNativeFailure("window.setMinimumSize", "NSWindow minimum content size update failed")
   success()
@@ -497,6 +510,21 @@ proc macosClearBrowsingData(view: NativeWebView;
       cast[MacCallback](macosBrowsingDataCompleted)) == 0:
     GC_unref(request)
     return macosNativeFailure("webview.clearBrowsingData", "WKWebsiteDataStore operation could not start")
+  success()
+
+proc macosClearBrowsingDataAndReload*(view: NativeWebView;
+                                      kinds: set[NativeBrowsingDataKind]): NativeResult =
+  if view.isNil or view.platformView.isNil:
+    return failure(nativeError(invalidState, "webview.clearBrowsingDataAndReload"))
+  var flags: uint32
+  if nativeBrowsingCookies in kinds: flags = flags or 1'u32
+  if nativeBrowsingLocalStorage in kinds: flags = flags or 2'u32
+  if nativeBrowsingCache in kinds: flags = flags or 4'u32
+  if flags == 0:
+    return failure(nativeError(invalidArgument, "webview.clearBrowsingDataAndReload"))
+  if macosViewClearBrowsingDataAndReload(view.platformView, flags) == 0:
+    return macosNativeFailure("webview.clearBrowsingDataAndReload",
+      "WKWebsiteDataStore operation could not start")
   success()
 
 proc macosGetCookies(view: NativeWebView; request: NativeCookieQueryRequest): NativeResult =
@@ -627,6 +655,15 @@ proc macosSetDeepLinkHandler(app: NativeApp; handler: NativeDeepLinkHandler): Na
     return macosNativeFailure("app.onDeepLink", "NSApplication delegate setup failed")
   success()
 
+proc macosSetInstanceActivation(app: NativeApp): NativeResult =
+  if app.platformApp.isNil:
+    app.platformApp = macosAppCreate(cast[pointer](app))
+  if app.platformApp.isNil or macosAppSetInstanceActivation(app.platformApp,
+      app.appId.cstring, cast[MacCallback](macosReopen)) == 0:
+    return macosNativeFailure("app.activateExistingInstance",
+      "macOS instance activation registration failed")
+  success()
+
 proc macosSendNativeNotification*(app: NativeApp;
                                   notification: NativeNotification): NativeResult =
   if macosAppSendNotification(app.platformApp, notification.id.cstring,
@@ -672,6 +709,9 @@ proc macosRun(app: NativeApp): NativeResult =
     return macosNativeFailure("app.run", "NSApplication creation failed")
   if macosAppSetReopenCallback(app.platformApp, cast[MacCallback](macosReopen)) == 0:
     return macosNativeFailure("app.run", "NSApplication reopen delegate setup failed")
+  let instanceActivation = app.macosSetInstanceActivation()
+  if not instanceActivation.isOk:
+    return instanceActivation
   app.state = running
   for window in app.windows:
     if window.state == pending:

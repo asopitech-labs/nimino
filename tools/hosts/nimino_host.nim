@@ -168,8 +168,31 @@ proc main() =
       "Object.assign(banner.style,{position:'fixed',right:'20px',top:'20px',zIndex:'2147483647'," &
       "padding:'12px 16px',borderRadius:'8px',background:'#222',color:'#fff'," &
       "font:'-apple-system,BlinkMacSystemFont,sans-serif',boxShadow:'0 4px 16px #0006'}); " &
+      "banner.tabIndex=0; banner.style.cursor='pointer'; banner.addEventListener('click',() => " &
+      "window.dispatchEvent(new CustomEvent('nimino-notification-activated',{detail:{id:detail.id}}))); " &
       "(document.body || document.documentElement).appendChild(banner); " &
       "setTimeout(() => banner.remove(), 5000); }); })();")
+    ## Pake exposes the browser Notification shape even though delivery is
+    ## native.  Preserve that web-facing contract and route it through the
+    ## generated host's native-notification RPC.  The same object receives a
+    ## click when macOS activates the delivered notification.
+    injectionJavaScript.add("(() => { const active = new Map(); let sequence = 0; " &
+      "const syncBadge = () => { const n = active.size; if (navigator.setAppBadge) " &
+      "navigator.setAppBadge(n || null).catch(() => {}); }; " &
+      "function NiminoNotification(title, options = {}) { if (!(this instanceof NiminoNotification)) " &
+      "return new NiminoNotification(title, options); this.title = String(title || ''); " &
+      "this.body = options && options.body != null ? String(options.body) : ''; " &
+      "this.tag = options && options.tag != null ? String(options.tag) : ''; this.onclick = null; " &
+      "this.id = this.tag || ('nimino-notification-' + Date.now().toString(36) + '-' + (++sequence)); " &
+      "active.set(this.id, this); syncBadge(); const invoke = globalThis.nimino && globalThis.nimino.invoke; " &
+      "if (invoke) invoke('app.sendNotification', {id:this.id,title:this.title,body:this.body}).catch(() => {}); " &
+      "} NiminoNotification.permission = 'granted'; " &
+      "NiminoNotification.requestPermission = () => Promise.resolve('granted'); " &
+      "NiminoNotification.prototype.close = function() { active.delete(this.id); syncBadge(); }; " &
+      "globalThis.Notification = NiminoNotification; " &
+      "globalThis.addEventListener('nimino-notification-activated', (event) => { " &
+      "const n = active.get(event.detail && event.detail.id); if (!n) return; active.delete(n.id); syncBadge(); " &
+      "if (typeof n.onclick === 'function') n.onclick.call(n, new Event('click')); }); })();")
   let allowedDeepLinkSchemes = deepLinkNode.stringArray("schemes")
   proc deepLinkAllowed(value: string): bool =
     try:
@@ -208,6 +231,7 @@ proc main() =
       fail("window minimum size is only supported by the macOS host")
   let hideTitleBar = windowNode.boolean("hideTitleBar", false)
   let initialAlwaysOnTop = windowNode.boolean("alwaysOnTop", false)
+  var currentFullscreen = windowNode.boolean("fullscreen", false)
   when not defined(macosx):
     if hideTitleBar:
       fail("window.hideTitleBar is only supported by the macOS host")
@@ -237,6 +261,12 @@ proc main() =
   let created = newApp(AppOptions(id: appId, name: appName, version: packageVersion,
     multiInstance: multiInstance))
   if not created.isOk:
+    when defined(macosx):
+      if not multiInstance and created.failure.kind == invalidState:
+        ## The existing host owns the lock and has received a distributed
+        ## activation request.  A second dock/process launch is successful
+        ## from the user's perspective, just as it is in Pake/Tauri.
+        quit(QuitSuccess)
     fail(created.failure.detail)
   let app = created.value
   when defined(macosx):
@@ -250,16 +280,6 @@ proc main() =
       let trayIconConfigured = app.setSystemTrayIcon(iconPath)
       if not trayIconConfigured.isOk:
         fail(trayIconConfigured.failure.detail)
-  ## Register before `run()` so both in-process WinRT activation and the
-  ## terminated-process command-line activation path are delivered.  The
-  ## generic host has no application-specific handler, therefore it reports
-  ## the event to stderr for diagnostics while library consumers install
-  ## their own callback through nimino-core.
-  when defined(windows) or defined(macosx):
-    let activation = app.onNotificationActivated(proc(notificationId: string) =
-      stderr.writeLine("nimino-host: notification activated: " & notificationId))
-    if not activation.isOk:
-      fail(activation.failure.detail)
   when defined(macosx):
     let deepLink = app.onDeepLink(proc(url: string) =
       if deepLinkAllowed(url):
@@ -276,7 +296,7 @@ proc main() =
     minHeight: minHeight,
     downloadDirectory: getHomeDir() / "Downloads",
     profile: profile,
-    fullscreen: windowNode.boolean("fullscreen", false),
+    fullscreen: currentFullscreen,
     maximized: windowNode.boolean("maximized", false),
     alwaysOnTop: initialAlwaysOnTop,
     hideWindowDecorations: windowNode.boolean("hideWindowDecorations", false),
@@ -298,6 +318,17 @@ proc main() =
   if not windowCreated.isOk:
     fail(windowCreated.failure.detail)
   let window = windowCreated.value
+  ## Register before `run()` and retain the notification's web-facing click
+  ## contract.  Native activation is delivered by macOS while the host is
+  ## running; the page receives only JSON data, never interpolated source.
+  when defined(windows) or defined(macosx):
+    let activation = app.onNotificationActivated(proc(notificationId: string) =
+      let detail = $(%*{"id": notificationId})
+      discard window.evalJavaScript(
+        "window.dispatchEvent(new CustomEvent('nimino-notification-activated',{detail:" &
+        detail & "}));"))
+    if not activation.isOk:
+      fail(activation.failure.detail)
   if hideOnClose:
     let closeConfigured = window.onCloseRequested(proc(): bool =
       discard window.hide()
@@ -489,8 +520,13 @@ proc main() =
           params["label"].kind == JString:
         label = params["label"].getStr()
       elif params.kind == JObject and params.hasKey("count") and
-          params["count"].kind in {JInt, JFloat}:
-        label = $params["count"].getInt()
+          params["count"].kind == JInt:
+        let count = params["count"].getInt()
+        if count < 0:
+          return rpcFailure(rpcError(invalidRequest, "badge count must not be negative"))
+        label = $count
+      elif params.kind == JObject and params.hasKey("count"):
+        return rpcFailure(rpcError(invalidRequest, "badge count must be an integer"))
       elif params.kind != JObject:
         return rpcFailure(rpcError(invalidRequest, "badge parameters must be an object"))
       let updated = app.setDockBadge(label)
@@ -552,7 +588,7 @@ proc main() =
         group: "File", keyEquivalent: "cmd+n"),
       DesktopMenuItem(id: 211, title: "Close Window", enabled: true,
         group: "File", keyEquivalent: "cmd+w", predefined: "closeWindow"),
-      DesktopMenuItem(id: 212, title: "Clear Cache & Restart", enabled: true,
+      DesktopMenuItem(id: 212, title: "Clear Cache & Reload", enabled: true,
         group: "File", keyEquivalent: "cmd+shift+backspace"),
       DesktopMenuItem(id: 220, title: "Undo", enabled: true,
         group: "Edit", keyEquivalent: "cmd+z", predefined: "undo"),
@@ -585,9 +621,7 @@ proc main() =
       DesktopMenuItem(id: 234, title: "Actual Size", enabled: true,
         group: "View", keyEquivalent: "cmd+0"),
       DesktopMenuItem(id: 235, title: "Fullscreen", enabled: true,
-        group: "View", predefined: "fullscreen"),
-      DesktopMenuItem(id: 236, title: "Toggle Developer Tools", enabled: false,
-        group: "View", keyEquivalent: "cmd+alt+i"),
+        group: "View"),
       DesktopMenuItem(id: 240, title: "Back", enabled: true,
         group: "Navigation", keyEquivalent: "cmd+["),
       DesktopMenuItem(id: 241, title: "Forward", enabled: true,
@@ -597,7 +631,7 @@ proc main() =
       DesktopMenuItem(id: 250, title: "Minimize", enabled: true,
         group: "Window", predefined: "minimize"),
       DesktopMenuItem(id: 251, title: "Maximize", enabled: true,
-        group: "Window", predefined: "maximize"),
+        group: "Window"),
       DesktopMenuItem(id: 252, title: "Toggle Always on Top", enabled: true,
         group: "Window"),
       DesktopMenuItem(id: 253, title: "Close Window", enabled: true,
@@ -610,13 +644,16 @@ proc main() =
         if multiWindow:
           discard window.openPopup(NewWindowRequest(url: appUrl, focused: true), title = appName)
       of 212:
-        discard window.clearWebViewProfileData({webViewCookies, webViewLocalStorage, webViewCache})
-        discard window.reload()
+        discard window.clearWebViewProfileDataAndReload(
+          {webViewCookies, webViewLocalStorage, webViewCache})
       of 227, 228, 229:
         if enableFind:
-          discard window.evalJavaScript(
-            "(() => { const q = prompt('Find'); if (q) window.nimino.find(q, " &
-            (if itemId == 229: "true" else: "false") & "); })()")
+          let action = case itemId
+            of 227: "open()"
+            of 228: "next()"
+            else: "previous()"
+          discard window.evalJavaScript("window.nimino && window.nimino.findPanel && " &
+            "window.nimino.findPanel." & action)
       of 230:
         discard window.evalJavaScript("navigator.clipboard.writeText(location.href)")
       of 231: discard window.reload()
@@ -629,9 +666,13 @@ proc main() =
       of 234:
         currentZoom = 1.0
         discard window.setZoom(currentZoom)
+      of 235:
+        currentFullscreen = not currentFullscreen
+        discard window.setFullscreen(currentFullscreen)
       of 240: discard window.evalJavaScript("history.back()")
       of 241: discard window.evalJavaScript("history.forward()")
       of 242: discard window.loadUrl(appUrl)
+      of 251: discard window.maximize()
       of 252:
         currentAlwaysOnTop = not currentAlwaysOnTop
         discard window.setAlwaysOnTop(currentAlwaysOnTop)

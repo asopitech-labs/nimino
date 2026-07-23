@@ -24,11 +24,13 @@ var raceView: NativeWebView
 var raceEvaluation: Future[NativeResultOf[string]]
 var raceBrowsingData: Future[NativeResult]
 var raceCookies: Future[NativeResultOf[seq[NativeCookie]]]
+var activationShortcutConfigured: bool
+var runtimeWindowCreated: bool
 
 proc finishIfReady() =
   if idleTicks > 0 and messageReceived and navigationCompleted and
       evaluationFinished and resizeReceived and protocolCalled and
-      customResponseObserved and (not raceStarted or raceTicks > 100):
+      customResponseObserved and runtimeWindowCreated and (not raceStarted or raceTicks > 100):
     doAssert cast[NativeApp](appPtr).quit().isOk
 
 proc onEvaluation(completed: Future[NativeResultOf[string]]) {.gcsafe.} =
@@ -62,6 +64,13 @@ proc onIdle() =
     raceBrowsingData = raceView.clearBrowsingData({nativeBrowsingCookies})
     raceCookies = raceView.getCookies()
     doAssert raceWindow.close().isOk
+  if idleTicks == 3 and not runtimeWindowCreated:
+    let popup = appRef.newWindow("Nimino macOS runtime window", 300, 180)
+    doAssert popup.isOk
+    let popupView = popup.value.newWebView()
+    doAssert popupView.isOk
+    doAssert popupView.value.loadHtml("<main>runtime popup</main>").isOk
+    runtimeWindowCreated = true
   if raceStarted:
     inc raceTicks
     if raceTicks > 100:
@@ -98,11 +107,17 @@ doAssert appRef.configureNativeMenu("Nimino", [
   NativeMenuItem(id: 1, title: "Smoke", enabled: true, group: "Nimino",
     keyEquivalent: "cmd+s"),
   NativeMenuItem(id: 3, title: "Quit", enabled: true, group: "File",
-    predefined: "quit")
-], proc(itemId: uint32) = doAssert itemId == 1).isOk
+    predefined: "quit"),
+  NativeMenuItem(id: 4, title: "Minimize", enabled: true, group: "Window",
+    predefined: "minimize"),
+  NativeMenuItem(id: 5, title: "Documentation", enabled: true, group: "Help")
+], proc(itemId: uint32) = doAssert itemId in [1'u32, 5'u32]).isOk
 doAssert appRef.configureSystemTray([
   NativeMenuItem(id: 2, title: "Quit", enabled: true)
 ], proc(itemId: uint32) = discard).isOk
+doAssert appRef.setActivationShortcut("CmdOrCtrl+Shift+Space", proc(itemId: uint32) =
+  discard itemId
+  activationShortcutConfigured = true).isOk
 doAssert appRef.setIdleHandler(onIdle).isOk
 
 ## Proxy configuration is applied while the WKWebView is being constructed.
@@ -116,6 +131,7 @@ doAssert proxyView.isOk
 
 let window = appRef.newWindow("Nimino macOS smoke", 360, 240)
 doAssert window.isOk
+doAssert window.value.setMinimumSize(300, 180).isOk
 windowPtr = cast[pointer](window.value)
 doAssert window.value.onResize(proc(width, height: int) =
   doAssert width > 0 and height > 0
@@ -151,4 +167,6 @@ doAssert messageReceived
 doAssert navigationCompleted
 doAssert evaluationFinished
 doAssert resizeReceived
+doAssert runtimeWindowCreated
+doAssert not activationShortcutConfigured
 echo "macOS native smoke passed"

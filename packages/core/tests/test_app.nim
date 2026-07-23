@@ -206,6 +206,11 @@ block windowsOwnIndependentRpcAllowLists:
       proc(itemId: uint32) = doAssert itemId == 1).isOk
     doAssert not app.configureSystemTray(@[desktopItem],
       proc(itemId: uint32) = discard).isOk
+  elif defined(macosx):
+    doAssert app.configureNativeMenu("File", @[desktopItem],
+      proc(itemId: uint32) = doAssert itemId == 1).isOk
+    doAssert app.configureSystemTray(@[desktopItem],
+      proc(itemId: uint32) = discard).isOk
   doAssert not app.sendNotification(DesktopNotification(
     id: "before-run", title: "Not ready", body: "")).isOk
 
@@ -353,7 +358,7 @@ block windowsCanSelectIndependentProfiles:
   ## window has not entered the GTK main loop yet, so clearing must fail as an
   ## invalid state rather than silently reporting the feature unsupported.
   ## The dedicated `-d:niminoWsl` adapter test below retains the WSL boundary.
-  when defined(linux) and not defined(niminoWsl):
+  when (defined(linux) and not defined(niminoWsl)) or defined(macosx):
     doAssert engineClearResult.failure.kind == invalidState
   else:
     doAssert engineClearResult.failure.kind == platformUnavailable
@@ -430,6 +435,10 @@ block navigationRulesAreExplicit:
     "https://login.example.co.uk/callback") == navigationAllow
   doAssert defaultNavigationDecision("https://app.example.co.uk/",
     "https://evil.co.uk/") == navigationExternal
+  doAssert defaultNavigationDecision("file:///Applications/Demo.app/Contents/Resources/assets/index.html",
+    "file:///Applications/Demo.app/Contents/Resources/assets/second.html") == navigationAllow
+  doAssert defaultNavigationDecision("file:///Applications/Demo.app/Contents/Resources/assets/index.html",
+    "https://example.invalid/") == navigationDeny
   let created = newApp(id = "tech.asopi.navigation-test", name = "Navigation test")
   doAssert created.isOk
   let window = created.value.newWindow(title = "Navigation").value
