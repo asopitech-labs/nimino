@@ -9,6 +9,7 @@
 {.passL: "-framework WebKit".}
 {.passL: "-framework UserNotifications".}
 {.passL: "-framework Network".}
+{.passL: "-framework Security".}
 
 type
   MacCallback* = pointer
@@ -19,7 +20,8 @@ proc macosAppStop*(app: pointer) {.cdecl, importc: "nimino_macos_app_stop".}
 proc macosAppDispose*(app: pointer) {.cdecl, importc: "nimino_macos_app_dispose".}
 proc macosAppPostToUi*(app: pointer; callback: MacCallback) {.cdecl, importc: "nimino_macos_app_post_to_ui".}
 proc macosAppInstallMenu*(app: pointer; title: cstring; ids: ptr uint32;
-                          titles: ptr cstring; enabled: ptr cint; count: cint;
+                          titles, groups, keyEquivalents, predefined: ptr cstring;
+                          enabled: ptr cint; count: cint;
                           callback: MacCallback) {.cdecl, importc: "nimino_macos_app_install_menu".}
 proc macosAppRemoveMenu*(app: pointer) {.cdecl, importc: "nimino_macos_app_remove_menu".}
 proc macosAppInstallTray*(app: pointer; ids: ptr uint32; titles: ptr cstring;
@@ -41,6 +43,8 @@ proc macosAppSetReopenCallback*(app: pointer; callback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_app_set_reopen_callback".}
 proc macosAppSendNotification*(app: pointer; id, title, body: cstring): cint
   {.cdecl, importc: "nimino_macos_app_send_notification".}
+proc macosAppSetDockBadge*(app: pointer; label: cstring): cint
+  {.cdecl, importc: "nimino_macos_app_set_dock_badge".}
 proc macosAppRegisterScheme*(app: pointer; scheme: cstring; callback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_app_register_scheme".}
 proc macosSchemeRespond*(app, task: pointer; status: cint; mimeType, body: cstring)

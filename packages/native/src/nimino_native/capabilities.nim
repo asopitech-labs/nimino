@@ -7,6 +7,7 @@ type
     nativeMenu
     systemTray
     nativeNotification
+    dockBadge
     customProtocol
     webPermissionEvents
     ## Autostart registration is intentionally opt-in and currently has no

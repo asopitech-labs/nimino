@@ -97,6 +97,7 @@ type
     nativeMenu
     systemTray
     nativeNotification
+    dockBadge
     customProtocol
     webPermissionEvents
     autostart
@@ -131,6 +132,12 @@ type
     id*: uint32
     title*: string
     enabled*: bool
+    ## Optional native submenu title. Currently consumed by the macOS backend.
+    group*: string
+    ## Optional macOS key equivalent, for example "cmd+r".
+    keyEquivalent*: string
+    ## Optional AppKit predefined action, such as "hide", "quit", or "copy".
+    predefined*: string
 
   DesktopNotification* = object
     id*: string
@@ -157,6 +164,8 @@ type
     hideTitleBar*: bool
     minWidth*: int
     minHeight*: int
+    ## Optional OS download directory. Empty keeps the profile download store.
+    downloadDirectory*: string
     userAgent*: string
     proxyUrl*: string
     incognito*: bool
@@ -195,6 +204,9 @@ type
     y*: int
     positionKnown*: bool
     visible*: bool
+    fullscreen*: bool
+    maximized*: bool
+    alwaysOnTop*: bool
 
   NavigationRules* = object
     allow*: seq[string]
@@ -337,6 +349,7 @@ type
     resizable: bool
     minWidth: int
     minHeight: int
+    downloadDirectory: string
     lastUrl: string
     rpc*: RpcRegistry
     documentStartBridgeScript: string
@@ -1285,7 +1298,10 @@ proc desktopMenuJson(items: openArray[DesktopMenuItem]): JsonNode =
     result.add(%*{
       "id": item.id,
       "title": item.title,
-      "enabled": item.enabled
+      "enabled": item.enabled,
+      "group": item.group,
+      "keyEquivalent": item.keyEquivalent,
+      "predefined": item.predefined
     })
 
 proc configureNativeMenu*(app: App; title: string;
@@ -1307,7 +1323,8 @@ proc configureNativeMenu*(app: App; title: string;
     var nativeItems: seq[native.NativeMenuItem]
     for item in items:
       nativeItems.add(native.NativeMenuItem(id: item.id, title: item.title,
-        enabled: item.enabled))
+        enabled: item.enabled, group: item.group,
+        keyEquivalent: item.keyEquivalent, predefined: item.predefined))
     let configured = native.configureNativeMenu(app.nativeApp, title, nativeItems,
       proc(itemId: uint32) =
         if not handler.isNil:
@@ -1343,7 +1360,8 @@ proc configureSystemTray*(app: App; items: openArray[DesktopMenuItem];
     var nativeItems: seq[native.NativeMenuItem]
     for item in items:
       nativeItems.add(native.NativeMenuItem(id: item.id, title: item.title,
-        enabled: item.enabled))
+        enabled: item.enabled, group: item.group,
+        keyEquivalent: item.keyEquivalent, predefined: item.predefined))
     let configured = native.configureSystemTray(app.nativeApp, nativeItems,
       proc(itemId: uint32) =
         if not handler.isNil:
@@ -1415,6 +1433,25 @@ proc sendNotification*(app: App; notification: DesktopNotification): CoreResult 
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else:
       coreFailure(coreError(platformUnavailable, "app.sendNotification"))
+
+proc setDockBadge*(app: App; label: string): CoreResult =
+  ## Set the macOS Dock badge. Pass an empty label to clear it.
+  if app.isNil or app.state != coreRunning:
+    return coreFailure(coreError(invalidState, "app.setDockBadge"))
+  case app.backend
+  of nativeBackend:
+    let updated = native.setDockBadge(app.nativeApp, label)
+    if updated.isOk: coreSuccess()
+    else: coreFailure(updated.failure.mapNativeError())
+  of wslBackend:
+    when defined(linux):
+      let response = app.wslCall("app.setDockBadge", $(%*{"label": label}))
+      if response.isOk: coreSuccess() else: coreFailure(response.failure)
+    else:
+      coreFailure(coreError(platformUnavailable, "app.setDockBadge"))
+
+proc clearDockBadge*(app: App): CoreResult =
+  app.setDockBadge("")
 
 proc onNotificationActivated*(app: App;
                               handler: proc(notificationId: string)): CoreResult =
@@ -1504,6 +1541,7 @@ proc supports*(app: App; capability: Capability): CoreResultOf[bool] =
       of nativeMenu: native.nativeMenu
       of systemTray: native.systemTray
       of nativeNotification: native.nativeNotification
+      of dockBadge: native.dockBadge
       of customProtocol: native.customProtocol
       of webPermissionEvents: native.webPermissionEvents
       of autostart: native.autostart
@@ -1646,9 +1684,11 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                           resizable: true,
                           minWidth: options.minWidth,
                           minHeight: options.minHeight,
+                          downloadDirectory: options.downloadDirectory,
                           inlineRemoteAssets: options.inlineRemoteAssets,
                           windowState: WindowState(width: options.width, height: options.height,
-                            visible: true),
+                            visible: true, fullscreen: options.fullscreen,
+                            maximized: options.maximized, alwaysOnTop: options.alwaysOnTop),
                           injectionCss: options.injectionCss,
                           injectionJavaScript: options.injectionJavaScript,
                           injectionEnabled: options.injectionEnabled or
@@ -1736,9 +1776,11 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                       resizable: true,
                       minWidth: options.minWidth,
                       minHeight: options.minHeight,
+                      downloadDirectory: options.downloadDirectory,
                       inlineRemoteAssets: options.inlineRemoteAssets,
                       windowState: WindowState(width: options.width, height: options.height,
-                        visible: true),
+                        visible: true, fullscreen: options.fullscreen,
+                        maximized: options.maximized, alwaysOnTop: options.alwaysOnTop),
                       injectionCss: options.injectionCss,
                       injectionJavaScript: options.injectionJavaScript,
                       injectionEnabled: options.injectionEnabled or
@@ -2021,7 +2063,10 @@ proc clearDownloads*(window: Window): CoreResult =
 proc downloadPath*(window: Window; suggestedName: string): CoreResultOf[string] =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailureOf[string](coreError(invalidState, "window.downloadPath"))
-  let path = profileDownloadPath(window.app.id, window.profileName, suggestedName)
+  let path = if window.downloadDirectory.len > 0:
+      downloadPathInDirectory(window.downloadDirectory, suggestedName)
+    else:
+      profileDownloadPath(window.app.id, window.profileName, suggestedName)
   if path.isOk:
     coreSuccessOf(path.value)
   else:
@@ -2691,7 +2736,10 @@ proc saveWindowState*(window: Window): CoreResult =
       "x": window.windowState.x,
       "y": window.windowState.y,
       "positionKnown": window.windowState.positionKnown,
-      "visible": window.windowState.visible
+      "visible": window.windowState.visible,
+      "fullscreen": window.windowState.fullscreen,
+      "maximized": window.windowState.maximized,
+      "alwaysOnTop": window.windowState.alwaysOnTop
     })
   if written.isOk:
     coreSuccess()
@@ -2727,6 +2775,21 @@ proc restoreWindowState*(window: Window): CoreResult =
     let positioned = window.setPosition(node["x"].getInt(), node["y"].getInt())
     if not positioned.isOk:
       return positioned
+  if node.hasKey("fullscreen") and node["fullscreen"].kind == JBool and
+      node["fullscreen"].getBool():
+    let fullscreen = window.setFullscreen(true)
+    if not fullscreen.isOk:
+      return fullscreen
+  elif node.hasKey("maximized") and node["maximized"].kind == JBool and
+      node["maximized"].getBool():
+    let maximized = window.maximize()
+    if not maximized.isOk:
+      return maximized
+  if node.hasKey("alwaysOnTop") and node["alwaysOnTop"].kind == JBool and
+      node["alwaysOnTop"].getBool():
+    let alwaysOnTop = window.setAlwaysOnTop(true)
+    if not alwaysOnTop.isOk:
+      return alwaysOnTop
   if node.hasKey("visible") and node["visible"].kind == JBool:
     if node["visible"].getBool():
       return window.show()
@@ -2793,6 +2856,10 @@ proc maximize*(window: Window): CoreResult =
     else: coreFailure(coreError(platformUnavailable, "window.maximize"))
   if outcome.isOk:
     window.maximized = true
+    window.windowState.maximized = true
+    window.windowState.fullscreen = false
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
   outcome
 
 proc setFullscreen*(window: Window; enabled: bool): CoreResult =
@@ -2810,6 +2877,12 @@ proc setFullscreen*(window: Window; enabled: bool): CoreResult =
     else: coreFailure(coreError(platformUnavailable, "window.setFullscreen"))
   if outcome.isOk:
     window.fullscreen = enabled
+    window.windowState.fullscreen = enabled
+    if enabled:
+      window.maximized = false
+      window.windowState.maximized = false
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
   outcome
 
 proc setZoom*(window: Window; factor: float): CoreResult =
@@ -2856,6 +2929,9 @@ proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult =
     else: coreFailure(coreError(platformUnavailable, "window.setAlwaysOnTop"))
   if outcome.isOk:
     window.alwaysOnTop = enabled
+    window.windowState.alwaysOnTop = enabled
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
   outcome
 
 proc restore*(window: Window): CoreResult =
@@ -2870,6 +2946,9 @@ proc restore*(window: Window): CoreResult =
     else: coreFailure(coreError(platformUnavailable, "window.restore"))
   if outcome.isOk:
     window.maximized = false
+    window.windowState.maximized = false
+    let saved = window.saveWindowState()
+    if not saved.isOk: return saved
   outcome
 
 proc setResizable*(window: Window; resizable: bool): CoreResult =
@@ -3103,6 +3182,7 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
     hideTitleBar: window.hideTitleBar,
     minWidth: window.minWidth,
     minHeight: window.minHeight,
+    downloadDirectory: window.downloadDirectory,
     userAgent: window.userAgent,
     proxyUrl: window.proxyUrl,
     incognito: window.incognito,

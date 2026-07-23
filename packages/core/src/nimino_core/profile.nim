@@ -102,12 +102,10 @@ proc profileDirectoryPath*(appId, profile: string;
     return root
   profileSuccess(root.value / $directory)
 
-proc profileDownloadPath*(appId, profile, suggestedName: string): ProfilePathResult =
-  ## Return a safe path inside the profile download directory.  The caller
-  ## still owns the actual write; an existing file is never selected.
-  let directory = profileDirectoryPath(appId, profile, downloads)
-  if not directory.isOk:
-    return directory
+proc downloadPathInDirectory*(directory, suggestedName: string): ProfilePathResult =
+  ## Return a collision-safe path in an OS download directory.
+  if directory.len == 0:
+    return profileFailure("download directory must not be empty")
   var name = suggestedName
   if name.len == 0:
     name = "download"
@@ -124,12 +122,20 @@ proc profileDownloadPath*(appId, profile, suggestedName: string): ProfilePathRes
       "LPT6", "LPT7", "LPT8", "LPT9"]:
     name = "_" & name
   let safeParts = splitFile(name)
-  var candidate = directory.value / name
+  var candidate = directory / name
   var suffix = 1
   while fileExists(candidate):
-    candidate = directory.value / (safeParts.name & " (" & $suffix & ")" & safeParts.ext)
+    candidate = directory / (safeParts.name & " (" & $suffix & ")" & safeParts.ext)
     inc suffix
   profileSuccess(candidate)
+
+proc profileDownloadPath*(appId, profile, suggestedName: string): ProfilePathResult =
+  ## Return a safe path inside the profile download directory.  The caller
+  ## still owns the actual write; an existing file is never selected.
+  let directory = profileDirectoryPath(appId, profile, downloads)
+  if not directory.isOk:
+    return directory
+  downloadPathInDirectory(directory.value, suggestedName)
 
 proc storeProfileDownload*(appId, profile, suggestedName, content: string): ProfilePathResult =
   let destination = profileDownloadPath(appId, profile, suggestedName)

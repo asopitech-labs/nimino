@@ -83,6 +83,7 @@ appPtr = cast[pointer](appRef)
 doAssert appRef.supports(multipleWebViews)
 doAssert appRef.supports(nativeMenu)
 doAssert appRef.supports(nativeNotification)
+doAssert appRef.supports(dockBadge)
 doAssert appRef.supports(systemTray)
 doAssert appRef.onNotificationActivated(proc(notificationId: string) = discard).isOk
 doAssert appRef.onDeepLink(proc(url: string) = discard).isOk
@@ -94,7 +95,10 @@ doAssert appRef.registerCustomProtocol("nimino", proc(
   NativeCustomProtocolResponse(statusCode: 200, mimeType: "text/html",
     body: "<script>window.webkit.messageHandlers.nimino.postMessage('Nimino macOS message')</script>")).isOk
 doAssert appRef.configureNativeMenu("Nimino", [
-  NativeMenuItem(id: 1, title: "Smoke", enabled: true)
+  NativeMenuItem(id: 1, title: "Smoke", enabled: true, group: "Nimino",
+    keyEquivalent: "cmd+s"),
+  NativeMenuItem(id: 3, title: "Quit", enabled: true, group: "File",
+    predefined: "quit")
 ], proc(itemId: uint32) = doAssert itemId == 1).isOk
 doAssert appRef.configureSystemTray([
   NativeMenuItem(id: 2, title: "Quit", enabled: true)

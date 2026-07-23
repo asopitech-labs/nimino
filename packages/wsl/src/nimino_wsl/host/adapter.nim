@@ -207,8 +207,15 @@ proc requiredMenuItems(node: JsonNode; name: string): ProtocolResultOf[seq[Nativ
       if existing.id == uint32(id):
         return failureOf[seq[NativeMenuItem]](protocolError(invalidMessage,
           name & " contains duplicate item IDs"))
+    let group = if entry.hasKey("group") and entry["group"].kind == JString:
+        entry["group"].getStr() else: ""
+    let keyEquivalent = if entry.hasKey("keyEquivalent") and
+        entry["keyEquivalent"].kind == JString: entry["keyEquivalent"].getStr() else: ""
+    let predefined = if entry.hasKey("predefined") and entry["predefined"].kind == JString:
+        entry["predefined"].getStr() else: ""
     items.add(NativeMenuItem(id: uint32(id), title: title,
-      enabled: entry["enabled"].getBool()))
+      enabled: entry["enabled"].getBool(), group: group,
+      keyEquivalent: keyEquivalent, predefined: predefined))
   successOf(items)
 
 proc requiredInteger(node: JsonNode; name: string): ProtocolResultOf[int] =

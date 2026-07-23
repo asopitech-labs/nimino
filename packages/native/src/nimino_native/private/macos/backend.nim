@@ -548,13 +548,20 @@ proc macosInstallNativeMenu(app: NativeApp): NativeResult =
     return success()
   var ids = newSeq[uint32](app.nativeMenuItems.len)
   var titles = newSeq[cstring](app.nativeMenuItems.len)
+  var groups = newSeq[cstring](app.nativeMenuItems.len)
+  var keyEquivalents = newSeq[cstring](app.nativeMenuItems.len)
+  var predefined = newSeq[cstring](app.nativeMenuItems.len)
   var enabled = newSeq[cint](app.nativeMenuItems.len)
   for index, item in app.nativeMenuItems:
     ids[index] = item.id
     titles[index] = item.title.cstring
+    groups[index] = item.group.cstring
+    keyEquivalents[index] = item.keyEquivalent.cstring
+    predefined[index] = item.predefined.cstring
     enabled[index] = if item.enabled: 1 else: 0
   macosAppInstallMenu(app.platformApp, app.nativeMenuTitle.cstring, addr ids[0],
-    addr titles[0], addr enabled[0], ids.len.cint, cast[MacCallback](macosMenuAction))
+    addr titles[0], addr groups[0], addr keyEquivalents[0], addr predefined[0],
+    addr enabled[0], ids.len.cint, cast[MacCallback](macosMenuAction))
   app.nativeMenuInstalled = true
   success()
 

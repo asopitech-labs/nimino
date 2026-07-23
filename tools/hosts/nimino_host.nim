@@ -59,6 +59,12 @@ proc readInjection(root: string; names: seq[string]): seq[string] =
     except OSError:
       fail("injection file cannot be read: " & name)
 
+proc emitInAppNotification(window: Window; notification: DesktopNotification) =
+  let detail = $(%*{"id": notification.id, "title": notification.title,
+    "body": notification.body})
+  discard window.evalJavaScript(
+    "window.dispatchEvent(new CustomEvent('nimino-notification',{detail:" & detail & "}));")
+
 proc main() =
   ## Toast activation of a terminated Win32 process is forwarded by the
   ## generated launcher as an additional argument.  Keep the manifest option
@@ -121,6 +127,12 @@ proc main() =
         fail("manifest localEntry escapes the package root")
     if not fileExists(root / localEntry):
       fail("manifest localEntry is missing: " & localEntry)
+  let appUrl = if url.len > 0:
+      url
+    else:
+      let localPath = (root / localEntry).absolutePath().normalizedPath().replace('\\', '/')
+      let prefix = if localPath.len >= 2 and localPath[1] == ':': "file:///" else: "file://"
+      prefix & encodeUrl(if prefix == "file:///": localPath[0 .. ^1] else: localPath, false)
   let profile = optionalString(manifest, "profile", "default")
   let windowNode = if manifest.hasKey("window") and manifest["window"].kind == JObject:
       manifest["window"] else: newJObject()
@@ -136,6 +148,28 @@ proc main() =
       manifest["injection"] else: newJObject()
   let deepLinkNode = if manifest.hasKey("deepLink") and manifest["deepLink"].kind == JObject:
       manifest["deepLink"] else: newJObject()
+  var injectionJavaScript = root.readInjection(injection.stringArray("javascript"))
+  when defined(macosx):
+    injectionJavaScript.add("(() => { const invoke = (label) => " &
+      "globalThis.nimino && globalThis.nimino.invoke ? " &
+      "globalThis.nimino.invoke('app.setDockBadge', { label: String(label || '') }) : " &
+      "Promise.reject(new Error('Nimino badge RPC is unavailable')); " &
+      "const setBadge = (count) => invoke(count == null ? '' : count); " &
+      "const clearBadge = () => invoke(''); " &
+      "if (globalThis.navigator) { globalThis.navigator.setAppBadge = setBadge; " &
+      "globalThis.navigator.clearAppBadge = clearBadge; } " &
+      "globalThis.nimino = globalThis.nimino || {}; " &
+      "globalThis.nimino.setDockBadge = setBadge; " &
+      "globalThis.nimino.clearDockBadge = clearBadge; })();")
+    injectionJavaScript.add("(() => { document.addEventListener('nimino-notification', (event) => { " &
+      "const detail = event.detail || {}; const banner = document.createElement('div'); " &
+      "banner.setAttribute('role','status'); banner.textContent = detail.title ? " &
+      "`${detail.title}: ${detail.body || ''}` : (detail.body || 'Notification'); " &
+      "Object.assign(banner.style,{position:'fixed',right:'20px',top:'20px',zIndex:'2147483647'," &
+      "padding:'12px 16px',borderRadius:'8px',background:'#222',color:'#fff'," &
+      "font:'-apple-system,BlinkMacSystemFont,sans-serif',boxShadow:'0 4px 16px #0006'}); " &
+      "(document.body || document.documentElement).appendChild(banner); " &
+      "setTimeout(() => banner.remove(), 5000); }); })();")
   let allowedDeepLinkSchemes = deepLinkNode.stringArray("schemes")
   proc deepLinkAllowed(value: string): bool =
     try:
@@ -173,6 +207,7 @@ proc main() =
     if minWidth > 0 or minHeight > 0:
       fail("window minimum size is only supported by the macOS host")
   let hideTitleBar = windowNode.boolean("hideTitleBar", false)
+  let initialAlwaysOnTop = windowNode.boolean("alwaysOnTop", false)
   when not defined(macosx):
     if hideTitleBar:
       fail("window.hideTitleBar is only supported by the macOS host")
@@ -239,10 +274,11 @@ proc main() =
     height: windowNode.integer("height", 800),
     minWidth: minWidth,
     minHeight: minHeight,
+    downloadDirectory: getHomeDir() / "Downloads",
     profile: profile,
     fullscreen: windowNode.boolean("fullscreen", false),
     maximized: windowNode.boolean("maximized", false),
-    alwaysOnTop: windowNode.boolean("alwaysOnTop", false),
+    alwaysOnTop: initialAlwaysOnTop,
     hideWindowDecorations: windowNode.boolean("hideWindowDecorations", false),
     hideTitleBar: hideTitleBar,
     enableDragDrop: windowNode.boolean("enableDragDrop", false),
@@ -258,7 +294,7 @@ proc main() =
     multiWindow: multiWindow,
     hideOnClose: hideOnClose,
     injectionCss: root.readInjection(injection.stringArray("css")),
-    injectionJavaScript: root.readInjection(injection.stringArray("javascript"))))
+    injectionJavaScript: injectionJavaScript))
   if not windowCreated.isOk:
     fail(windowCreated.failure.detail)
   let window = windowCreated.value
@@ -285,8 +321,8 @@ proc main() =
         else:
           discard window.hide()
       of 1:
-        if multiWindow and url.len > 0:
-          discard window.openPopup(NewWindowRequest(url: url, focused: true), title = appName)
+        if multiWindow:
+          discard window.openPopup(NewWindowRequest(url: appUrl, focused: true), title = appName)
       of 2: discard window.hide()
       of 3:
         discard window.show()
@@ -323,7 +359,7 @@ proc main() =
     if internalUrlRegex.len > 0:
       return target.match(internalRegex)
     true
-  if url.len > 0:
+  if appUrl.len > 0:
     let policyConfigured = if allowPatterns.len > 0 or externalPatterns.len > 0:
       window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
         if isForcedInternalNavigation(request.url):
@@ -337,7 +373,7 @@ proc main() =
     else:
       window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
         if isForcedInternalNavigation(request.url): navigationAllow
-        else: defaultNavigationDecision(url, request.url))
+        else: defaultNavigationDecision(appUrl, request.url))
     if not policyConfigured.isOk:
       fail(policyConfigured.failure.detail)
   let popupConfigured = window.onNewWindow(proc(request: NewWindowRequest): bool =
@@ -352,7 +388,7 @@ proc main() =
         navigationDeny
     else:
       if isForcedInternalNavigation(request.url): navigationAllow
-      else: defaultNavigationDecision(url, request.url)
+      else: defaultNavigationDecision(appUrl, request.url)
     let popupDecision = if decision == navigationAllow and not newWindow and
         not isAuthenticationNavigation(request.url):
         navigationExternal
@@ -407,10 +443,14 @@ proc main() =
       state = "cancelled"
     of downloadProgress:
       return
-    discard app.sendNotification(DesktopNotification(
+    let notification = DesktopNotification(
       id: downloadNotificationId(downloadNotificationSequence, state),
       title: title,
-      body: body)))
+      body: body)
+    let sent = app.sendNotification(notification)
+    if not sent.isOk:
+      emitInAppNotification(window, notification)
+    )
   if not downloadEvents.isOk:
     fail(downloadEvents.failure.detail)
   let permissionConfigured = window.onPermission(proc(request: PermissionRequest): PermissionDecision =
@@ -435,9 +475,29 @@ proc main() =
         id: params["id"].getStr(), title: params["title"].getStr(),
         body: params["body"].getStr()))
       if sent.isOk: rpcSuccess(%*{"ok": true})
-      else: rpcFailure(rpcError(handlerFailed, sent.failure.detail)))
+      else:
+        emitInAppNotification(window, DesktopNotification(
+          id: params["id"].getStr(), title: params["title"].getStr(),
+          body: params["body"].getStr()))
+        rpcSuccess(%*{"ok": false, "fallback": true}))
   if not notificationRpc:
     fail("unable to register app.sendNotification RPC")
+  let badgeRpc = window.rpc.registerSync("app.setDockBadge",
+    proc(params: JsonNode): RpcResult =
+      var label = ""
+      if params.kind == JObject and params.hasKey("label") and
+          params["label"].kind == JString:
+        label = params["label"].getStr()
+      elif params.kind == JObject and params.hasKey("count") and
+          params["count"].kind in {JInt, JFloat}:
+        label = $params["count"].getInt()
+      elif params.kind != JObject:
+        return rpcFailure(rpcError(invalidRequest, "badge parameters must be an object"))
+      let updated = app.setDockBadge(label)
+      if updated.isOk: rpcSuccess(%*{"ok": true})
+      else: rpcFailure(rpcError(handlerFailed, updated.failure.detail)))
+  if not badgeRpc:
+    fail("unable to register app.setDockBadge RPC")
   if windowNode.boolean("enableDragDrop", false):
     let fileDropConfigured = window.onFileDrop(proc(paths: seq[string]) =
       var encoded = newJArray()
@@ -472,27 +532,111 @@ proc main() =
   if not loaded.isOk:
     fail(loaded.failure.detail)
   when defined(macosx):
+    var currentZoom = zoomFactor
+    var currentAlwaysOnTop = initialAlwaysOnTop
+    let appMenuGroup = appName
     var menuItems = @[
-      DesktopMenuItem(id: 100, title: "Show", enabled: true),
-      DesktopMenuItem(id: 101, title: "Hide", enabled: true),
-      DesktopMenuItem(id: 102, title: "Reload", enabled: true),
-      DesktopMenuItem(id: 103, title: "Find", enabled: enableFind),
-      DesktopMenuItem(id: 104, title: "Quit", enabled: true)]
-    if multiWindow:
-      menuItems.insert(DesktopMenuItem(id: 105, title: "New Window", enabled: true), 0)
+      DesktopMenuItem(id: 200, title: "About " & appName, enabled: true,
+        group: appMenuGroup, predefined: "about"),
+      DesktopMenuItem(id: 201, title: "Services", enabled: true,
+        group: appMenuGroup, predefined: "services"),
+      DesktopMenuItem(id: 202, title: "Hide", enabled: true,
+        group: appMenuGroup, keyEquivalent: "cmd+h", predefined: "hide"),
+      DesktopMenuItem(id: 203, title: "Hide Others", enabled: true,
+        group: appMenuGroup, keyEquivalent: "cmd+alt+h", predefined: "hideOthers"),
+      DesktopMenuItem(id: 204, title: "Show All", enabled: true,
+        group: appMenuGroup, predefined: "showAll"),
+      DesktopMenuItem(id: 205, title: "Quit " & appName, enabled: true,
+        group: appMenuGroup, keyEquivalent: "cmd+q", predefined: "quit"),
+      DesktopMenuItem(id: 210, title: "New Window", enabled: multiWindow,
+        group: "File", keyEquivalent: "cmd+n"),
+      DesktopMenuItem(id: 211, title: "Close Window", enabled: true,
+        group: "File", keyEquivalent: "cmd+w", predefined: "closeWindow"),
+      DesktopMenuItem(id: 212, title: "Clear Cache & Restart", enabled: true,
+        group: "File", keyEquivalent: "cmd+shift+backspace"),
+      DesktopMenuItem(id: 220, title: "Undo", enabled: true,
+        group: "Edit", keyEquivalent: "cmd+z", predefined: "undo"),
+      DesktopMenuItem(id: 221, title: "Redo", enabled: true,
+        group: "Edit", keyEquivalent: "cmd+shift+z", predefined: "redo"),
+      DesktopMenuItem(id: 222, title: "Cut", enabled: true,
+        group: "Edit", keyEquivalent: "cmd+x", predefined: "cut"),
+      DesktopMenuItem(id: 223, title: "Copy", enabled: true,
+        group: "Edit", keyEquivalent: "cmd+c", predefined: "copy"),
+      DesktopMenuItem(id: 224, title: "Paste", enabled: true,
+        group: "Edit", keyEquivalent: "cmd+v", predefined: "paste"),
+      DesktopMenuItem(id: 225, title: "Paste and Match Style", enabled: true,
+        group: "Edit", keyEquivalent: "cmd+shift+option+v", predefined: "pasteAndMatchStyle"),
+      DesktopMenuItem(id: 226, title: "Select All", enabled: true,
+        group: "Edit", keyEquivalent: "cmd+a", predefined: "selectAll"),
+      DesktopMenuItem(id: 227, title: "Find", enabled: enableFind,
+        group: "Edit", keyEquivalent: "cmd+f"),
+      DesktopMenuItem(id: 228, title: "Find Next", enabled: enableFind,
+        group: "Edit", keyEquivalent: "cmd+g"),
+      DesktopMenuItem(id: 229, title: "Find Previous", enabled: enableFind,
+        group: "Edit", keyEquivalent: "cmd+shift+g"),
+      DesktopMenuItem(id: 230, title: "Copy URL", enabled: true,
+        group: "Edit", keyEquivalent: "cmd+l"),
+      DesktopMenuItem(id: 231, title: "Reload", enabled: true,
+        group: "View", keyEquivalent: "cmd+r"),
+      DesktopMenuItem(id: 232, title: "Zoom In", enabled: true,
+        group: "View", keyEquivalent: "cmd+="),
+      DesktopMenuItem(id: 233, title: "Zoom Out", enabled: true,
+        group: "View", keyEquivalent: "cmd+-"),
+      DesktopMenuItem(id: 234, title: "Actual Size", enabled: true,
+        group: "View", keyEquivalent: "cmd+0"),
+      DesktopMenuItem(id: 235, title: "Fullscreen", enabled: true,
+        group: "View", predefined: "fullscreen"),
+      DesktopMenuItem(id: 236, title: "Toggle Developer Tools", enabled: false,
+        group: "View", keyEquivalent: "cmd+alt+i"),
+      DesktopMenuItem(id: 240, title: "Back", enabled: true,
+        group: "Navigation", keyEquivalent: "cmd+["),
+      DesktopMenuItem(id: 241, title: "Forward", enabled: true,
+        group: "Navigation", keyEquivalent: "cmd+]"),
+      DesktopMenuItem(id: 242, title: "Go Home", enabled: true,
+        group: "Navigation", keyEquivalent: "cmd+shift+h"),
+      DesktopMenuItem(id: 250, title: "Minimize", enabled: true,
+        group: "Window", predefined: "minimize"),
+      DesktopMenuItem(id: 251, title: "Maximize", enabled: true,
+        group: "Window", predefined: "maximize"),
+      DesktopMenuItem(id: 252, title: "Toggle Always on Top", enabled: true,
+        group: "Window"),
+      DesktopMenuItem(id: 253, title: "Close Window", enabled: true,
+        group: "Window", predefined: "closeWindow"),
+      DesktopMenuItem(id: 260, title: "Nimino GitHub", enabled: true,
+        group: "Help")]
     let menuConfigured = app.configureNativeMenu(appName, menuItems, proc(itemId: uint32) =
       case itemId
-      of 100: discard window.show()
-      of 101: discard window.hide()
-      of 102: discard window.reload()
-      of 103:
+      of 210:
+        if multiWindow:
+          discard window.openPopup(NewWindowRequest(url: appUrl, focused: true), title = appName)
+      of 212:
+        discard window.clearWebViewProfileData({webViewCookies, webViewLocalStorage, webViewCache})
+        discard window.reload()
+      of 227, 228, 229:
         if enableFind:
           discard window.evalJavaScript(
-            "(() => { const q = prompt('Find'); if (q) window.nimino.find(q); })()")
-      of 104: discard app.quit()
-      of 105:
-        if multiWindow and url.len > 0:
-          discard window.openPopup(NewWindowRequest(url: url, focused: true), title = appName)
+            "(() => { const q = prompt('Find'); if (q) window.nimino.find(q, " &
+            (if itemId == 229: "true" else: "false") & "); })()")
+      of 230:
+        discard window.evalJavaScript("navigator.clipboard.writeText(location.href)")
+      of 231: discard window.reload()
+      of 232:
+        currentZoom = min(5.0, currentZoom + 0.1)
+        discard window.setZoom(currentZoom)
+      of 233:
+        currentZoom = max(0.25, currentZoom - 0.1)
+        discard window.setZoom(currentZoom)
+      of 234:
+        currentZoom = 1.0
+        discard window.setZoom(currentZoom)
+      of 240: discard window.evalJavaScript("history.back()")
+      of 241: discard window.evalJavaScript("history.forward()")
+      of 242: discard window.loadUrl(appUrl)
+      of 252:
+        currentAlwaysOnTop = not currentAlwaysOnTop
+        discard window.setAlwaysOnTop(currentAlwaysOnTop)
+      of 260:
+        discard window.openExternally("https://github.com/asopitech-labs/nimino")
       else: discard)
     if not menuConfigured.isOk:
       fail(menuConfigured.failure.detail)

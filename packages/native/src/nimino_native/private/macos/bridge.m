@@ -2,6 +2,7 @@
 #import <WebKit/WebKit.h>
 #import <UserNotifications/UserNotifications.h>
 #import <Network/Network.h>
+#import <Security/Security.h>
 #import <dispatch/dispatch.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -299,6 +300,22 @@ static void niminoLogNotificationFailure(const char *operation, NSError *error) 
           ". An unsigned or Ad-hoc local bundle may launch but can be rejected by "
           "macOS UserNotifications; use an Apple-issued development identity for "
           "notification testing or provide an in-app fallback.\n");
+}
+
+static BOOL niminoHasAppleIssuedSigning(void) {
+  SecCodeRef code = NULL;
+  CFDictionaryRef information = NULL;
+  if (SecCodeCopySelf(kSecCSDefaultFlags, &code) != errSecSuccess || !code)
+    return NO;
+  OSStatus status = SecCodeCopySigningInformation(code, kSecCSSigningInformation, &information);
+  BOOL result = NO;
+  if (status == errSecSuccess && information) {
+    CFStringRef team = (CFStringRef)CFDictionaryGetValue(information, kSecCodeInfoTeamIdentifier);
+    result = team && CFGetTypeID(team) == CFStringGetTypeID() && CFStringGetLength(team) > 0;
+  }
+  if (information) CFRelease(information);
+  CFRelease(code);
+  return result;
 }
 
 @implementation NiminoApplicationDelegate
@@ -645,7 +662,9 @@ void nimino_macos_app_post_to_ui(void *opaque, void *callback) {
 }
 
 void nimino_macos_app_install_menu(void *opaque, const char *title, uint32_t *ids,
-                                   const char **titles, int *enabled, int count, void *callback) {
+                                   const char **titles, const char **groups,
+                                   const char **keyEquivalents, const char **predefined,
+                                   int *enabled, int count, void *callback) {
   MacAppContext *context = (MacAppContext *)opaque;
   if (!context) return;
   [context->menu release];
@@ -654,23 +673,82 @@ void nimino_macos_app_install_menu(void *opaque, const char *title, uint32_t *id
   context->menuTarget.context = context;
   context->menuCallback = (MacMenuCallback)callback;
   NSMenu *main = [[NSMenu alloc] initWithTitle:@"Nimino"];
-  NSMenuItem *root = [[NSMenuItem alloc] initWithTitle:title ? [NSString stringWithUTF8String:title] : @"Nimino"
-                                                action:nil keyEquivalent:@""];
-  NSMenu *submenu = [[NSMenu alloc] initWithTitle:root.title];
+  main.autoenablesItems = NO;
+  NSString *applicationTitle = title ? [NSString stringWithUTF8String:title] : @"Nimino";
+  NSString *currentGroup = nil;
+  NSMenu *submenu = nil;
+  NSMenuItem *root = nil;
   for (int i = 0; i < count; i++) {
     NSString *itemTitle = titles[i] ? [NSString stringWithUTF8String:titles[i]] : @"";
+    NSString *group = groups && groups[i] && groups[i][0]
+      ? [NSString stringWithUTF8String:groups[i]] : applicationTitle;
+    if (!currentGroup || ![currentGroup isEqualToString:group]) {
+      [submenu release];
+      [root release];
+      [currentGroup release];
+      currentGroup = [group copy];
+      root = [[NSMenuItem alloc] initWithTitle:group action:nil keyEquivalent:@""];
+      submenu = [[NSMenu alloc] initWithTitle:group];
+      submenu.autoenablesItems = NO;
+      [root setSubmenu:submenu];
+      [main addItem:root];
+    }
+    NSString *predefinedName = predefined && predefined[i] ?
+      [NSString stringWithUTF8String:predefined[i]] : @"";
+    SEL predefinedAction = nil;
+    if ([predefinedName isEqualToString:@"about"]) predefinedAction = @selector(orderFrontStandardAboutPanel:);
+    else if ([predefinedName isEqualToString:@"hide"]) predefinedAction = @selector(hide:);
+    else if ([predefinedName isEqualToString:@"hideOthers"]) predefinedAction = @selector(hideOtherApplications:);
+    else if ([predefinedName isEqualToString:@"showAll"]) predefinedAction = @selector(unhideAllApplications:);
+    else if ([predefinedName isEqualToString:@"quit"]) predefinedAction = @selector(terminate:);
+    else if ([predefinedName isEqualToString:@"undo"]) predefinedAction = @selector(undo:);
+    else if ([predefinedName isEqualToString:@"redo"]) predefinedAction = @selector(redo:);
+    else if ([predefinedName isEqualToString:@"cut"]) predefinedAction = @selector(cut:);
+    else if ([predefinedName isEqualToString:@"copy"]) predefinedAction = @selector(copy:);
+    else if ([predefinedName isEqualToString:@"paste"]) predefinedAction = @selector(paste:);
+    else if ([predefinedName isEqualToString:@"pasteAndMatchStyle"]) predefinedAction = @selector(pasteAsPlainText:);
+    else if ([predefinedName isEqualToString:@"selectAll"]) predefinedAction = @selector(selectAll:);
+    else if ([predefinedName isEqualToString:@"closeWindow"]) predefinedAction = @selector(performClose:);
+    else if ([predefinedName isEqualToString:@"minimize"]) predefinedAction = @selector(performMiniaturize:);
+    else if ([predefinedName isEqualToString:@"maximize"]) predefinedAction = @selector(performZoom:);
+    else if ([predefinedName isEqualToString:@"fullscreen"]) predefinedAction = @selector(toggleFullScreen:);
     NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:itemTitle
-      action:@selector(activate:) keyEquivalent:@""];
-    item.target = context->menuTarget;
+      action:predefinedAction ? predefinedAction : @selector(activate:)
+      keyEquivalent:@""];
+    if ([predefinedName isEqualToString:@"services"]) {
+      item.submenu = context->application.servicesMenu;
+      item.action = nil;
+      item.target = nil;
+    } else if (!predefinedAction) {
+      item.target = context->menuTarget;
+    }
     item.tag = (NSInteger)ids[i];
     item.enabled = enabled[i] != 0;
+    if (keyEquivalents && keyEquivalents[i] && keyEquivalents[i][0]) {
+      NSString *equivalent = [NSString stringWithUTF8String:keyEquivalents[i]];
+      NSArray *tokens = [equivalent componentsSeparatedByString:@"+"];
+      NSString *key = [(NSString *)tokens.lastObject lowercaseString];
+      NSEventModifierFlags modifiers = 0;
+      for (NSUInteger tokenIndex = 0; tokenIndex + 1 < tokens.count; tokenIndex++) {
+        NSString *token = [tokens[tokenIndex] lowercaseString];
+        if ([token isEqualToString:@"cmd"] || [token isEqualToString:@"command"])
+          modifiers |= NSEventModifierFlagCommand;
+        else if ([token isEqualToString:@"ctrl"] || [token isEqualToString:@"control"])
+          modifiers |= NSEventModifierFlagControl;
+        else if ([token isEqualToString:@"alt"] || [token isEqualToString:@"option"])
+          modifiers |= NSEventModifierFlagOption;
+        else if ([token isEqualToString:@"shift"])
+          modifiers |= NSEventModifierFlagShift;
+      }
+      item.keyEquivalent = key;
+      item.keyEquivalentModifierMask = modifiers;
+    }
     [submenu addItem:item];
     [item release];
   }
-  [root setSubmenu:submenu];
-  [main addItem:root];
-  [root release];
+  [currentGroup release];
   [submenu release];
+  [root release];
   [context->application setMainMenu:main];
   context->menu = main;
 }
@@ -849,6 +927,10 @@ int nimino_macos_app_send_notification(void *opaque, const char *identifier,
   MacAppContext *context = (MacAppContext *)opaque;
   if (!context || !title) return 0;
   if ([NSBundle mainBundle].bundleIdentifier.length == 0) return 0;
+  if (!niminoHasAppleIssuedSigning()) {
+    niminoLogNotificationFailure("Apple-issued signing check", nil);
+    return 0;
+  }
   UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
   content.title = [NSString stringWithUTF8String:title];
   content.body = body ? [NSString stringWithUTF8String:body] : @"";
@@ -861,6 +943,14 @@ int nimino_macos_app_send_notification(void *opaque, const char *identifier,
       niminoLogNotificationFailure("addNotificationRequest", error);
   }];
   [content release];
+  return 1;
+}
+
+int nimino_macos_app_set_dock_badge(void *opaque, const char *label) {
+  MacAppContext *context = (MacAppContext *)opaque;
+  if (!context || !context->application) return 0;
+  NSString *value = label && label[0] ? [NSString stringWithUTF8String:label] : nil;
+  context->application.dockTile.badgeLabel = value;
   return 1;
 }
 

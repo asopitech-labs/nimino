@@ -87,6 +87,12 @@ type
     id*: uint32
     title*: string
     enabled*: bool
+    ## Optional macOS submenu title. Empty keeps the legacy single submenu.
+    group*: string
+    ## Optional macOS key equivalent, for example "cmd+r" or "cmd+=".
+    keyEquivalent*: string
+    ## Optional AppKit predefined action, such as "hide", "quit", or "copy".
+    predefined*: string
 
   NativeNotification* = object
     ## A request for a desktop notification. Delivery remains under the
@@ -804,6 +810,7 @@ proc newNativeApp*(options: NativeAppOptions): NativeApp =
     result.capabilities.incl(multipleWebViews)
     result.capabilities.incl(nativeMenu)
     result.capabilities.incl(nativeNotification)
+    result.capabilities.incl(dockBadge)
     result.capabilities.incl(customProtocol)
     result.capabilities.incl(systemTray)
 
@@ -911,6 +918,23 @@ proc setSystemTrayIcon*(app: NativeApp; path: string): NativeResult =
       detail = "a non-empty icon path is required"))
   app.trayIconPath = path
   success()
+
+proc setDockBadge*(app: NativeApp; label: string): NativeResult =
+  ## Set the macOS Dock tile badge. An empty label clears the badge.
+  if app.isNil or app.state != running:
+    return failure(nativeError(invalidState, "app.setDockBadge"))
+  if not app.supports(dockBadge):
+    return failure(nativeError(unsupported, "app.setDockBadge"))
+  if '\0' in label:
+    return failure(nativeError(invalidArgument, "app.setDockBadge",
+      detail = "badge label must not contain NUL"))
+  when defined(macosx):
+    if macosAppSetDockBadge(app.platformApp, label.cstring) == 0:
+      return failure(nativeError(osError, "app.setDockBadge",
+        detail = "NSDockTile badge update failed"))
+    success()
+  else:
+    failure(nativeError(unsupported, "app.setDockBadge"))
 
 proc setActivationShortcut*(app: NativeApp; shortcut: string;
                             handler: NativeMenuHandler): NativeResult =
