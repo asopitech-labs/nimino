@@ -42,8 +42,11 @@ when defined(windows):
 
   const ErrorAlreadyExists = 183'u32
 else:
-  proc niminoOpen(path: cstring; flags, mode: cint): cint
-    {.importc: "open".}
+  ## Darwin exposes open(2) as a variadic function. Marking the binding as
+  ## varargs is required for the third mode argument to reach the syscall on
+  ## arm64; without it, newly created lock files can have mode 000.
+  proc niminoOpen(path: cstring; flags: cint): cint
+    {.importc: "open", varargs.}
   proc niminoClose(fd: cint): cint
     {.importc: "close".}
   proc niminoFlock(fd, operation: cint): cint
@@ -55,12 +58,20 @@ else:
     proc niminoErrnoLocation(): ptr cint
       {.importc: "__errno_location".}
 
+  const OpenReadWrite = 0x2.cint
+  when defined(macosx):
+    ## Darwin uses a different value for O_CREAT than Linux and the BSDs.
+    const OpenCreate = 0x200.cint
+  else:
+    const OpenCreate = 0x40.cint
   const
-    OpenReadWrite = 0x2.cint
-    OpenCreate = 0x40.cint
     LockExclusive = 0x2.cint
     LockNonBlocking = 0x4.cint
-    ErrorWouldBlock = 11.cint
+  when defined(macosx):
+    ## Darwin reports EWOULDBLOCK as 35; Linux reports EAGAIN as 11.
+    const ErrorWouldBlock = 35.cint
+  else:
+    const ErrorWouldBlock = 11.cint
 
 proc lockFileName(appId: string): string =
   const Hex = "0123456789abcdef"
