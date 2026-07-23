@@ -857,3 +857,7 @@ proc loadManifest*(path: string): PackResult[PackManifest] =
     parse(source)
   except OSError:
     failure[PackManifest](ioFailure, "manifest file could not be read")
+  except CatchableError:
+    ## A malformed JSON config must be reported through the pack result just
+    ## like malformed TOML, never escape as a parser exception from the CLI.
+    failure[PackManifest](invalidManifest, "manifest file could not be parsed")

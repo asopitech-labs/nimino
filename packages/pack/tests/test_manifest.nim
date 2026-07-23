@@ -171,6 +171,21 @@ let invalidDeepLinkName = parse("name = \"Deep link\"\nid = \"app.deep-name\"\nu
 doAssert not invalidDeepLinkName.isOk
 
 let jsonPath = getTempDir() / "nimino-pack-manifest.json"
+## Port the configuration-file failure contract from Pake.  JSON manifests are
+## the portable CLI/config-file surface, so malformed, missing, unknown and
+## wrongly typed values must fail before a bundle is generated.
+let missingJsonPath = getTempDir() / "nimino-pack-missing-manifest.json"
+if fileExists(missingJsonPath):
+  removeFile(missingJsonPath)
+let missingJson = loadManifest(missingJsonPath)
+doAssert not missingJson.isOk
+doAssert missingJson.error.kind == ioFailure
+writeFile(jsonPath, "{ malformed")
+let brokenJson = loadManifest(jsonPath)
+doAssert not brokenJson.isOk
+doAssert brokenJson.error.kind == invalidManifest
+removeFile(jsonPath)
+
 writeFile(jsonPath, """
 {"$schema":"https://example.invalid/schema.json","name":"JSON app","identifier":"app.json",
  "url":"https://example.com","width":1024,"height":768,"multiWindow":false,
@@ -191,6 +206,44 @@ doAssert jsonManifest.value.navigationAllow == @[
   "https://cdn.example.com/**", "https://*.cdn.example.com/**",
   "http://cdn.example.com/**", "http://*.cdn.example.com/**"]
 removeFile(jsonPath)
+
+writeFile(jsonPath, """
+{"name":"JSON aliases","id":"app.json-aliases","url":"https://example.com",
+ "hide_title_bar":true,"min_width":640,"minHeight":480,
+ "user_agent":"Nimino Config Test","proxy_url":"socks5://proxy.example:1080",
+ "disabled_web_shortcuts":true,"enable_find":true,
+ "activation_shortcut":"CmdOrCtrl+Shift+Space","show_system_tray":true,
+ "start_to_tray":true,"system_tray_icon":"tray.icns","hide_on_close":false,
+ "app_version":"1.2.3","keep_binary":true,"iterative_build":true,
+ "new_window":true,"permissions":["camera","microphone"],
+ "deep_link":["nimino-config"],"css":["theme.css"],"javascript":["boot.js"],
+ "inject":["custom.css","custom.js"]}
+""")
+let jsonAliases = loadManifest(jsonPath)
+doAssert jsonAliases.isOk
+doAssert jsonAliases.value.window.hideTitleBar
+doAssert jsonAliases.value.window.minWidth == 640
+doAssert jsonAliases.value.window.minHeight == 480
+doAssert jsonAliases.value.webview.userAgent == "Nimino Config Test"
+doAssert jsonAliases.value.webview.proxyUrl == "socks5://proxy.example:1080"
+doAssert jsonAliases.value.webview.disabledWebShortcuts
+doAssert jsonAliases.value.webview.enableFind
+doAssert jsonAliases.value.webview.newWindow
+doAssert jsonAliases.value.runtime.showSystemTray
+doAssert jsonAliases.value.runtime.startToTray
+doAssert not jsonAliases.value.runtime.hideOnClose
+doAssert jsonAliases.value.runtime.activationShortcut == "CmdOrCtrl+Shift+Space"
+doAssert jsonAliases.value.runtime.systemTrayIcon == "tray.icns"
+doAssert jsonAliases.value.package.version == "1.2.3"
+doAssert jsonAliases.value.package.keepBinary
+doAssert jsonAliases.value.package.iterativeBuild
+doAssert jsonAliases.value.permissionsAllow == @["camera", "microphone"]
+doAssert jsonAliases.value.deepLink.schemes == @["nimino-config"]
+doAssert jsonAliases.value.css == @["theme.css"]
+doAssert jsonAliases.value.javascript == @["boot.js"]
+doAssert jsonAliases.value.injectionFiles == @["custom.css", "custom.js"]
+removeFile(jsonPath)
+
 when defined(macosx):
   writeFile(jsonPath, "{\"name\":\"JSON defaults\",\"id\":\"app.json-defaults\",\"url\":\"https://example.com\"}")
   let jsonDefaults = loadManifest(jsonPath)
@@ -201,6 +254,15 @@ writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https:
 doAssert not loadManifest(jsonPath).isOk
 removeFile(jsonPath)
 writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"width\":\"1024\"}")
+doAssert not loadManifest(jsonPath).isOk
+removeFile(jsonPath)
+writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"zoom\":\"100\"}")
+doAssert not loadManifest(jsonPath).isOk
+removeFile(jsonPath)
+writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"inject\":\"custom.css\"}")
+doAssert not loadManifest(jsonPath).isOk
+removeFile(jsonPath)
+writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"multiWindow\":\"true\"}")
 doAssert not loadManifest(jsonPath).isOk
 removeFile(jsonPath)
 
