@@ -812,7 +812,11 @@ proc injectionDocumentStartSource(window: Window): string =
       "(document.body||document.documentElement).appendChild(panel); state.panel=panel;state.input=input; }; " &
       "const api={open:()=>{ensure();state.panel.hidden=false;state.input.focus();state.input.select();},next:()=>search(false),previous:()=>search(true),close:()=>{if(state.panel)state.panel.hidden=true;}}; " &
       "globalThis.nimino=globalThis.nimino||{}; globalThis.nimino.find=(text,backwards=false)=>{state.query=String(text||'');if(state.input)state.input.value=state.query;return search(backwards);}; " &
-      "globalThis.nimino.findPanel=api; })();")
+      "globalThis.nimino.findPanel=api; const isMac=/mac/i.test(navigator.platform||navigator.userAgent||''); " &
+      "document.addEventListener('keydown',(event)=>{const modifier=isMac?event.metaKey:event.ctrlKey; " &
+      "if(!modifier||event.altKey)return;const key=String(event.key||'').toLowerCase();let action=null; " &
+      "if(key==='f')action=api.open;else if(key==='g')action=event.shiftKey?api.previous:api.next; " &
+      "if(action){event.preventDefault();event.stopPropagation();action();}},true); })();")
   source
 
 proc documentStartBridgeSource(url: string): string =

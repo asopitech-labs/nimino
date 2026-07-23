@@ -43,6 +43,7 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
   exec "nimble testWebView2ProfileFfi"
   if getEnv("NIMINO_TEST_REFERENCE_MACOS") == "1":
     exec "nimble testMacosSmoke"
+    exec "nimble testCoreMacosFindSmoke"
     exec "nimble testPackMacos"
   if getEnv("NIMINO_TEST_REFERENCE_LINUX") == "1":
     exec "nimble testLinuxSmoke"
@@ -68,6 +69,10 @@ task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
 task testMacosSmoke, "Run the macOS Cocoa/WKWebView native smoke test":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-macos-smoke-nimcache --out:/tmp/nimino-macos-smoke --path:packages/native packages/native/tests/test_macos_smoke.nim"
   exec "perl -e 'alarm 45; exec @ARGV' /tmp/nimino-macos-smoke"
+
+task testCoreMacosFindSmoke, "Run the macOS WKWebView find-in-page injection smoke test":
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-core-macos-find-nimcache --out:/tmp/nimino-core-macos-find --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_macos_find_smoke.nim"
+  exec "perl -e 'alarm 45; exec @ARGV' /tmp/nimino-core-macos-find"
 
 task testPackMacos, "Build and inspect a macOS app bundle and DMG":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-macos-cli-nimcache --out:/tmp/nimino-pack-macos-cli --path:packages/pack tools/cli/nimino.nim"
