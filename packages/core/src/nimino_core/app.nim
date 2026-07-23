@@ -557,10 +557,25 @@ proc isAuthenticationNavigation*(url: string): bool =
       host == "googleusercontent.com" or host.endsWith(".googleusercontent.com") or
       host == "login.microsoftonline.com" or host.endsWith(".microsoftonline.com") or
       host == "login.live.com" or host.endsWith(".okta.com") or
-      host.endsWith(".auth0.com") or host.endsWith(".onelogin.com"):
+      host.endsWith(".auth0.com") or host.endsWith(".onelogin.com") or
+      host == "appleid.apple.com":
     return true
   try:
     let path = parseUri(url).path.toLowerAscii()
+    ## Pake keeps these provider-specific login entry points in the app.
+    ## Restrict the match to the known provider and endpoint so an arbitrary
+    ## third-party `/login` URL cannot bypass normal external navigation.
+    if (host == "www.linkedin.com" or host == "linkedin.com") and
+        (path == "/login" or path.startsWith("/login/")):
+      return true
+    if host == "github.com" and (path == "/login" or path.startsWith("/login/")):
+      return true
+    if (host == "facebook.com" or host.endsWith(".facebook.com")) and
+        path.contains("/dialog"):
+      return true
+    if (host == "twitter.com" or host.endsWith(".twitter.com") or
+        host == "x.com" or host.endsWith(".x.com")) and path.startsWith("/oauth"):
+      return true
     let samlPrefix = if path.startsWith("/saml2/"): "/saml2/"
       elif path.startsWith("/saml/"): "/saml/" else: ""
     if samlPrefix.len > 0:

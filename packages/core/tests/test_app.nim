@@ -12,19 +12,23 @@ block appOptionsAreValidated:
   doAssert missingName.failure.kind == invalidArgument
 
 block singleInstanceLockLifecycleIsExplicit:
-  let first = newApp(AppOptions(id: "tech.asopi.single-instance-test",
+  ## Isolate this process-lifetime lock test from a concurrently running
+  ## developer build or an interrupted earlier test invocation.
+  let singleInstanceId = "tech.asopi.nimino.single-instance-test-" &
+    $getCurrentProcessId()
+  let first = newApp(AppOptions(id: singleInstanceId,
     name: "Single instance", multiInstance: false))
-  doAssert first.isOk
-  let duplicate = newApp(AppOptions(id: "tech.asopi.single-instance-test",
+  doAssert first.isOk, first.failure.detail
+  let duplicate = newApp(AppOptions(id: singleInstanceId,
     name: "Single instance", multiInstance: false))
   doAssert not duplicate.isOk
   doAssert duplicate.failure.kind == invalidState
   doAssert duplicate.failure.detail.contains("already")
-  let parallel = newApp(AppOptions(id: "tech.asopi.single-instance-test",
+  let parallel = newApp(AppOptions(id: singleInstanceId,
     name: "Single instance", multiInstance: true))
   doAssert parallel.isOk
   doAssert first.value.quit().isOk
-  let reopened = newApp(AppOptions(id: "tech.asopi.single-instance-test",
+  let reopened = newApp(AppOptions(id: singleInstanceId,
     name: "Single instance", multiInstance: false))
   doAssert reopened.isOk
   doAssert reopened.value.quit().isOk
@@ -414,6 +418,16 @@ block localAssetRootRejectsTraversal:
 block navigationRulesAreExplicit:
   doAssert isAuthenticationNavigation("https://accounts.google.com/o/oauth2/auth")
   doAssert isAuthenticationNavigation("https://tenant.okta.com/login/login.htm")
+  ## Pake's macOS auth-popup regressions: provider-specific Apple ID and
+  ## LinkedIn login navigations must remain in the WebView rather than being
+  ## diverted to the external browser.
+  doAssert isAuthenticationNavigation("https://appleid.apple.com/auth/authorize")
+  doAssert isAuthenticationNavigation("https://www.linkedin.com/login")
+  doAssert isAuthenticationNavigation("https://github.com/login/device")
+  doAssert isAuthenticationNavigation("https://www.facebook.com/v19.0/dialog/oauth")
+  doAssert isAuthenticationNavigation("https://twitter.com/oauth/authorize")
+  doAssert not isAuthenticationNavigation("https://www.linkedin.com/feed/")
+  doAssert not isAuthenticationNavigation("https://appleid.apple.com.evil.test/auth/authorize")
   ## Pake's enterprise SSO cases: recognize endpoint-shaped SAML, SSO, and
   ## ADFS paths without treating arbitrary documentation/settings paths as
   ## authentication redirects.
@@ -429,6 +443,10 @@ block navigationRulesAreExplicit:
   doAssert not isAuthenticationNavigation("https://okta.com.evil.test/app")
   doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",
     "https://accounts.google.com/signin/v2/identifier") == navigationAllow
+  doAssert defaultNavigationDecision("https://app.example.com/",
+    "https://www.linkedin.com/login") == navigationAllow
+  doAssert defaultNavigationDecision("https://app.example.com/",
+    "https://appleid.apple.com/auth/authorize") == navigationAllow
   doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",
     "https://mail.google.com/mail/u/0/#inbox") == navigationAllow
   doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",
