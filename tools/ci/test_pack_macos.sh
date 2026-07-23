@@ -6,6 +6,8 @@ host=${2:?usage: test_pack_macos.sh <nimino-cli> <nimino-host>}
 root=$(mktemp -d /tmp/nimino-macos-pack.XXXXXX)
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/site" "$root/out"
+tray_icon=/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns
+test -f "$tray_icon"
 wait_for_gui_windows() {
   expected=$1
   attempts=0
@@ -29,6 +31,7 @@ fi
   --hide-title-bar --min-width 900 --min-height 600 --dark-mode \
   --disabled-web-shortcuts --enable-wasm --enable-find --new-window \
   --force-internal-navigation --show-system-tray \
+  --system-tray-icon "$tray_icon" \
   --activation-shortcut CmdOrCtrl+Shift+Space \
   --proxy-url http://127.0.0.1:8080 \
   --out "$root/bundle" --host "$host" --json
@@ -38,6 +41,16 @@ grep -F '"minHeight": 600' "$root/bundle/nimino-manifest.json"
 grep -F '"darkMode": true' "$root/bundle/nimino-manifest.json"
 grep -F '"activationShortcut": "CmdOrCtrl+Shift+Space"' "$root/bundle/nimino-manifest.json"
 grep -F '"hideOnClose": true' "$root/bundle/nimino-manifest.json"
+grep -F '"systemTrayIcon": "GenericApplicationIcon.icns"' "$root/bundle/nimino-manifest.json"
+test -f "$root/bundle/GenericApplicationIcon.icns"
+## Pake's system-tray-icon suite also covers rejecting a configured icon that
+## cannot be read. Nimino reports this at pack time instead of silently
+## falling back to the default icon.
+if "$cli" pack "$root/site" --name 'Nimino missing tray icon' --id com.nimino.missing-tray-icon \
+  --system-tray-icon "$root/missing-tray-icon.icns" --out "$root/missing-tray-icon" --host "$host" >/dev/null 2>&1; then
+  echo 'nimino pack unexpectedly accepted a missing system tray icon' >&2
+  exit 1
+fi
 ## Pake's macOS default must not override an explicit opt-out.
 "$cli" pack "$root/site" --name 'Nimino macOS Explicit Close' --id com.nimino.macos.explicit-close \
   --hide-on-close false --out "$root/explicit-close" --host "$host" --json >/dev/null
@@ -53,6 +66,8 @@ plutil -extract NSMicrophoneUsageDescription raw "$app/Contents/Info.plist" | gr
 test -s "$app/Contents/Resources/nimino-entitlements.plist"
 grep -F 'com.apple.security.device.camera' "$app/Contents/Resources/nimino-entitlements.plist"
 grep -F 'com.apple.security.device.audio-input' "$app/Contents/Resources/nimino-entitlements.plist"
+test -f "$app/Contents/Resources/GenericApplicationIcon.icns"
+grep -F '"systemTrayIcon": "GenericApplicationIcon.icns"' "$app/Contents/Resources/nimino-manifest.json"
 if [ "${NIMINO_TEST_MACOS_ADHOC:-0}" = 1 ] || [ "${NIMINO_TEST_MACOS_NOTIFICATION:-0}" = 1 ]; then
   codesign --deep --force --options runtime --sign - "$app"
   codesign --verify --deep --strict --verbose=2 "$app"
