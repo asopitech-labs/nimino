@@ -70,6 +70,8 @@ proc onIdle() =
     let popupView = popup.value.newWebView()
     doAssert popupView.isOk
     doAssert popupView.value.loadHtml("<main>runtime popup</main>").isOk
+    doAssert popupView.value.macosClearBrowsingDataAndReload(
+      {nativeBrowsingCache, nativeBrowsingLocalStorage}).isOk
     runtimeWindowCreated = true
   if raceStarted:
     inc raceTicks
