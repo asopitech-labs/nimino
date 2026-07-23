@@ -31,6 +31,7 @@ proc onEvaluation(completed: Future[CoreResultOf[string]]) {.gcsafe.} =
   doAssert evaluated.value.contains("\\\"findPanel\\\":true")
   doAssert evaluated.value.contains("\\\"shortcutHandled\\\":true")
   doAssert evaluated.value.contains("\\\"searchWorked\\\":true")
+  doAssert evaluated.value.contains("\\\"trailingCommentInjected\\\":true")
   evaluationFinished = true
   finish()
 
@@ -66,6 +67,7 @@ proc onNavigation(url: string; succeeded: bool) {.gcsafe.} =
     findPanel: panel !== null && panel.hidden === false,
     shortcutHandled: event.defaultPrevented,
     searchWorked,
+    trailingCommentInjected: window.niminoTrailingCommentInjected === true,
   });
 })()
 """)
@@ -102,7 +104,8 @@ let app = created.value
 appPtr = cast[pointer](app)
 let window = app.newWindow(CoreWindowOptions(
   title: "Nimino macOS Find Smoke", width: 480, height: 280,
-  enableFind: true, injectionEnabled: true, multiWindow: false))
+  enableFind: true, injectionEnabled: true, multiWindow: false,
+  injectionJavaScript: @["globalThis.niminoTrailingCommentInjected=true;// source-map style trailing comment"]))
 doAssert window.isOk, window.failure.detail
 let appWindow = window.value
 windowPtr = cast[pointer](appWindow)

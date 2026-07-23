@@ -785,7 +785,10 @@ proc injectionDocumentStartSource(window: Window): string =
       "if (document.head || document.documentElement) install(); else " &
       "document.addEventListener('DOMContentLoaded', install, { once: true }); })();")
   for script in window.injectionJavaScript:
-    source.add("(() => { try { " & script & " } catch (_) {} })();")
+    ## A user script can legally end in a `//` source-map or line comment.
+    ## Keep the wrapper valid by putting its closing tokens on a fresh line,
+    ## matching Pake's combine-file behavior.
+    source.add("(() => { try { " & script & "\n} catch (_) {} })();")
   if window.disabledWebShortcuts:
     source.add("(() => { const blocked = new Set(['r','l','n','w','t','d','p','s','u']); " &
       "document.addEventListener('keydown', (event) => { if (!(event.metaKey || event.ctrlKey) || " &
