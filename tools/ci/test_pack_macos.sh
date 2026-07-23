@@ -6,6 +6,7 @@ host=${2:?usage: test_pack_macos.sh <nimino-cli> <nimino-host>}
 root=$(mktemp -d /tmp/nimino-macos-pack.XXXXXX)
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/site" "$root/out"
+mkdir -p "$root/site/fixtures/nested"
 tray_icon=/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns
 test -f "$tray_icon"
 wait_for_gui_windows() {
@@ -26,6 +27,7 @@ if [ "${NIMINO_TEST_MACOS_NOTIFICATION:-0}" = 1 ]; then
 else
   printf '%s\n' '<!doctype html><title>Nimino macOS package smoke</title>' > "$root/site/index.html"
 fi
+printf '%s\n' 'nested macOS package resource' > "$root/site/fixtures/nested/marker.txt"
 "$cli" pack "$root/site" --name 'Nimino macOS Smoke' --id com.nimino.macos.smoke \
   --deep-link nimino --allow-permission camera --allow-permission microphone \
   --hide-title-bar --min-width 900 --min-height 600 --dark-mode \
@@ -43,6 +45,10 @@ grep -F '"activationShortcut": "CmdOrCtrl+Shift+Space"' "$root/bundle/nimino-man
 grep -F '"hideOnClose": true' "$root/bundle/nimino-manifest.json"
 grep -F '"systemTrayIcon": "GenericApplicationIcon.icns"' "$root/bundle/nimino-manifest.json"
 test -f "$root/bundle/GenericApplicationIcon.icns"
+## Tauri's macOS bundle tests require custom files and nested directories to
+## survive the app-bundle copy.  Local Nimino assets are that user-facing
+## resource path, so assert both the generated bundle and the final .app.
+test -f "$root/bundle/assets/fixtures/nested/marker.txt"
 ## Pake's system-tray-icon suite also covers rejecting a configured icon that
 ## cannot be read. Nimino reports this at pack time instead of silently
 ## falling back to the default icon.
@@ -68,6 +74,8 @@ grep -F 'com.apple.security.device.camera' "$app/Contents/Resources/nimino-entit
 grep -F 'com.apple.security.device.audio-input' "$app/Contents/Resources/nimino-entitlements.plist"
 test -f "$app/Contents/Resources/GenericApplicationIcon.icns"
 grep -F '"systemTrayIcon": "GenericApplicationIcon.icns"' "$app/Contents/Resources/nimino-manifest.json"
+test -f "$app/Contents/Resources/assets/fixtures/nested/marker.txt"
+grep -Fx 'nested macOS package resource' "$app/Contents/Resources/assets/fixtures/nested/marker.txt"
 if [ "${NIMINO_TEST_MACOS_ADHOC:-0}" = 1 ] || [ "${NIMINO_TEST_MACOS_NOTIFICATION:-0}" = 1 ]; then
   codesign --deep --force --options runtime --sign - "$app"
   codesign --verify --deep --strict --verbose=2 "$app"
