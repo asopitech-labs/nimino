@@ -11,6 +11,28 @@ proc usage() =
   stderr.writeLine("       nimino package-macos <bundle> --format <app|dmg> --out <directory> [--arch <arm64|x86_64>] [--sign-identity <identity>] [--notary-profile <keychain-profile>]")
   quit(2)
 
+proc pathShapedInput(value: string): bool =
+  ## A missing filesystem-looking argument must not silently become a web
+  ## origin (for example `./typo` -> `https://./typo`).  Existing paths are
+  ## handled as local entries later in `pack`.
+  let input = value.strip()
+  input.startsWith("./") or input.startsWith("../") or input.startsWith("/") or
+    input.startsWith("~/") or
+    (input.len >= 3 and input[1] == ':' and input[2] in {'/', '\\'})
+
+proc normalizePackUrlInput(value: string): string =
+  ## Pake accepts bare hosts at the CLI boundary. Keep fully-qualified inputs
+  ## unchanged so `generateManifest` remains the sole URL policy validator.
+  let input = value.strip()
+  if input.len == 0:
+    return input
+  try:
+    if parseUri(input).scheme.len == 0:
+      return "https://" & input
+  except CatchableError:
+    discard
+  input
+
 proc packageLinuxUsage() =
   usage()
 
@@ -730,16 +752,26 @@ if paramCount() < 2 or paramStr(1) != "pack":
 var loaded: PackResult[PackManifest]
 var optionStart = 3
 var source = paramStr(2)
+var configSource = false
 if source == "--config":
   if paramCount() < 3:
     usage()
   source = paramStr(3)
   optionStart = 4
-let sourceIsUrl = source.toLowerAscii().startsWith("http://") or
-  source.toLowerAscii().startsWith("https://")
+  configSource = true
 let sourceIsManifest = fileExists(source) and
   (source.toLowerAscii().endsWith(".toml") or source.toLowerAscii().endsWith(".json"))
 let sourceIsLocal = (fileExists(source) or dirExists(source)) and not sourceIsManifest
+if configSource and not sourceIsManifest:
+  stderr.writeLine("nimino pack: config file does not exist or is not a TOML/JSON manifest")
+  quit(1)
+if not sourceIsManifest and not sourceIsLocal:
+  if pathShapedInput(source):
+    stderr.writeLine("nimino pack: local source path does not exist")
+    quit(1)
+  source = normalizePackUrlInput(source)
+let sourceIsUrl = source.toLowerAscii().startsWith("http://") or
+  source.toLowerAscii().startsWith("https://")
 var localSourcePath = ""
 var localUseLocalFile = false
 var hideTitleBar = false

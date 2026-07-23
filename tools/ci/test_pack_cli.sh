@@ -27,6 +27,21 @@ printf 'icon' > "$root/icon.png"
 printf 'body{}' > "$root/custom.css"
 printf 'console.log(1)' > "$root/custom.js"
 
+## Pake accepts a bare web host, while a missing filesystem-shaped argument
+## must be rejected rather than being turned into a broken HTTPS origin.
+"$nimino" pack example.com --name BareHost --id app.nimino.bare-host \
+  --out "$root/bare-host-out" --host "$root/host"
+grep -q '"url": "https://example.com"' "$root/bare-host-out/nimino-manifest.json"
+! "$nimino" pack ./missing-local-source --name MissingRelative --id app.nimino.missing-relative \
+  --out "$root/missing-relative-out" --host "$root/host"
+! "$nimino" pack /tmp/nimino-missing-local-source --name MissingAbsolute --id app.nimino.missing-absolute \
+  --out "$root/missing-absolute-out" --host "$root/host"
+! "$nimino" pack 'C:\\nimino-missing-local-source' --name MissingWindows --id app.nimino.missing-windows \
+  --out "$root/missing-windows-out" --host "$root/host"
+test ! -e "$root/missing-relative-out"
+test ! -e "$root/missing-absolute-out"
+test ! -e "$root/missing-windows-out"
+
 "$nimino" pack "$root/input.toml" --out "$root/out" --host "$root/host"
 test -s "$root/out/nimino-manifest.json"
 test -s "$root/out/nimino-sbom.cdx.json"
