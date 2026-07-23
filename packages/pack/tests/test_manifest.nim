@@ -81,6 +81,13 @@ doAssert metadataDefaults.isOk
 doAssert metadataDefaults.value.package.version == "0.1.0"
 doAssert metadataDefaults.value.package.description == "Defaults"
 doAssert metadataDefaults.value.package.categories == @["Network"]
+when defined(macosx):
+  ## Pake keeps macOS apps resident by default. An explicit value must still
+  ## override that platform default.
+  doAssert metadataDefaults.value.runtime.hideOnClose
+  let explicitClose = parse("name = \"Close\"\nid = \"app.close\"\nurl = \"https://example.com\"\n[runtime]\nhide-on-close = false")
+  doAssert explicitClose.isOk
+  doAssert not explicitClose.value.runtime.hideOnClose
 
 let prereleaseVersion = parse("name = \"Release\"\nid = \"app.release\"\nurl = \"https://example.com\"\n[package]\nversion = \"2.0.0-rc.1\"")
 doAssert prereleaseVersion.isOk
@@ -147,6 +154,12 @@ doAssert jsonManifest.value.package.version == "2.3.4"
 doAssert jsonManifest.value.safeDomains == @[
   "accounts.example.com", "cdn.example.com"]
 removeFile(jsonPath)
+when defined(macosx):
+  writeFile(jsonPath, "{\"name\":\"JSON defaults\",\"id\":\"app.json-defaults\",\"url\":\"https://example.com\"}")
+  let jsonDefaults = loadManifest(jsonPath)
+  doAssert jsonDefaults.isOk
+  doAssert jsonDefaults.value.runtime.hideOnClose
+  removeFile(jsonPath)
 writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"unknown\":true}")
 doAssert not loadManifest(jsonPath).isOk
 removeFile(jsonPath)

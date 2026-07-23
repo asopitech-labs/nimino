@@ -774,7 +774,9 @@ if sourceIsUrl or sourceIsLocal:
   var systemTrayIcon = ""
   var showSystemTray = false
   var startToTray = false
-  var hideOnClose = false
+  ## Match Pake's platform default while preserving an explicit
+  ## `--hide-on-close false` supplied by the caller.
+  var hideOnClose = platformDefaultHideOnClose()
   var multiWindow = true
   var multiInstance = false
   var useLocalFile = false

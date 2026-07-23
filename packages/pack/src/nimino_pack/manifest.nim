@@ -102,6 +102,16 @@ type
     useLocalFile*: bool
     safeDomains*: seq[string]
 
+proc platformDefaultHideOnClose*(): bool =
+  ## Pake's close behavior is intentionally platform-specific: macOS keeps a
+  ## desktop app resident after its last window closes, while Linux and
+  ## Windows retain the conventional close-to-quit default.  Keep an explicit
+  ## manifest value authoritative; this is only the omitted-field default.
+  when defined(macosx):
+    true
+  else:
+    false
+
 proc success*[T](value: T): PackResult[T] {.inline.} =
   PackResult[T](isOk: true, value: value)
 
@@ -390,6 +400,7 @@ proc parse*(text: string): PackResult[PackManifest] =
     profile: "default",
     window: PackWindowOptions(width: 1200, height: 800, resizable: true),
     webview: PackWebViewOptions(zoomFactor: 1.0),
+    runtime: PackRuntimeOptions(hideOnClose: platformDefaultHideOnClose()),
     package: PackPackageMetadata(version: "0.1.0", categories: @["Network"], bundle: true,
       installerLanguage: "en-US"))
   var section = ""
@@ -682,7 +693,8 @@ proc loadManifest*(path: string): PackResult[PackManifest] =
         ["ignoreCertificateErrors", "ignore_certificate_errors"], false)
       let showSystemTray = jsonBool(node, ["showSystemTray", "show_system_tray"], false)
       let startToTray = jsonBool(node, ["startToTray", "start_to_tray"], false)
-      let hideOnClose = jsonBool(node, ["hideOnClose", "hide_on_close"], false)
+      let hideOnClose = jsonBool(node, ["hideOnClose", "hide_on_close"],
+        platformDefaultHideOnClose())
       let multiWindow = jsonBool(node, ["multiWindow", "multi_window"], false)
       let multiInstance = jsonBool(node, ["multiInstance", "multi_instance"], false)
       let activationShortcut = jsonString(node,

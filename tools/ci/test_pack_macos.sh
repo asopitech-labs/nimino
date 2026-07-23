@@ -37,6 +37,11 @@ grep -F '"minWidth": 900' "$root/bundle/nimino-manifest.json"
 grep -F '"minHeight": 600' "$root/bundle/nimino-manifest.json"
 grep -F '"darkMode": true' "$root/bundle/nimino-manifest.json"
 grep -F '"activationShortcut": "CmdOrCtrl+Shift+Space"' "$root/bundle/nimino-manifest.json"
+grep -F '"hideOnClose": true' "$root/bundle/nimino-manifest.json"
+## Pake's macOS default must not override an explicit opt-out.
+"$cli" pack "$root/site" --name 'Nimino macOS Explicit Close' --id com.nimino.macos.explicit-close \
+  --hide-on-close false --out "$root/explicit-close" --host "$host" --json >/dev/null
+grep -F '"hideOnClose": false' "$root/explicit-close/nimino-manifest.json"
 app=$($cli package-macos "$root/bundle" --format app --out "$root/out")
 test -x "$app/Contents/MacOS/com.nimino.macos.smoke"
 file "$app/Contents/MacOS/com.nimino.macos.smoke" | grep -E 'Mach-O|executable'
