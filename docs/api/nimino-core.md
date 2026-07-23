@@ -1,6 +1,6 @@
 # `nimino-core` 最小公開API案
 
-**状態: M4〜M6実装済み。Windows/Linux/macOS向けの`App`/`Window` facade、同一Windowの複数`WebView`管理、Window単位の許可リストJSON RPC、WebView bootstrap、profile path、local asset root/entry境界、native menu/tray/notification、deep linkを実装した。Linuxのsystem trayはsession D-BusにStatusNotifierWatcherがある場合だけCapabilityを有効にし、macOSはCocoa `NSStatusItem`を使用する。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録でき、`typescriptDeclarations`で複合型を含む宣言を生成できます。permission/download/navigationはnative実装とWSL同期decision relay（timeout時deny）まで完了し、profile設定/Cookieの永続化API、Window単位の参照・削除APIも実装済みです。macOSはWKWebViewのmedia permission/download delegate、profile別`WKWebsiteDataStore`、Cocoa deep link/notification delegateを提供します。WebView内部custom protocolは全native backendとWSL認証済み同期relayへ接続済みです。実Windows WebView2 Runtime上のWSL往復、Apple署名/notarization、ユーザー操作依存の通知クリック等は対象環境でのrelease検証です。**
+**状態: M4〜M6実装済み。Windows/Linux/macOS向けの`App`/`Window` facade、同一Windowの複数`WebView`管理、Window単位の許可リストJSON RPC、WebView bootstrap、profile path、local asset root/entry境界、native menu/tray/notification、deep linkを実装した。Linuxのsystem trayはsession D-BusにStatusNotifierWatcherがある場合だけCapabilityを有効にし、macOSはCocoa `NSStatusItem`を使用する。`registerTyped` / `registerTypedAsync`は標準JSON codecで型付きhandlerを登録でき、`typescriptDeclarations`で複合型を含む宣言を生成できます。permission/download/navigationはnative実装とWSL同期decision relay（timeout時deny）まで完了し、profile設定/Cookieの永続化API、Window単位の参照・削除APIも実装済みです。macOSはWKWebViewのmedia permission/download delegate、profile別`WKWebsiteDataStore`、Cocoa deep link/notification delegateを提供します。WebView内部custom protocolは全native backendとWSL認証済み同期relayへ接続済みです。生成hostのmacOS permissionはcamera/microphoneだけを許可し、notifications/geolocation/clipboard/screenCaptureはmanifest起動時に拒否します。`webview.wasm`はmacOSのWKWebViewへ明示的に伝播しますが、Chromium専用の`--enable-features=SharedArrayBuffer`/`--enable-unsafe-webgpu`に相当する公開WKWebView設定は存在しないため、WebAssemblyは標準有効、SharedArrayBufferのCOOP/COEPは配信元側の責務です。実Windows WebView2 Runtime上のWSL往復、Apple署名/notarization、ユーザー操作依存の通知クリック等は対象環境でのrelease検証です。**
 
 `nimino-core`は通常の利用者向けの高水準APIです。`nimino-native`を内包してもFFI型を公開せず、`nimino-pack`へはこの公開面だけを提供します。
 
@@ -201,7 +201,7 @@ WSLでは認証済みIPCでWindows hostへ中継します。close後の操作と
 WSLではWindows hostのネイティブresize callbackを認証済みIPC eventとして中継します。
 `CoreWindowOptions.enableDragDrop`を有効にしたWindowでは、`window.onFileDrop`が
 ネイティブWindowへドロップされたファイルの絶対パス配列を通知します。未指定時はWebViewの
-標準ドロップ処理を維持します。Windows/Linux/WSLで同じAPIを利用できます。
+標準ドロップ処理を維持します。Windows/Linux/macOS/WSLで同じAPIを利用できます。
 `CoreWindowOptions.zoomFactor`はWebViewの初期倍率（0.25〜5.0、既定1.0）です。Windowsは
 WebView2 Controller、LinuxはWebKitGTKの`webkit_web_view_set_zoom_level`へ設定し、WSLでは
 Windows hostへ中継します。範囲外は`invalidArgument`になります。

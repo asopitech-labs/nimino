@@ -17,11 +17,18 @@ var navigationCompleted: bool
 var evaluationFinished: bool
 var resizeReceived: bool
 var resizeRequested: bool
+var raceStarted: bool
+var raceTicks: int
+var raceWindow: NativeWindow
+var raceView: NativeWebView
+var raceEvaluation: Future[NativeResultOf[string]]
+var raceBrowsingData: Future[NativeResult]
+var raceCookies: Future[NativeResultOf[seq[NativeCookie]]]
 
 proc finishIfReady() =
   if idleTicks > 0 and messageReceived and navigationCompleted and
       evaluationFinished and resizeReceived and protocolCalled and
-      customResponseObserved:
+      customResponseObserved and (not raceStarted or raceTicks > 100):
     doAssert cast[NativeApp](appPtr).quit().isOk
 
 proc onEvaluation(completed: Future[NativeResultOf[string]]) {.gcsafe.} =
@@ -49,6 +56,18 @@ proc onIdle() =
   if navigationCompleted and not customRequested:
     customRequested = true
     doAssert viewRef.loadUrl("nimino://app/hello.txt").isOk
+  if idleTicks == 2 and not raceStarted:
+    raceStarted = true
+    raceEvaluation = raceView.evalJavaScript("'close-race'")
+    raceBrowsingData = raceView.clearBrowsingData({nativeBrowsingCookies})
+    raceCookies = raceView.getCookies()
+    doAssert raceWindow.close().isOk
+  if raceStarted:
+    inc raceTicks
+    if raceTicks > 100:
+      doAssert raceEvaluation.finished
+      doAssert raceBrowsingData.finished
+      doAssert raceCookies.finished
   if idleTicks > 200:
     doAssert cast[NativeApp](appPtr).quit().isOk
   finishIfReady()
@@ -113,6 +132,14 @@ doAssert viewRef.loadHtml("""
 doAssert window.value.setSize(640, 420).isOk
 let evaluation = viewRef.evalJavaScript("'Nimino macOS eval'")
 evaluation.addCallback(onEvaluation)
+
+let raceWindowCreated = appRef.newWindow("Nimino macOS close race", 320, 200)
+doAssert raceWindowCreated.isOk
+raceWindow = raceWindowCreated.value
+let raceViewCreated = raceWindow.newWebView()
+doAssert raceViewCreated.isOk
+raceView = raceViewCreated.value
+doAssert raceView.loadHtml("<main>close race</main>").isOk
 
 doAssert appRef.run().isOk
 doAssert idleTicks > 0

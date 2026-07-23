@@ -8,12 +8,14 @@ proc macosIdleTick(data: pointer) {.cdecl.}
 proc macosCloseRequested(data: pointer): cint {.cdecl.}
 proc macosClosed(data: pointer) {.cdecl.}
 proc macosResized(data: pointer; width, height: cint) {.cdecl.}
+proc macosMoved(data: pointer; x, y: cint) {.cdecl.}
 proc macosFileDropped(data: pointer; path: cstring) {.cdecl.}
 proc macosMessage(data: pointer; message: cstring) {.cdecl.}
 proc macosError(data: pointer; operation, detail: cstring) {.cdecl.}
 proc macosNavigationStarting(data: pointer; url: cstring): cint {.cdecl.}
 proc macosNavigationCompleted(data: pointer; url: cstring; succeeded: cint) {.cdecl.}
-proc macosNewWindow(data: pointer; url: cstring): cint {.cdecl.}
+proc macosNewWindow(data: pointer; url: cstring; positionKnown, x, y: cint;
+                    sizeKnown, width, height, focused, reserved: cint): cint {.cdecl.}
 proc macosEvalCompleted(data, requestData: pointer; value: cstring;
                         succeeded: cint; error: cstring) {.cdecl.}
 proc macosBrowsingDataCompleted*(data, requestData: pointer; succeeded: cint) {.cdecl.}
@@ -32,6 +34,7 @@ proc macosSetZoom(view: NativeWebView; factor: float): NativeResult
 proc macosLoadPendingContent(view: NativeWebView): NativeResult
 proc macosShowWindow(window: NativeWindow)
 proc macosSetTitleBarOverlay(window: NativeWindow; enabled: bool): NativeResult
+proc macosSetMinimumSize(window: NativeWindow; width, height: int): NativeResult
 
 proc macosKeepCallbackSymbols() =
   discard cast[pointer](macosBrowsingDataCompleted)
@@ -84,6 +87,11 @@ proc macosResized(data: pointer; width, height: cint) {.cdecl.} =
   if window != nil:
     window.dispatchResized(width.int, height.int)
 
+proc macosMoved(data: pointer; x, y: cint) {.cdecl.} =
+  let window = cast[NativeWindow](data)
+  if window != nil:
+    window.dispatchMoved(x.int, y.int)
+
 proc macosFileDropped(data: pointer; path: cstring) {.cdecl.} =
   let window = cast[NativeWindow](data)
   if window != nil and not path.isNil:
@@ -111,32 +119,45 @@ proc macosNavigationCompleted(data: pointer; url: cstring; succeeded: cint) {.cd
   if view != nil:
     view.dispatchNavigationCompleted(if url.isNil: "" else: $url, succeeded != 0)
 
-proc macosNewWindow(data: pointer; url: cstring): cint {.cdecl.} =
+proc macosNewWindow(data: pointer; url: cstring; positionKnown, x, y: cint;
+                    sizeKnown, width, height, focused, reserved: cint): cint {.cdecl.} =
   let view = cast[NativeWebView](data)
   if view.isNil:
     return 1
-  if view.dispatchNewWindowRequested(if url.isNil: "" else: $url): 1 else: 0
+  if view.dispatchNewWindowRequested(NativeNewWindowRequest(
+      url: if url.isNil: "" else: $url,
+      x: x.int, y: y.int, width: width.int, height: height.int,
+      positionKnown: positionKnown != 0, sizeKnown: sizeKnown != 0,
+      focused: focused != 0)): 1 else: 0
 
 proc macosEvalCompleted(data, requestData: pointer; value: cstring;
                         succeeded: cint; error: cstring) {.cdecl.} =
   let view = cast[NativeWebView](data)
   let request = cast[NativeScriptRequest](requestData)
-  if view.isNil or request.isNil:
+  if request.isNil:
+    return
+  if view.isNil:
+    GC_unref(request)
     return
   if succeeded != 0:
     view.completeScriptRequest(request, successOf(if value.isNil: "" else: $value))
   else:
     view.completeScriptRequest(request, failureOf[string](nativeError(webViewError,
       "webview.evalJavaScript", detail = if error.isNil: "JavaScript evaluation failed" else: $error)))
+  GC_unref(request)
 
 proc macosBrowsingDataCompleted*(data, requestData: pointer; succeeded: cint) {.cdecl.} =
   let view = cast[NativeWebView](data)
   let request = cast[NativeBrowsingDataRequest](requestData)
-  if view.isNil or request.isNil:
+  if request.isNil:
+    return
+  if view.isNil:
+    GC_unref(request)
     return
   view.completeBrowsingDataRequest(request,
     if succeeded != 0: success() else: failure(nativeError(webViewError,
       "webview.clearBrowsingData", detail = "WKWebsiteDataStore failed")))
+  GC_unref(request)
 
 proc macosCookieItem*(data, requestData: pointer; name, value, domain, path: cstring;
                      secure, httpOnly: cint; expires: int64) {.cdecl.} =
@@ -152,21 +173,29 @@ proc macosCookieItem*(data, requestData: pointer; name, value, domain, path: cst
 
 proc macosCookieCompleted*(data, requestData: pointer; succeeded: cint) {.cdecl.} =
   let view = cast[NativeWebView](data)
-  if view.isNil:
-    return
   let request = cast[NativeCookieQueryRequest](requestData)
+  if request.isNil:
+    return
+  if view.isNil:
+    GC_unref(request)
+    return
   view.completeCookieQuery(request,
     if succeeded != 0: successOf(request.cookies) else:
       failureOf[seq[NativeCookie]](nativeError(webViewError, "webview.getCookies")))
+  GC_unref(request)
 
 proc macosCookieMutationCompleted*(data, requestData: pointer; succeeded: cint) {.cdecl.} =
   let view = cast[NativeWebView](data)
   let request = cast[NativeCookieMutationRequest](requestData)
-  if view.isNil or request.isNil:
+  if request.isNil:
+    return
+  if view.isNil:
+    GC_unref(request)
     return
   view.completeCookieMutation(request,
     if succeeded != 0: success() else: failure(nativeError(webViewError,
       if request.kind == nativeCookieSet: "webview.setCookie" else: "webview.deleteCookie")))
+  GC_unref(request)
 
 proc macosMenuAction(data: pointer; itemId: cuint) {.cdecl.} =
   let app = cast[NativeApp](data)
@@ -199,6 +228,7 @@ proc macosReopen(data: pointer) {.cdecl.} =
   for window in app.windows:
     if not window.isNil and window.state == ready and window.hidden:
       macosShowWindow(window)
+  app.dispatchReopen()
 
 proc macosPermission(data: pointer; kind, url: cstring): cint {.cdecl.} =
   let view = cast[NativeWebView](data)
@@ -236,7 +266,7 @@ proc macosCustomProtocolRequest(data, task: pointer; methodName, url, path: cstr
     methodName: if methodName.isNil: "GET" else: $methodName,
     url: if url.isNil: "" else: $url,
     path: if path.isNil: "/" else: $path))
-  macosSchemeRespond(task, response.statusCode.cint, response.mimeType.cstring,
+  macosSchemeRespond(cast[pointer](app), task, response.statusCode.cint, response.mimeType.cstring,
     response.body.cstring)
 
 proc macosCreateView(view: NativeWebView): NativeResult =
@@ -273,7 +303,8 @@ proc macosCreateWindow(window: NativeWindow): NativeResult =
   let nativeWindow = macosWindowCreate(window.app.platformApp, cast[pointer](window),
     window.title.cstring, window.width.cint, window.height.cint,
     cast[MacCallback](macosCloseRequested), cast[MacCallback](macosClosed),
-    cast[MacCallback](macosResized), cast[MacCallback](macosFileDropped))
+    cast[MacCallback](macosResized), cast[MacCallback](macosMoved),
+    cast[MacCallback](macosFileDropped))
   if nativeWindow.isNil:
     return macosNativeFailure("window.create", "NSWindow creation failed")
   window.platformWindow = nativeWindow
@@ -371,6 +402,14 @@ proc macosSetAlwaysOnTop(window: NativeWindow; enabled: bool): NativeResult =
   window.alwaysOnTop = enabled
   success()
 
+proc macosSetMinimumSize(window: NativeWindow; width, height: int): NativeResult =
+  if width <= 0 or height <= 0:
+    return failure(nativeError(invalidArgument, "window.setMinimumSize",
+      detail = "minimum size must be positive"))
+  if macosWindowSetMinimumSize(window.platformWindow, width.cint, height.cint) == 0:
+    return macosNativeFailure("window.setMinimumSize", "NSWindow minimum content size update failed")
+  success()
+
 proc macosShowWindow(window: NativeWindow) =
   window.hidden = false
   if window.platformWindow != nil: macosWindowShow(window.platformWindow)
@@ -426,8 +465,10 @@ proc macosConfigureDocumentStartScript(view: NativeWebView): NativeResult =
   success()
 
 proc macosEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult =
+  GC_ref(request)
   if macosViewEvalJavaScript(view.platformView, request.script.cstring,
       cast[pointer](request)) == 0:
+    GC_unref(request)
     return macosNativeFailure("webview.evalJavaScript", "WKWebView evaluation could not start")
   success()
 
@@ -437,14 +478,18 @@ proc macosClearBrowsingData(view: NativeWebView;
   if nativeBrowsingCookies in request.kinds: kinds = kinds or 1
   if nativeBrowsingLocalStorage in request.kinds: kinds = kinds or 2
   if nativeBrowsingCache in request.kinds: kinds = kinds or 4
+  GC_ref(request)
   if macosViewClearBrowsingData(view.platformView, kinds, cast[pointer](request),
       cast[MacCallback](macosBrowsingDataCompleted)) == 0:
+    GC_unref(request)
     return macosNativeFailure("webview.clearBrowsingData", "WKWebsiteDataStore operation could not start")
   success()
 
 proc macosGetCookies(view: NativeWebView; request: NativeCookieQueryRequest): NativeResult =
+  GC_ref(request)
   if macosViewGetCookies(view.platformView, request.url.cstring, cast[pointer](request),
       cast[MacCallback](macosCookieItem), cast[MacCallback](macosCookieCompleted)) == 0:
+    GC_unref(request)
     return macosNativeFailure("webview.getCookies", "WKHTTPCookieStore query could not start")
   success()
 
@@ -452,6 +497,7 @@ proc macosMutateCookie(view: NativeWebView;
                        request: NativeCookieMutationRequest): NativeResult =
   let cookie = request.cookie
   let path = if cookie.path.len == 0: "/" else: cookie.path
+  GC_ref(request)
   let started = if request.kind == nativeCookieSet:
     macosViewSetCookie(view.platformView, cookie.name.cstring, cookie.value.cstring,
       cookie.domain.cstring, path.cstring, if cookie.secure: 1 else: 0,
@@ -463,6 +509,7 @@ proc macosMutateCookie(view: NativeWebView;
       if cookie.httpOnly: 1 else: 0, cookie.expires, cast[pointer](request),
       cast[MacCallback](macosCookieMutationCompleted))
   if started == 0:
+    GC_unref(request)
     return macosNativeFailure(if request.kind == nativeCookieSet: "webview.setCookie" else: "webview.deleteCookie",
       "WKHTTPCookieStore mutation could not start")
   success()
@@ -531,7 +578,7 @@ proc macosSetNotificationActivated(app: NativeApp;
     app.platformApp = macosAppCreate(cast[pointer](app))
   if app.platformApp.isNil or macosAppSetNotificationCallback(app.platformApp,
       cast[MacCallback](macosNotificationActivated)) == 0:
-    return macosNativeFailure("app.onNotificationActivated", "NSUserNotificationCenter delegate setup failed")
+    return macosNativeFailure("app.onNotificationActivated", "UNUserNotificationCenter delegate setup failed")
   success()
 
 proc macosSetDeepLinkHandler(app: NativeApp; handler: NativeDeepLinkHandler): NativeResult =
@@ -546,7 +593,7 @@ proc macosSendNativeNotification*(app: NativeApp;
                                   notification: NativeNotification): NativeResult =
   if macosAppSendNotification(app.platformApp, notification.id.cstring,
       notification.title.cstring, notification.body.cstring) == 0:
-    return macosNativeFailure("app.sendNativeNotification", "NSUserNotification delivery failed")
+    return macosNativeFailure("app.sendNativeNotification", "UNUserNotification delivery failed")
   success()
 
 proc macosRegisterCustomProtocol(app: NativeApp): NativeResult =

@@ -2959,7 +2959,7 @@ proc newWindowRequestedInvoke(self: pointer; sender, args: pointer): HResult {.s
   ## The application callback is the explicit decision boundary.  No callback,
   ## callback failure, and WSL relay paths return true and remain fail-closed;
   ## only an explicit false delegates to WebView2's default popup behavior.
-  let handled = view.dispatchNewWindowRequested(copiedUri)
+  let handled = view.dispatchNewWindowRequested(NativeNewWindowRequest(url: copiedUri))
   discard newWindowRequestedSetHandled(args, if handled: 1 else: 0)
   S_OK
 

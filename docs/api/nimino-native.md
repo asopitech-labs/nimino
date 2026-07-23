@@ -1,6 +1,6 @@
 # `nimino-native` 公開API案
 
-**状態: M2〜M6実装済み。Windows/Linux/macOS native backend と WSL host adapter に、`evalJavaScript`、message/navigation/error/new-window、CookieManager、permission/download callback、native menu/notification、tray、deep link、custom protocol を実装済みです。macOSはAppKit/WKWebView、NSStatusItem、NSUserNotificationCenterDelegate、profile別WKWebsiteDataStore、`.app`/`.dmg` packagingを提供します。macOS GUIは`nimble testMacosSmoke`、packageは`nimble testPackMacos`で確認します。実Windows GUI、Apple署名/notarization、ユーザー操作依存の通知クリック等は環境依存のrelease検証です。**
+**状態: M2〜M6実装済み。Windows/Linux/macOS native backend と WSL host adapter に、`evalJavaScript`、message/navigation/error/new-window、CookieManager、permission/download callback、native menu/notification、tray、deep link、custom protocol を実装済みです。macOSはAppKit/WKWebView、NSStatusItem、`UNUserNotificationCenter`、profile別WKWebsiteDataStore、`.app`/`.dmg` packagingを提供します。macOS GUIは`nimble testMacosSmoke`、packageは`nimble testPackMacos`で確認します。実Windows GUI、Apple署名/notarization、ユーザー操作依存の通知クリック等は環境依存のrelease検証です。**
 
 このAPIはWindow/WebViewと低水準イベントだけを提供します。RPC、プロファイル、権限ポリシー、アセット配信、URL包装、WSL通信を含めません。
 
@@ -199,11 +199,11 @@ discard app.sendNativeNotification(NativeNotification(
 
 ## macOS native backend
 
-macOSはCocoa/WebKitのprivate bridgeで`NSApplication`、`NSWindow`、複数`WKWebView`、native menu、`NSStatusItem` tray、`NSUserNotification`、通知activation、`NSApplication`の`openURLs` deep linkを提供します。`onPermissionRequested`はWKWebKitのmedia capture（camera/microphone）をdeny-defaultで判定し、`onDownloadStarting`/`onDownloadPath`/`onDownloadEvent`はWKDownloadの開始・保存先・進捗・完了/失敗へ接続します。Dockクリック時の`applicationShouldHandleReopen`では、非表示の全Windowを再表示します。
+macOSはCocoa/WebKitのprivate bridgeで`NSApplication`、`NSWindow`、複数`WKWebView`、native menu、`NSStatusItem` tray、`UNUserNotificationCenter`、通知activation、`NSApplication`の`openURLs` deep linkを提供します。通知登録時はAlert/Sound/Badge権限を要求し、activationは`UNNotificationRequest.identifier`で通知します。`onPermissionRequested`はWKWebKitのmedia capture（camera/microphone）をdeny-defaultで判定し、`onDownloadStarting`/`onDownloadPath`/`onDownloadEvent`はWKDownloadの開始・保存先・進捗・完了/失敗へ接続します。Dockクリック時の`applicationShouldHandleReopen`では、非表示の全Windowを再表示します。
 
 非incognito WebViewの`profilePath`はSHA-256から安定UUIDを作り、`WKWebsiteDataStore dataStoreForIdentifier:`でprofileごとに分離します。空のprofileは既定store、incognitoはnon-persistent storeです。`proxyUrl`はmacOS 14+でWebView構築時にNetwork.frameworkのHTTP CONNECT/SOCKS5設定として適用し、ready後の変更は`invalidState`で拒否します。`transparentWindow`とsystem proxyの動的変更はmacOS WebKitの共通API境界では提供しません。`hideTitleBar`は`NSWindowTitleHidden`、透明titlebar、`NSWindowStyleMaskFullSizeContentView`を組み合わせたoverlayとして提供します。
 
-`nimino package-macos --format app|dmg`はbundle内のmanifest、Mach-O host、assetsをmacOS application bundleへ配置し、manifestのdeep-link schemeとcamera/microphone用途説明を`Info.plist`へ登録します。macOSアイコンは`.icns`を使用します。`--arch`でhostのMach-Oアーキテクチャを検証し、`--sign-identity`を指定した場合のみcodesignを実行します。DMGのnotarizationは`--notary-profile`で明示的に要求できます。
+`nimino package-macos --format app|dmg`はbundle内のmanifest、Mach-O host、assetsをmacOS application bundleへ配置し、manifestのdeep-link schemeとcamera/microphone用途説明を`Info.plist`へ登録します。macOSアイコンは`.icns`を使用します。`--arch`でhostのMach-Oアーキテクチャを検証し、`--sign-identity`を指定した場合は`codesign --verify --deep --strict`と`spctl --assess --type execute`まで成功しなければ完了扱いにしません。DMGのnotarizationは`--notary-profile`で明示的に要求でき、staple後に`xcrun stapler validate`を実行します。
 
 `setDocumentStartScript`は`pending`のViewに一つだけscriptを設定・置換する低水準操作です。ready後の追加・変更は`invalidState`で拒否し、次のナビゲーションへ黙って適用しません。WindowsはWebView2の非同期`AddScriptToExecuteOnDocumentCreated`完了を待ってから保留中の最初の読込を開始し、LinuxはWebKitGTKの`WebKitUserScript`をdocument-startで登録します。どちらも以後のframe/ナビゲーションへ影響し得るため、URL・origin・注入ポリシーはこの層で判断しません。`nimino-core`がその制約を用いてRPC bridgeを限定します。
 

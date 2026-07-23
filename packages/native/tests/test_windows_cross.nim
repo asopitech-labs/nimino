@@ -50,7 +50,7 @@ doAssert configuredView.value.setProxy("http://127.0.0.1:8081").isOk
 doAssert configuredView.value.setIncognito(true).isOk
 doAssert view.value.onMessage(proc(message: string) = discard).isOk
 doAssert view.value.onError(proc(error: NativeError) = discard).isOk
-doAssert view.value.onNewWindowRequested(proc(url: string): bool = true).isOk
+doAssert view.value.onNewWindowRequested(proc(request: NativeNewWindowRequest): bool = true).isOk
 doAssert view.value.onNavigationStarting(proc(url: string): bool = true).isOk
 doAssert view.value.onNavigationCompleted(proc(url: string; succeeded: bool) = discard).isOk
 doAssert view.value.setDocumentStartScript("globalThis.niminoDocumentStart = true;").isOk

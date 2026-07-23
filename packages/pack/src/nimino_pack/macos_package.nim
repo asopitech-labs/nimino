@@ -125,6 +125,12 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
     return failure[string](ioFailure, "macOS package bundle is missing nimino-manifest.json")
   let manifest = try: parseJson(readFile(manifestPath))
     except CatchableError: return failure[string](invalidManifest, "nimino-manifest.json is invalid JSON")
+  if manifest.hasKey("permissions") and manifest["permissions"].kind == JObject and
+      manifest["permissions"].hasKey("allow") and manifest["permissions"]["allow"].kind == JArray:
+    for item in manifest["permissions"]["allow"].items:
+      if item.kind == JString and item.getStr().toLowerAscii() notin ["microphone", "camera"]:
+        return failure[string](unsupportedFeature,
+          "macOS package permissions support only microphone and camera")
   let proxyUrl = manifest.manifestWebviewProxy()
   if proxyUrl.len > 0:
     let proxyScheme = proxyUrl.toLowerAscii()
@@ -216,7 +222,7 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
       entitlements.add("</dict></plist>\n")
       writeFile(resources / "nimino-entitlements.plist", entitlements)
     if options.signingIdentity.len > 0:
-      var signArgs = @["--deep", "--force", "--options", "runtime"]
+      var signArgs = @["--deep", "--force", "--options", "runtime", "--timestamp"]
       if entitlements.len > 0:
         signArgs.add("--entitlements")
         signArgs.add(resources / "nimino-entitlements.plist")
@@ -225,6 +231,10 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
       signArgs.add(appPath)
       let signed = runTool("codesign", signArgs)
       if not signed.isOk: return failure[string](signed.error.kind, signed.error.detail)
+      let verified = runTool("codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath])
+      if not verified.isOk: return failure[string](verified.error.kind, verified.error.detail)
+      let assessed = runTool("spctl", ["--assess", "--type", "execute", "--verbose=2", appPath])
+      if not assessed.isOk: return failure[string](assessed.error.kind, assessed.error.detail)
     if options.format == macosDmgPackage:
       let dmgPath = options.outputDirectory / (id & ".dmg")
       let made = runTool("hdiutil", ["create", "-volname", name, "-srcfolder", appPath,
@@ -236,6 +246,9 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
         if not submitted.isOk: return failure[string](submitted.error.kind, submitted.error.detail)
         let stapled = runTool("xcrun", ["stapler", "staple", dmgPath])
         if not stapled.isOk: return failure[string](stapled.error.kind, stapled.error.detail)
+        let staplerValidated = runTool("xcrun", ["stapler", "validate", dmgPath])
+        if not staplerValidated.isOk:
+          return failure[string](staplerValidated.error.kind, staplerValidated.error.detail)
       return success(dmgPath)
     success(appPath)
   except OSError:

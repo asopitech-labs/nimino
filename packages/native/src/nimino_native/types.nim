@@ -15,11 +15,21 @@ type
 
   NativeIdleHandler* = proc() {.closure.}
   NativeUiHandler* = proc() {.closure.}
+  NativeReopenHandler* = proc() {.closure.}
   NativeMessageHandler* = proc(message: string) {.closure.}
   NativeErrorHandler* = proc(error: NativeError) {.closure.}
   ## Return true when the application consumed the request.  Returning false
   ## explicitly delegates to the WebView engine's default popup behavior.
-  NativeNewWindowRequestedHandler* = proc(url: string): bool {.closure.}
+  NativeNewWindowRequest* = object
+    url*: string
+    x*: int
+    y*: int
+    width*: int
+    height*: int
+    positionKnown*: bool
+    sizeKnown*: bool
+    focused*: bool
+  NativeNewWindowRequestedHandler* = proc(request: NativeNewWindowRequest): bool {.closure.}
   NativeNavigationStartingHandler* = proc(url: string): bool {.closure.}
   NativeNavigationCompletedHandler* = proc(url: string; succeeded: bool) {.closure.}
   ## `kind` is the OS/WebView permission name (for example `microphone`,
@@ -42,6 +52,7 @@ type
   NativeCloseRequestedHandler* = proc(): bool {.closure.}
   NativeClosedHandler* = proc() {.closure.}
   NativeResizeHandler* = proc(width, height: int) {.closure.}
+  NativeMoveHandler* = proc(x, y: int) {.closure.}
   ## Called for files dropped onto the native window. Paths are copied before
   ## the callback crosses the platform boundary and are never borrowed from
   ## Win32 HDROP or GTK/GDK objects.
@@ -175,6 +186,7 @@ type
     idleTimerWindow: pointer
     idleTimerSource: uint32
     idleHandler: NativeIdleHandler
+    reopenHandler: NativeReopenHandler
     uiTaskLock: Lock
     uiTasks: seq[NativeUiHandler]
     trayMenuItems: seq[NativeMenuItem]
@@ -239,6 +251,7 @@ type
     closeSignalHandler: culong
     closedHandler: NativeClosedHandler
     resizeHandler: NativeResizeHandler
+    moveHandler: NativeMoveHandler
     resizeSignalHandler: culong
     fileDropHandler: NativeFileDropHandler
     fileDropSignalHandler: culong
@@ -537,12 +550,13 @@ proc dispatchError(view: NativeWebView; error: NativeError) =
     ## A user callback must not unwind through a native C/COM callback.
     discard
 
-proc dispatchNewWindowRequested(view: NativeWebView; url: string): bool =
+proc dispatchNewWindowRequested(view: NativeWebView;
+                                request: NativeNewWindowRequest): bool =
   if view.isNil or view.state in {closing, closed} or
       view.newWindowRequestedHandler.isNil:
     return true
   try:
-    view.newWindowRequestedHandler(url)
+    view.newWindowRequestedHandler(request)
   except CatchableError:
     ## A user callback must not unwind through a native C/COM callback.
     true
@@ -566,13 +580,33 @@ proc dispatchClosed(window: NativeWindow) =
   try: window.closedHandler()
   except CatchableError: discard
 
+proc dispatchReopen(app: NativeApp) =
+  if app.isNil or app.reopenHandler.isNil:
+    return
+  try: app.reopenHandler()
+  except CatchableError: discard
+
 proc dispatchResized(window: NativeWindow; width, height: int) =
-  if window.isNil or window.resizeHandler.isNil or width <= 0 or height <= 0:
+  if window.isNil or width <= 0 or height <= 0:
+    return
+  window.width = width
+  window.height = height
+  if window.resizeHandler.isNil:
     return
   try:
     window.resizeHandler(width, height)
   except CatchableError:
     ## A resize observer must not break the native event callback boundary.
+    discard
+
+proc dispatchMoved(window: NativeWindow; x, y: int) =
+  if window.isNil:
+    return
+  if window.moveHandler.isNil:
+    return
+  try:
+    window.moveHandler(x, y)
+  except CatchableError:
     discard
 
 proc dispatchFileDrop(window: NativeWindow; paths: seq[string]) =
@@ -1314,6 +1348,15 @@ proc onResize*(window: NativeWindow; handler: NativeResizeHandler): NativeResult
       window.resizeSignalHandler = signal
   success()
 
+proc onMoved*(window: NativeWindow; handler: NativeMoveHandler): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.onMoved"))
+  when defined(macosx):
+    window.moveHandler = handler
+    success()
+  else:
+    failure(nativeError(unsupported, "window.onMoved"))
+
 proc onFileDrop*(window: NativeWindow;
                  handler: NativeFileDropHandler): NativeResult =
   if window.isNil or window.state in {closing, closed}:
@@ -1459,6 +1502,18 @@ proc setPosition*(window: NativeWindow; x, y: int): NativeResult =
   else:
     failure(nativeError(unsupported, "window.setPosition",
       detail = "the current Linux backend cannot move GTK4 windows"))
+
+proc setMinimumSize*(window: NativeWindow; width, height: int): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.setMinimumSize"))
+  if width <= 0 or height <= 0:
+    return failure(nativeError(invalidArgument, "window.setMinimumSize",
+      detail = "minimum size must be positive"))
+  when defined(macosx):
+    macosSetMinimumSize(window, width, height)
+  else:
+    failure(nativeError(unsupported, "window.setMinimumSize",
+      detail: "minimum content size is only implemented by the macOS backend"))
 
 proc focus*(window: NativeWindow): NativeResult =
   if window.isNil or window.state in {closing, closed}:
@@ -1930,6 +1985,18 @@ proc setIdleHandler*(app: NativeApp; handler: NativeIdleHandler): NativeResult =
     return success()
   else:
     return failure(nativeError(unsupported, "app.setIdleHandler"))
+
+proc onReopen*(app: NativeApp; handler: NativeReopenHandler): NativeResult =
+  if app.isNil or app.state == finished:
+    return failure(nativeError(invalidState, "app.onReopen"))
+  if handler.isNil:
+    return failure(nativeError(invalidArgument, "app.onReopen",
+      detail = "a reopen handler is required"))
+  when defined(macosx):
+    app.reopenHandler = handler
+    success()
+  else:
+    failure(nativeError(unsupported, "app.onReopen"))
 
 proc run*(app: NativeApp): NativeResult =
   if app.isNil or app.state != created:

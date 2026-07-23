@@ -155,9 +155,15 @@ type
     ## macOS title-bar overlay style used by Pake's hideTitleBar option.
     ## Other backends reject this option explicitly.
     hideTitleBar*: bool
+    minWidth*: int
+    minHeight*: int
     userAgent*: string
     proxyUrl*: string
     incognito*: bool
+    ## Keep the manifest's WebAssembly capability explicit. WKWebView has
+    ## WebAssembly enabled by default; Chromium-only browser flags are not
+    ## available through Apple's public WKWebView API.
+    enableWasm*: bool
     ## WebView zoom factor. 1.0 is the platform default.
     zoomFactor*: float
     ignoreCertificateErrors*: bool
@@ -197,6 +203,13 @@ type
 
   NewWindowRequest* = object
     url*: string
+    x*: int
+    y*: int
+    width*: int
+    height*: int
+    positionKnown*: bool
+    sizeKnown*: bool
+    focused*: bool
 
   WindowError* = object
     operation*: string
@@ -300,6 +313,20 @@ type
     multiWindow*: bool
     enableDragDrop: bool
     hideOnClose*: bool
+    userAgent: string
+    proxyUrl: string
+    incognito: bool
+    enableWasm: bool
+    zoomFactor: float
+    ignoreCertificateErrors: bool
+    hideTitleBar: bool
+    hideWindowDecorations: bool
+    fullscreen: bool
+    maximized: bool
+    alwaysOnTop: bool
+    resizable: bool
+    minWidth: int
+    minHeight: int
     lastUrl: string
     rpc*: RpcRegistry
     documentStartBridgeScript: string
@@ -881,10 +908,14 @@ proc configureWindow(window: Window): CoreResult =
     return coreFailure(errorConfigured.failure.mapNativeError())
 
   let newWindowConfigured = native.onNewWindowRequested(window.nativeView,
-    proc(url: string): bool =
+    proc(request: native.NativeNewWindowRequest): bool =
       if window.newWindowHandler.isNil:
         return true
-      try: window.newWindowHandler(NewWindowRequest(url: url))
+      try: window.newWindowHandler(NewWindowRequest(
+        url: request.url, x: request.x, y: request.y,
+        width: request.width, height: request.height,
+        positionKnown: request.positionKnown, sizeKnown: request.sizeKnown,
+        focused: request.focused))
       except CatchableError: true)
   if not newWindowConfigured.isOk:
     return coreFailure(newWindowConfigured.failure.mapNativeError())
@@ -925,11 +956,26 @@ proc configureWindow(window: Window): CoreResult =
 
   let resizeConfigured = native.onResize(window.nativeWindow,
     proc(width, height: int) =
-      if window != nil and not window.closed and not window.resizeHandler.isNil:
-        try: window.resizeHandler(width, height)
-        except CatchableError: discard)
+      if window != nil and not window.closed:
+        window.windowState.width = width
+        window.windowState.height = height
+        discard window.saveWindowState()
+        if not window.resizeHandler.isNil:
+          try: window.resizeHandler(width, height)
+          except CatchableError: discard)
   if not resizeConfigured.isOk:
     return coreFailure(resizeConfigured.failure.mapNativeError())
+
+  when defined(macosx):
+    let moveConfigured = native.onMoved(window.nativeWindow,
+      proc(x, y: int) =
+        if window != nil and not window.closed:
+          window.windowState.x = x
+          window.windowState.y = y
+          window.windowState.positionKnown = true
+          discard window.saveWindowState())
+    if not moveConfigured.isOk:
+      return coreFailure(moveConfigured.failure.mapNativeError())
 
   let permissionConfigured = native.onPermissionRequested(window.nativeView,
     proc(kind, url: string): bool =
@@ -1004,10 +1050,14 @@ proc configureAdditionalWebView(window: Window; view: WebView): CoreResult =
   if not completionConfigured.isOk:
     return coreFailure(completionConfigured.failure.mapNativeError())
   let newWindowConfigured = native.onNewWindowRequested(view.nativeView,
-    proc(url: string): bool =
+    proc(request: native.NativeNewWindowRequest): bool =
       if window.newWindowHandler.isNil:
         return true
-      try: window.newWindowHandler(NewWindowRequest(url: url))
+      try: window.newWindowHandler(NewWindowRequest(
+        url: request.url, x: request.x, y: request.y,
+        width: request.width, height: request.height,
+        positionKnown: request.positionKnown, sizeKnown: request.sizeKnown,
+        focused: request.focused))
       except CatchableError: true)
   if not newWindowConfigured.isOk:
     return coreFailure(newWindowConfigured.failure.mapNativeError())
@@ -1114,6 +1164,15 @@ proc newApp*(options: AppOptions): CoreResultOf[App] =
   if not idleConfigured.isOk:
     releaseInstanceLock(instanceLock)
     return coreFailureOf[App](idleConfigured.failure.mapNativeError())
+  when defined(macosx):
+    let reopenConfigured = native.onReopen(app.nativeApp, proc() =
+      for window in app.windows:
+        if not window.isNil and not window.closed:
+          window.windowState.visible = true
+          discard window.saveWindowState())
+    if not reopenConfigured.isOk:
+      releaseInstanceLock(instanceLock)
+      return coreFailureOf[App](reopenConfigured.failure.mapNativeError())
   coreSuccessOf(app)
 
 proc newApp*(id = "tech.asopi.nimino"; name = "Nimino"): CoreResultOf[App] =
@@ -1475,6 +1534,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
       detail = profile.error))
 
   let title = if options.title.len == 0: app.name else: options.title
+  let initialZoomFactor = if options.zoomFactor <= 0: 1.0 else: options.zoomFactor
   if app.backend == wslBackend:
     when defined(linux):
       let remoteWindow = app.wslCall("native.window.create", $(%*{
@@ -1491,7 +1551,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         "userAgent": options.userAgent,
         "proxyUrl": options.proxyUrl,
         "incognito": options.incognito,
-        "zoomFactor": (if options.zoomFactor <= 0: 1.0 else: options.zoomFactor),
+        "zoomFactor": initialZoomFactor,
         "ignoreCertificateErrors": options.ignoreCertificateErrors,
         "enableDragDrop": options.enableDragDrop,
         "multiWindow": options.multiWindow,
@@ -1515,6 +1575,20 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                           multiWindow: options.multiWindow,
                           enableDragDrop: options.enableDragDrop,
                           hideOnClose: options.hideOnClose,
+                          userAgent: options.userAgent,
+                          proxyUrl: options.proxyUrl,
+                          incognito: options.incognito,
+                          enableWasm: options.enableWasm,
+                          zoomFactor: initialZoomFactor,
+                          ignoreCertificateErrors: options.ignoreCertificateErrors,
+                          hideTitleBar: options.hideTitleBar,
+                          hideWindowDecorations: options.hideWindowDecorations,
+                          fullscreen: options.fullscreen,
+                          maximized: options.maximized,
+                          alwaysOnTop: options.alwaysOnTop,
+                          resizable: true,
+                          minWidth: options.minWidth,
+                          minHeight: options.minHeight,
                           inlineRemoteAssets: options.inlineRemoteAssets,
                           windowState: WindowState(width: options.width, height: options.height,
                             visible: true),
@@ -1545,6 +1619,13 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     if not titleBar.isOk:
       discard nativeWindow.value.close()
       return coreFailureOf[Window](titleBar.failure.mapNativeError())
+  if options.minWidth > 0 or options.minHeight > 0:
+    let minimumWidth = if options.minWidth > 0: options.minWidth else: options.width
+    let minimumHeight = if options.minHeight > 0: options.minHeight else: options.height
+    let minimum = nativeWindow.value.setMinimumSize(minimumWidth, minimumHeight)
+    if not minimum.isOk:
+      discard nativeWindow.value.close()
+      return coreFailureOf[Window](minimum.failure.mapNativeError())
   let nativeView = native.newWebView(nativeWindow.value,
     userAgent = options.userAgent, proxyUrl = options.proxyUrl,
     incognito = options.incognito,
@@ -1552,7 +1633,7 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
   if not nativeView.isOk:
     discard nativeWindow.value.close()
     return coreFailureOf[Window](nativeView.failure.mapNativeError())
-  let zoomFactor = if options.zoomFactor <= 0: 1.0 else: options.zoomFactor
+  let zoomFactor = initialZoomFactor
   let zoomed = nativeView.value.setZoom(zoomFactor)
   if not zoomed.isOk:
     discard nativeWindow.value.close()
@@ -1562,11 +1643,12 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     if not certs.isOk:
       discard nativeWindow.value.close()
       return coreFailureOf[Window](certs.failure.mapNativeError())
-  if options.hideWindowDecorations:
-    let decorations = nativeWindow.value.setDecorated(false)
-    if not decorations.isOk:
-      discard nativeWindow.value.close()
-      return coreFailureOf[Window](decorations.failure.mapNativeError())
+  when not defined(macosx):
+    if options.hideWindowDecorations:
+      let decorations = nativeWindow.value.setDecorated(false)
+      if not decorations.isOk:
+        discard nativeWindow.value.close()
+        return coreFailureOf[Window](decorations.failure.mapNativeError())
 
   let window = Window(app: app, nativeWindow: nativeWindow.value,
                       nativeView: nativeView.value, profilePath: profile.value,
@@ -1574,6 +1656,20 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                       multiWindow: options.multiWindow,
                       enableDragDrop: options.enableDragDrop,
                       hideOnClose: options.hideOnClose,
+                      userAgent: options.userAgent,
+                      proxyUrl: options.proxyUrl,
+                      incognito: options.incognito,
+                      enableWasm: options.enableWasm,
+                      zoomFactor: zoomFactor,
+                      ignoreCertificateErrors: options.ignoreCertificateErrors,
+                      hideTitleBar: options.hideTitleBar,
+                      hideWindowDecorations: options.hideWindowDecorations,
+                      fullscreen: options.fullscreen,
+                      maximized: options.maximized,
+                      alwaysOnTop: options.alwaysOnTop,
+                      resizable: true,
+                      minWidth: options.minWidth,
+                      minHeight: options.minHeight,
                       inlineRemoteAssets: options.inlineRemoteAssets,
                       windowState: WindowState(width: options.width, height: options.height,
                         visible: true),
@@ -2618,18 +2714,21 @@ proc minimize*(window: Window): CoreResult =
 proc maximize*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.maximize"))
-  case window.app.backend
+  let outcome = case window.app.backend
   of nativeBackend: window.nativeWindow.maximize().fromNative()
   of wslBackend:
     when defined(linux):
       let response = window.app.wslCall("native.window.maximize", $(%*{"windowId": $window.windowId}))
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else: coreFailure(coreError(platformUnavailable, "window.maximize"))
+  if outcome.isOk:
+    window.maximized = true
+  outcome
 
 proc setFullscreen*(window: Window; enabled: bool): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setFullscreen"))
-  case window.app.backend
+  let outcome = case window.app.backend
   of nativeBackend:
     native.setFullscreen(window.nativeWindow, enabled).fromNative()
   of wslBackend:
@@ -2639,6 +2738,9 @@ proc setFullscreen*(window: Window; enabled: bool): CoreResult =
       }))
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else: coreFailure(coreError(platformUnavailable, "window.setFullscreen"))
+  if outcome.isOk:
+    window.fullscreen = enabled
+  outcome
 
 proc setZoom*(window: Window; factor: float): CoreResult =
   ## Apply a runtime zoom change to every WebView owned by this Window.
@@ -2666,12 +2768,13 @@ proc setZoom*(window: Window; factor: float): CoreResult =
           return coreFailure(updated.failure)
       else:
         return coreFailure(coreError(platformUnavailable, "window.setZoom"))
+  window.zoomFactor = factor
   coreSuccess()
 
 proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setAlwaysOnTop"))
-  case window.app.backend
+  let outcome = case window.app.backend
   of nativeBackend:
     native.setAlwaysOnTop(window.nativeWindow, enabled).fromNative()
   of wslBackend:
@@ -2681,22 +2784,28 @@ proc setAlwaysOnTop*(window: Window; enabled: bool): CoreResult =
       }))
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else: coreFailure(coreError(platformUnavailable, "window.setAlwaysOnTop"))
+  if outcome.isOk:
+    window.alwaysOnTop = enabled
+  outcome
 
 proc restore*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.restore"))
-  case window.app.backend
+  let outcome = case window.app.backend
   of nativeBackend: native.restore(window.nativeWindow).fromNative()
   of wslBackend:
     when defined(linux):
       let response = window.app.wslCall("native.window.restore", $(%*{"windowId": $window.windowId}))
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else: coreFailure(coreError(platformUnavailable, "window.restore"))
+  if outcome.isOk:
+    window.maximized = false
+  outcome
 
 proc setResizable*(window: Window; resizable: bool): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.setResizable"))
-  case window.app.backend
+  let outcome = case window.app.backend
   of nativeBackend:
     native.setResizable(window.nativeWindow, resizable).fromNative()
   of wslBackend:
@@ -2706,6 +2815,9 @@ proc setResizable*(window: Window; resizable: bool): CoreResult =
       }))
       if response.isOk: coreSuccess() else: coreFailure(response.failure)
     else: coreFailure(coreError(platformUnavailable, "window.setResizable"))
+  if outcome.isOk:
+    window.resizable = resizable
+  outcome
 
 proc setPosition*(window: Window; x, y: int): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
@@ -2891,6 +3003,7 @@ proc onNewWindow*(window: Window;
   coreSuccess()
 
 proc loadUrl*(window: Window; url: string): CoreResult
+proc onFileDrop*(window: Window; handler: proc(paths: seq[string])): CoreResult
 
 proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
                 width = 900; height = 700; profile = "default"): CoreResultOf[Window] =
@@ -2909,7 +3022,23 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
     return coreFailureOf[Window](coreError(permissionDenied, "window.openPopup",
       detail = "popup URL was rejected by navigation policy"))
   let popup = window.app.newWindow(CoreWindowOptions(
-    title: title, width: width, height: height, profile: profile,
+    title: title,
+    width: if request.sizeKnown and request.width > 0: request.width else: width,
+    height: if request.sizeKnown and request.height > 0: request.height else: height,
+    profile: profile,
+    fullscreen: window.fullscreen,
+    maximized: window.maximized,
+    alwaysOnTop: window.alwaysOnTop,
+    hideWindowDecorations: window.hideWindowDecorations,
+    hideTitleBar: window.hideTitleBar,
+    minWidth: window.minWidth,
+    minHeight: window.minHeight,
+    userAgent: window.userAgent,
+    proxyUrl: window.proxyUrl,
+    incognito: window.incognito,
+    enableWasm: window.enableWasm,
+    zoomFactor: window.zoomFactor,
+    ignoreCertificateErrors: window.ignoreCertificateErrors,
     multiWindow: window.multiWindow,
     enableDragDrop: window.enableDragDrop,
     hideOnClose: window.hideOnClose,
@@ -2919,6 +3048,21 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
     disableDevTools: not window.devToolsEnabled))
   if not popup.isOk:
     return popup
+  if not window.resizable:
+    let resized = popup.value.setResizable(false)
+    if not resized.isOk:
+      discard popup.value.close()
+      return coreFailureOf[Window](resized.failure)
+  if request.positionKnown:
+    let positioned = popup.value.setPosition(request.x, request.y)
+    if not positioned.isOk:
+      discard popup.value.close()
+      return coreFailureOf[Window](positioned.failure)
+  if request.focused:
+    let focused = popup.value.focus()
+    if not focused.isOk:
+      discard popup.value.close()
+      return coreFailureOf[Window](focused.failure)
   ## A popup is a new native Window, but it remains inside the same Core
   ## security scope.  Copy the parent's policy and handlers before the first
   ## navigation so the child cannot escape through a later redirect.
@@ -2929,6 +3073,15 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
   popup.value.permissionHandler = window.permissionHandler
   popup.value.downloadHandler = window.downloadHandler
   popup.value.downloadEventHandler = window.downloadEventHandler
+  popup.value.navigationCompletedHandler = window.navigationCompletedHandler
+  popup.value.errorHandler = window.errorHandler
+  popup.value.newWindowHandler = window.newWindowHandler
+  popup.value.fileDropHandler = window.fileDropHandler
+  if not window.fileDropHandler.isNil:
+    let dropConfigured = popup.value.onFileDrop(window.fileDropHandler)
+    if not dropConfigured.isOk:
+      discard popup.value.close()
+      return coreFailureOf[Window](dropConfigured.failure)
   let loaded = popup.value.loadUrl(request.url)
   if not loaded.isOk:
     discard popup.value.close()
@@ -4044,6 +4197,11 @@ proc quit*(app: App): CoreResult =
         return coreFailure(coreError(invalidState, "app.quit", detail = "quit request denied"))
     except CatchableError:
       return coreFailure(coreError(nativeFailure, "app.quit", detail = "before-quit handler failed"))
+  for window in app.windows:
+    if not window.isNil and not window.closed:
+      let saved = window.saveWindowState()
+      if not saved.isOk:
+        return saved
   case app.backend
   of nativeBackend:
     if app.nativeApp.isNil:

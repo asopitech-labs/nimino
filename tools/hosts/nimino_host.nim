@@ -154,6 +154,7 @@ proc main() =
   let userAgent = optionalString(webview, "userAgent", "")
   let proxyUrl = optionalString(webview, "proxyUrl", "")
   let incognito = webview.boolean("incognito", false)
+  let enableWasm = webview.boolean("wasm", false)
   let newWindow = webview.boolean("newWindow", false)
   ## These Pake-compatible fields are accepted by the manifest schema, but
   ## this generated host does not have a native implementation yet.  Fail at
@@ -164,8 +165,9 @@ proc main() =
       windowNode["minHeight"].getInt() else: 0
   if minWidth < 0 or minHeight < 0:
     fail("window minimum size must not be negative")
-  if minWidth > 0 or minHeight > 0:
-    fail("window minimum size is not supported by this host")
+  when not defined(macosx):
+    if minWidth > 0 or minHeight > 0:
+      fail("window minimum size is only supported by the macOS host")
   let hideTitleBar = windowNode.boolean("hideTitleBar", false)
   when not defined(macosx):
     if hideTitleBar:
@@ -193,6 +195,10 @@ proc main() =
     if permission notin ["microphone", "camera", "notifications", "geolocation",
                          "clipboard", "screenCapture"]:
       fail("manifest contains an unknown permission: " & permission)
+  when defined(macosx):
+    for permission in allowedPermissions:
+      if permission notin ["microphone", "camera"]:
+        fail("macOS host only supports microphone and camera permissions")
   let packageVersion = if manifest.hasKey("package") and manifest["package"].kind == JObject:
       optionalString(manifest["package"], "version", NiminoCoreVersion)
     else: NiminoCoreVersion
@@ -223,6 +229,8 @@ proc main() =
     title: optionalString(windowNode, "title", appName),
     width: windowNode.integer("width", 1200),
     height: windowNode.integer("height", 800),
+    minWidth: minWidth,
+    minHeight: minHeight,
     profile: profile,
     fullscreen: windowNode.boolean("fullscreen", false),
     maximized: windowNode.boolean("maximized", false),
@@ -233,6 +241,7 @@ proc main() =
     userAgent: userAgent,
     proxyUrl: proxyUrl,
     incognito: incognito,
+    enableWasm: enableWasm,
     zoomFactor: zoomFactor,
     ignoreCertificateErrors: ignoreCertificateErrors,
     multiWindow: multiWindow,
@@ -305,7 +314,7 @@ proc main() =
       ## The request came from the WebView's user gesture.  Consume it by
       ## creating the popup explicitly; native backends never create one
       ## implicitly.
-      let popup = window.openPopup(NewWindowRequest(url: request.url), profile = profile)
+      let popup = window.openPopup(request, profile = profile)
       if not popup.isOk:
         fail("nimino-host: popup creation failed: " & popup.failure.detail)
       true
@@ -366,6 +375,18 @@ proc main() =
     if requested in allowedPermissions: permissionGrant else: permissionDeny)
   if not permissionConfigured.isOk:
     fail(permissionConfigured.failure.detail)
+  if windowNode.boolean("enableDragDrop", false):
+    let fileDropConfigured = window.onFileDrop(proc(paths: seq[string]) =
+      var encoded = newJArray()
+      for path in paths:
+        encoded.add(%path)
+      ## The generated host has no application callback surface, so expose
+      ## native drops to the loaded page as a stable DOM event.
+      discard window.evalJavaScript(
+        "window.dispatchEvent(new CustomEvent('nimino-file-drop',{detail:" &
+        $encoded & "}));"))
+    if not fileDropConfigured.isOk:
+      fail(fileDropConfigured.failure.detail)
   let resizable = window.setResizable(windowNode.boolean("resizable", true))
   if not resizable.isOk:
     fail(resizable.failure.detail)

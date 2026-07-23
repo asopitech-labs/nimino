@@ -1,5 +1,6 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+#import <UserNotifications/UserNotifications.h>
 #import <Network/Network.h>
 #import <dispatch/dispatch.h>
 #include <stdint.h>
@@ -11,9 +12,11 @@ typedef void (*MacIdleCallback)(void *);
 typedef int (*MacCloseCallback)(void *);
 typedef void (*MacClosedCallback)(void *);
 typedef void (*MacResizeCallback)(void *, int, int);
+typedef void (*MacMoveCallback)(void *, int, int);
 typedef void (*MacFileDropCallback)(void *, const char *);
 typedef void (*MacMessageCallback)(void *, const char *);
 typedef int (*MacBoolStringCallback)(void *, const char *);
+typedef int (*MacNewWindowCallback)(void *, const char *, int, int, int, int, int, int, int, int);
 typedef void (*MacNavigationCallback)(void *, const char *, int);
 typedef void (*MacErrorCallback)(void *, const char *, const char *);
 typedef void (*MacEvalCallback)(void *, void *, const char *, int, const char *);
@@ -58,7 +61,7 @@ typedef struct MacViewContext MacViewContext;
 @property(nonatomic, assign) BOOL tray;
 @end
 
-@interface NiminoNotificationDelegate : NSObject <NSUserNotificationCenterDelegate>
+@interface NiminoNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
 @property(nonatomic, assign) MacAppContext *context;
 @end
 
@@ -82,6 +85,7 @@ struct MacAppContext {
   NiminoNotificationDelegate *notificationDelegate;
   NiminoApplicationDelegate *applicationDelegate;
   NSMutableArray *pendingDeepLinks;
+  NSMutableSet *stoppedSchemeTasks;
   MacWindowContext *windows;
   MacMenuCallback menuCallback;
   NSString *scheme;
@@ -103,18 +107,21 @@ struct MacWindowContext {
   MacCloseCallback closeCallback;
   MacClosedCallback closedCallback;
   MacResizeCallback resizeCallback;
+  MacMoveCallback moveCallback;
   MacFileDropCallback fileDropCallback;
 };
 
 struct MacViewContext {
   void *userData;
   MacWindowContext *window;
+  int pendingCallbacks;
+  BOOL disposed;
   WKWebView *webView;
   NiminoWebViewDelegate *delegate;
   MacViewContext *next;
   MacMessageCallback messageCallback;
   MacErrorCallback errorCallback;
-  MacBoolStringCallback newWindowCallback;
+  MacNewWindowCallback newWindowCallback;
   MacBoolStringCallback navigationStartingCallback;
   MacNavigationCallback navigationCompletedCallback;
   MacEvalCallback evalCallback;
@@ -126,6 +133,29 @@ struct MacViewContext {
 };
 
 void nimino_macos_window_dispose(void *opaque);
+
+static void macViewRetainCallback(MacViewContext *context) {
+  if (context) context->pendingCallbacks++;
+}
+
+static void macViewReleaseCallback(MacViewContext *context) {
+  if (!context) return;
+  if (context->pendingCallbacks > 0) context->pendingCallbacks--;
+  if (context->disposed && context->pendingCallbacks == 0) free(context);
+}
+
+static void macViewUnlink(MacViewContext *context) {
+  if (!context || !context->window) return;
+  MacViewContext **cursor = &context->window->views;
+  while (*cursor) {
+    if (*cursor == context) {
+      *cursor = context->next;
+      context->window = NULL;
+      return;
+    }
+    cursor = &(*cursor)->next;
+  }
+}
 
 static const char *niminoString(NSString *value) {
   return value ? value.UTF8String : "";
@@ -139,6 +169,25 @@ static NSString *niminoJSONDescription(id value) {
   NSString *json = [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease];
   if (json.length < 2) return json ?: @"";
   return [json substringWithRange:NSMakeRange(1, json.length - 2)];
+}
+
+static BOOL niminoCookieMatchesURL(NSHTTPCookie *cookie, NSURL *url) {
+  if (!cookie || !url || !url.host) return NO;
+  NSString *host = url.host.lowercaseString;
+  NSString *domain = cookie.domain.lowercaseString;
+  while ([domain hasPrefix:@"."]) domain = [domain substringFromIndex:1];
+  if (domain.length == 0) return NO;
+  BOOL domainMatches = [host isEqualToString:domain] ||
+    [host hasSuffix:[@"." stringByAppendingString:domain]];
+  if (!domainMatches) return NO;
+  if (cookie.isSecure && ![url.scheme.lowercaseString isEqualToString:@"https"]) return NO;
+
+  NSString *requestPath = url.path.length > 0 ? url.path : @"/";
+  NSString *cookiePath = cookie.path.length > 0 ? cookie.path : @"/";
+  if (![requestPath hasPrefix:cookiePath]) return NO;
+  if ([requestPath isEqualToString:cookiePath] || [cookiePath hasSuffix:@"/"]) return YES;
+  return requestPath.length > cookiePath.length &&
+    [requestPath characterAtIndex:cookiePath.length] == '/';
 }
 
 @implementation NiminoTimerTarget
@@ -174,6 +223,12 @@ static MacIdleCallback g_idleCallback = NULL;
   self.context->resizeCallback(self.context->userData, (int)frame.size.width,
                                (int)frame.size.height);
 }
+- (void)windowDidMove:(NSNotification *)notification {
+  (void)notification;
+  if (!self.context || !self.context->moveCallback || !self.context->window) return;
+  NSPoint origin = self.context->window.frame.origin;
+  self.context->moveCallback(self.context->userData, (int)origin.x, (int)origin.y);
+}
 @end
 
 @implementation NiminoDropView
@@ -203,17 +258,22 @@ static MacIdleCallback g_idleCallback = NULL;
 @end
 
 @implementation NiminoNotificationDelegate
-- (BOOL)userNotificationCenter:(NSUserNotificationCenter *)center
-       shouldPresentNotification:(NSUserNotification *)notification {
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+       willPresentNotification:(UNNotification *)notification
+         withCompletionHandler:(void (^)(UNNotificationPresentationOptions options))completionHandler {
   (void)center; (void)notification;
-  return YES;
+  if (completionHandler)
+    completionHandler(UNNotificationPresentationOptionBanner |
+                      UNNotificationPresentationOptionSound);
 }
-- (void)userNotificationCenter:(NSUserNotificationCenter *)center
-       didActivateNotification:(NSUserNotification *)notification {
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+ didReceiveNotificationResponse:(UNNotificationResponse *)response
+          withCompletionHandler:(void (^)(void))completionHandler {
   (void)center;
   if (self.context && self.context->notificationCallback)
     self.context->notificationCallback(self.context->userData,
-      niminoString(notification.identifier));
+      niminoString(response.notification.request.identifier));
+  if (completionHandler) completionHandler();
 }
 @end
 
@@ -251,11 +311,14 @@ static MacIdleCallback g_idleCallback = NULL;
   NSString *url = request.URL.absoluteString ?: @"";
   NSString *method = request.HTTPMethod ?: @"GET";
   NSString *path = request.URL.path ?: @"/";
+  [self.context->stoppedSchemeTasks removeObject:task];
   self.context->schemeCallback(self.context->userData, task,
                                method.UTF8String, url.UTF8String, path.UTF8String);
 }
 - (void)webView:(WKWebView *)webView stopURLSchemeTask:(id<WKURLSchemeTask>)task {
-  (void)webView; (void)task;
+  (void)webView;
+  if (self.context && task)
+    [self.context->stoppedSchemeTasks addObject:task];
 }
 @end
 
@@ -319,10 +382,17 @@ static MacIdleCallback g_idleCallback = NULL;
  createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
  forNavigationAction:(WKNavigationAction *)navigationAction
       windowFeatures:(WKWindowFeatures *)windowFeatures {
-  (void)webView; (void)configuration; (void)windowFeatures;
+  (void)webView; (void)configuration;
   if (!self.context || !self.context->newWindowCallback) return nil;
   NSString *url = navigationAction.request.URL.absoluteString;
-  (void)self.context->newWindowCallback(self.context->userData, niminoString(url));
+  BOOL positionKnown = windowFeatures && windowFeatures.x && windowFeatures.y;
+  BOOL sizeKnown = windowFeatures && windowFeatures.width && windowFeatures.height;
+  int x = positionKnown ? windowFeatures.x.intValue : 0;
+  int y = positionKnown ? windowFeatures.y.intValue : 0;
+  int width = sizeKnown ? windowFeatures.width.intValue : 0;
+  int height = sizeKnown ? windowFeatures.height.intValue : 0;
+  (void)self.context->newWindowCallback(self.context->userData, niminoString(url),
+    positionKnown, x, y, sizeKnown, width, height, 1, 0);
   return nil;
 }
 
@@ -345,7 +415,8 @@ static MacIdleCallback g_idleCallback = NULL;
   (void)webView;
   download.delegate = self;
   if (!self.observedDownloads)
-    self.observedDownloads = [NSHashTable strongObjectsHashTable];
+    self.observedDownloads = [[[NSHashTable alloc] initWithOptions:NSHashTableStrongMemory
+                                                            capacity:0] autorelease];
   if (![self.observedDownloads containsObject:download]) {
     [download.progress addObserver:self forKeyPath:@"fractionCompleted"
                             options:NSKeyValueObservingOptionNew context:download];
@@ -464,6 +535,7 @@ void *nimino_macos_app_create(void *userData) {
   context->application = [NSApplication sharedApplication];
   [context->application setActivationPolicy:NSApplicationActivationPolicyRegular];
   context->pendingDeepLinks = [NSMutableArray new];
+  context->stoppedSchemeTasks = [NSMutableSet new];
   context->applicationDelegate = [NiminoApplicationDelegate new];
   context->applicationDelegate.context = context;
   context->application.delegate = context->applicationDelegate;
@@ -516,13 +588,15 @@ void nimino_macos_app_dispose(void *opaque) {
   [context->trayTarget release]; context->trayTarget = nil;
   [context->menu release]; context->menu = nil;
   [context->menuTarget release]; context->menuTarget = nil;
-  if ([NSUserNotificationCenter defaultUserNotificationCenter].delegate == context->notificationDelegate)
-    [NSUserNotificationCenter defaultUserNotificationCenter].delegate = nil;
+  if ([NSBundle mainBundle].bundleIdentifier.length > 0 &&
+      [UNUserNotificationCenter currentNotificationCenter].delegate == context->notificationDelegate)
+    [UNUserNotificationCenter currentNotificationCenter].delegate = nil;
   [context->notificationDelegate release]; context->notificationDelegate = nil;
   if (context->application.delegate == context->applicationDelegate)
     context->application.delegate = nil;
   [context->applicationDelegate release]; context->applicationDelegate = nil;
   [context->pendingDeepLinks release]; context->pendingDeepLinks = nil;
+  [context->stoppedSchemeTasks release]; context->stoppedSchemeTasks = nil;
   [context->schemeHandler release]; context->schemeHandler = nil;
   [context->scheme release]; context->scheme = nil;
   context->menuCallback = NULL;
@@ -620,7 +694,19 @@ int nimino_macos_app_set_notification_callback(void *opaque, void *callback) {
   [context->notificationDelegate release];
   context->notificationDelegate = [NiminoNotificationDelegate new];
   context->notificationDelegate.context = context;
-  [NSUserNotificationCenter defaultUserNotificationCenter].delegate = context->notificationDelegate;
+  /* UserNotifications raises an exception for command-line binaries that do
+   * not have an application bundle. Keep registration idempotent for native
+   * unit/smoke tests; packaged .app processes take the full path below. */
+  if ([NSBundle mainBundle].bundleIdentifier.length == 0)
+    return 1;
+  UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+  center.delegate = context->notificationDelegate;
+  [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert |
+                                            UNAuthorizationOptionSound |
+                                            UNAuthorizationOptionBadge)
+                         completionHandler:^(BOOL granted, NSError *error) {
+    (void)granted; (void)error;
+  }];
   return 1;
 }
 
@@ -647,12 +733,18 @@ int nimino_macos_app_send_notification(void *opaque, const char *identifier,
                                        const char *title, const char *body) {
   MacAppContext *context = (MacAppContext *)opaque;
   if (!context || !title) return 0;
-  NSUserNotification *notification = [[NSUserNotification alloc] init];
-  notification.identifier = identifier ? [NSString stringWithUTF8String:identifier] : @"nimino";
-  notification.title = [NSString stringWithUTF8String:title];
-  notification.informativeText = body ? [NSString stringWithUTF8String:body] : @"";
-  [[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:notification];
-  [notification release];
+  if ([NSBundle mainBundle].bundleIdentifier.length == 0) return 0;
+  UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
+  content.title = [NSString stringWithUTF8String:title];
+  content.body = body ? [NSString stringWithUTF8String:body] : @"";
+  NSString *requestId = identifier ? [NSString stringWithUTF8String:identifier] : @"nimino";
+  UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:requestId
+      content:content trigger:nil];
+  [[UNUserNotificationCenter currentNotificationCenter]
+      addNotificationRequest:request withCompletionHandler:^(NSError *error) {
+    (void)error;
+  }];
+  [content release];
   return 1;
 }
 
@@ -668,10 +760,15 @@ int nimino_macos_app_register_scheme(void *opaque, const char *scheme, void *cal
   return context->scheme && context->schemeHandler ? 1 : 0;
 }
 
-void nimino_macos_scheme_respond(void *taskOpaque, int status, const char *mimeType,
+void nimino_macos_scheme_respond(void *appOpaque, void *taskOpaque, int status, const char *mimeType,
                                  const char *body) {
+  MacAppContext *context = (MacAppContext *)appOpaque;
   id<WKURLSchemeTask> task = (id<WKURLSchemeTask>)taskOpaque;
   if (!task) return;
+  if (context && [context->stoppedSchemeTasks containsObject:task]) {
+    [context->stoppedSchemeTasks removeObject:task];
+    return;
+  }
   NSString *mime = mimeType && mimeType[0] ? [NSString stringWithUTF8String:mimeType] : @"application/octet-stream";
   NSData *data = body ? [NSData dataWithBytes:body length:strlen(body)] : [NSData data];
   NSURLResponse *response = [[NSURLResponse alloc] initWithURL:task.request.URL
@@ -689,7 +786,7 @@ void nimino_macos_scheme_respond(void *taskOpaque, int status, const char *mimeT
 void *nimino_macos_window_create(void *appOpaque, void *userData, const char *title,
                                  int width, int height, void *closeCallback,
                                  void *closedCallback, void *resizeCallback,
-                                 void *fileDropCallback) {
+                                 void *moveCallback, void *fileDropCallback) {
   MacAppContext *app = (MacAppContext *)appOpaque;
   if (!app) return NULL;
   MacWindowContext *context = calloc(1, sizeof(MacWindowContext));
@@ -698,6 +795,7 @@ void *nimino_macos_window_create(void *appOpaque, void *userData, const char *ti
   context->closeCallback = (MacCloseCallback)closeCallback;
   context->closedCallback = (MacClosedCallback)closedCallback;
   context->resizeCallback = (MacResizeCallback)resizeCallback;
+  context->moveCallback = (MacMoveCallback)moveCallback;
   context->fileDropCallback = (MacFileDropCallback)fileDropCallback;
   NSRect rect = NSMakeRect(0, 0, width, height);
   NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
@@ -723,8 +821,9 @@ void nimino_macos_window_maximize(void *opaque) { MacWindowContext *c = opaque; 
 void nimino_macos_window_restore(void *opaque) { MacWindowContext *c = opaque; if (c) { if (c->window.isMiniaturized) [c->window deminiaturize:nil]; } }
 void nimino_macos_window_focus(void *opaque) { nimino_macos_window_show(opaque); }
 int nimino_macos_window_set_title(void *opaque, const char *title) { MacWindowContext *c=opaque; if (!c) return 0; c->window.title=title?[NSString stringWithUTF8String:title]:@""; return 1; }
-int nimino_macos_window_set_size(void *opaque, int width, int height) { MacWindowContext *c=opaque; if (!c) return 0; NSRect f=c->window.frame; f.size=NSMakeSize(width,height); [c->window setFrame:f display:YES]; return 1; }
+int nimino_macos_window_set_size(void *opaque, int width, int height) { MacWindowContext *c=opaque; if (!c) return 0; [c->window setContentSize:NSMakeSize(width,height)]; return 1; }
 int nimino_macos_window_set_position(void *opaque, int x, int y) { MacWindowContext *c=opaque; if (!c) return 0; [c->window setFrameOrigin:NSMakePoint(x,y)]; return 1; }
+int nimino_macos_window_set_minimum_size(void *opaque, int width, int height) { MacWindowContext *c=opaque; if (!c || width <= 0 || height <= 0) return 0; [c->window setContentMinSize:NSMakeSize(width,height)]; return 1; }
 int nimino_macos_window_set_resizable(void *opaque, int enabled) { MacWindowContext *c=opaque; if (!c) return 0; NSUInteger s=c->window.styleMask; if (enabled) s|=NSWindowStyleMaskResizable; else s&=~NSWindowStyleMaskResizable; c->window.styleMask=s; return 1; }
 int nimino_macos_window_set_decorated(void *opaque, int enabled) { MacWindowContext *c=opaque; if (!c) return 0; NSUInteger s=c->window.styleMask; if (enabled) s|=NSWindowStyleMaskTitled; else s&=~NSWindowStyleMaskTitled; c->window.styleMask=s; return 1; }
 int nimino_macos_window_set_title_bar_overlay(void *opaque, int enabled) {
@@ -762,7 +861,7 @@ void *nimino_macos_view_create(void *windowOpaque, void *userData, const char *u
   context->userData=userData; context->window=window;
   context->messageCallback=(MacMessageCallback)messageCallback;
   context->errorCallback=(MacErrorCallback)errorCallback;
-  context->newWindowCallback=(MacBoolStringCallback)newWindowCallback;
+  context->newWindowCallback=(MacNewWindowCallback)newWindowCallback;
   context->navigationStartingCallback=(MacBoolStringCallback)navigationStartingCallback;
   context->navigationCompletedCallback=(MacNavigationCallback)navigationCompletedCallback;
   context->evalCallback=(MacEvalCallback)evalCallback;
@@ -845,7 +944,23 @@ void *nimino_macos_view_create(void *windowOpaque, void *userData, const char *u
   return context;
 }
 
-void nimino_macos_view_dispose(void *opaque) { MacViewContext *c=opaque; if (!c) return; [c->webView.configuration.userContentController removeScriptMessageHandlerForName:@"nimino"]; c->webView.navigationDelegate=nil; c->webView.UIDelegate=nil; [c->webView removeFromSuperview]; [c->webView release]; c->webView=nil; [c->delegate release]; c->delegate=nil; }
+void nimino_macos_view_dispose(void *opaque) {
+  MacViewContext *c = opaque;
+  if (!c || c->disposed) return;
+  c->disposed = YES;
+  macViewUnlink(c);
+  if (c->webView) {
+    [c->webView.configuration.userContentController removeScriptMessageHandlerForName:@"nimino"];
+    c->webView.navigationDelegate = nil;
+    c->webView.UIDelegate = nil;
+    [c->webView removeFromSuperview];
+    [c->webView release];
+    c->webView = nil;
+  }
+  [c->delegate release];
+  c->delegate = nil;
+  if (c->pendingCallbacks == 0) free(c);
+}
 int nimino_macos_view_set_user_agent(void *opaque,const char *value){MacViewContext*c=opaque;if(!c||!c->webView)return 0;c->webView.customUserAgent=value?[NSString stringWithUTF8String:value]:nil;return 1;}
 int nimino_macos_view_set_zoom(void *opaque,double factor){MacViewContext*c=opaque;if(!c||!c->webView)return 0;c->webView.pageZoom=factor;return 1;}
 int nimino_macos_view_set_ignore_certificate_errors(void *opaque,int enabled){MacViewContext*c=opaque;if(!c)return 0;c->ignoreCertificateErrors=enabled!=0;return 1;}
@@ -853,14 +968,14 @@ int nimino_macos_view_set_devtools_enabled(void *opaque,int enabled){MacViewCont
 int nimino_macos_view_load_url(void *opaque,const char *url){MacViewContext*c=opaque;if(!c||!c->webView)return 0;NSURL*u=[NSURL URLWithString:[NSString stringWithUTF8String:url]];if(!u)return 0;[c->webView loadRequest:[NSURLRequest requestWithURL:u]];return 1;}
 int nimino_macos_view_load_html(void *opaque,const char *html,const char *baseUrl){MacViewContext*c=opaque;if(!c||!c->webView)return 0;NSURL*u=baseUrl&&baseUrl[0]?[NSURL URLWithString:[NSString stringWithUTF8String:baseUrl]]:nil;[c->webView loadHTMLString:html?[NSString stringWithUTF8String:html]:@"" baseURL:u];return 1;}
 int nimino_macos_view_set_document_start_script(void *opaque,const char *source){MacViewContext*c=opaque;if(!c||!c->webView)return 0;WKUserContentController*m=c->webView.configuration.userContentController;[m removeAllUserScripts];if(source&&source[0]){WKUserScript*s=[[WKUserScript alloc]initWithSource:[NSString stringWithUTF8String:source] injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO];[m addUserScript:s];[s release];}return 1;}
-int nimino_macos_view_eval_javascript(void *opaque,const char *source,void *request){MacViewContext*c=opaque;if(!c||!c->webView||!c->evalCallback)return 0;[c->webView evaluateJavaScript:[NSString stringWithUTF8String:source] completionHandler:^(id result,NSError*error){MacEvalCallback callback=c->evalCallback;void*userData=c->userData;int succeeded=error?0:1;NSString*value=[niminoJSONDescription(result) copy];NSString*detail=[error.localizedDescription copy];dispatch_async(dispatch_get_main_queue(),^{if(callback)callback(userData,request,value?value.UTF8String:"",succeeded,detail?detail.UTF8String:"");});[value release];[detail release];}];return 1;}
-int nimino_macos_view_clear_browsing_data(void *opaque,uint32_t kinds,void *request,void *doneCallback){MacViewContext*c=opaque;if(!c||!c->webView)return 0;NSMutableSet*types=[NSMutableSet set];if(kinds&1)[types addObject:WKWebsiteDataTypeCookies];if(kinds&2)[types addObject:WKWebsiteDataTypeLocalStorage];if(kinds&4){[types addObject:WKWebsiteDataTypeMemoryCache];[types addObject:WKWebsiteDataTypeDiskCache];}MacClearCallback done=(MacClearCallback)doneCallback;[c->webView.configuration.websiteDataStore removeDataOfTypes:types modifiedSince:[NSDate dateWithTimeIntervalSince1970:0] completionHandler:^{if(done)done(c->userData,request,1);}];return 1;}
-int nimino_macos_view_get_cookies(void *opaque,const char *url,void *request,void *itemCallback,void *doneCallback){MacViewContext*c=opaque;if(!c||!c->webView)return 0;MacCookieCallback item=(MacCookieCallback)itemCallback;MacCookiesDoneCallback done=(MacCookiesDoneCallback)doneCallback;[c->webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie*>*cookies){NSURL*filter=url&&url[0]?[NSURL URLWithString:[NSString stringWithUTF8String:url]]:nil;for(NSHTTPCookie*cookie in cookies){if(filter&&![cookie.domain containsString:filter.host?:@""])continue;if(item)item(c->userData,request,niminoString(cookie.name),niminoString(cookie.value),niminoString(cookie.domain),niminoString(cookie.path),cookie.isSecure,cookie.isHTTPOnly,(int64_t)cookie.expiresDate.timeIntervalSince1970);}if(done)done(c->userData,request,1);}];return 1;}
-static int nimino_cookie_operation(void*opaque,const char*n,const char*v,const char*d,const char*p,int secure,int httpOnly,int64_t expires,void*request,int remove,void*doneCallback){MacViewContext*c=opaque;if(!c||!c->webView)return 0;NSMutableDictionary*properties=[@{NSHTTPCookieName:[NSString stringWithUTF8String:n],NSHTTPCookieValue:[NSString stringWithUTF8String:v],NSHTTPCookieDomain:[NSString stringWithUTF8String:d],NSHTTPCookiePath:p&&p[0]?[NSString stringWithUTF8String:p]:@"/"} mutableCopy];if(expires>0)properties[NSHTTPCookieExpires]=[NSDate dateWithTimeIntervalSince1970:expires];NSHTTPCookie*cookie=[NSHTTPCookie cookieWithProperties:properties];[properties release];if(!cookie)return 0;WKHTTPCookieStore*s=c->webView.configuration.websiteDataStore.httpCookieStore;MacCookiesDoneCallback done=(MacCookiesDoneCallback)doneCallback;void(^completion)(void)=^{if(done)done(c->userData,request,1);};if(remove)[s deleteCookie:cookie completionHandler:completion];else[s setCookie:cookie completionHandler:completion];return 1;}
+int nimino_macos_view_eval_javascript(void *opaque,const char *source,void *request){MacViewContext*c=opaque;if(!c||c->disposed||!c->webView||!c->evalCallback)return 0;MacEvalCallback callback=c->evalCallback;void*userData=c->userData;macViewRetainCallback(c);[c->webView evaluateJavaScript:[NSString stringWithUTF8String:source] completionHandler:^(id result,NSError*error){int succeeded=error?0:1;NSString*value=[niminoJSONDescription(result) copy];NSString*detail=[error.localizedDescription copy];dispatch_async(dispatch_get_main_queue(),^{if(callback)callback(userData,request,value?value.UTF8String:"",succeeded,detail?detail.UTF8String:"");[value release];[detail release];macViewReleaseCallback(c);});}];return 1;}
+int nimino_macos_view_clear_browsing_data(void *opaque,uint32_t kinds,void *request,void *doneCallback){MacViewContext*c=opaque;if(!c||c->disposed||!c->webView)return 0;NSMutableSet*types=[NSMutableSet set];if(kinds&1)[types addObject:WKWebsiteDataTypeCookies];if(kinds&2)[types addObject:WKWebsiteDataTypeLocalStorage];if(kinds&4){[types addObject:WKWebsiteDataTypeMemoryCache];[types addObject:WKWebsiteDataTypeDiskCache];}MacClearCallback done=(MacClearCallback)doneCallback;void*userData=c->userData;macViewRetainCallback(c);[c->webView.configuration.websiteDataStore removeDataOfTypes:types modifiedSince:[NSDate dateWithTimeIntervalSince1970:0] completionHandler:^{if(done)done(userData,request,1);macViewReleaseCallback(c);}];return 1;}
+int nimino_macos_view_get_cookies(void *opaque,const char *url,void *request,void *itemCallback,void *doneCallback){MacViewContext*c=opaque;if(!c||c->disposed||!c->webView)return 0;MacCookieCallback item=(MacCookieCallback)itemCallback;MacCookiesDoneCallback done=(MacCookiesDoneCallback)doneCallback;void*userData=c->userData;macViewRetainCallback(c);[c->webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie*>*cookies){NSURL*filter=url&&url[0]?[NSURL URLWithString:[NSString stringWithUTF8String:url]]:nil;for(NSHTTPCookie*cookie in cookies){if(filter&&!niminoCookieMatchesURL(cookie,filter))continue;if(item)item(userData,request,niminoString(cookie.name),niminoString(cookie.value),niminoString(cookie.domain),niminoString(cookie.path),cookie.isSecure,cookie.isHTTPOnly,(int64_t)cookie.expiresDate.timeIntervalSince1970);}if(done)done(userData,request,1);macViewReleaseCallback(c);}];return 1;}
+static int nimino_cookie_operation(void*opaque,const char*n,const char*v,const char*d,const char*p,int secure,int httpOnly,int64_t expires,void*request,int remove,void*doneCallback){MacViewContext*c=opaque;if(!c||c->disposed||!c->webView)return 0;NSMutableDictionary*properties=[@{NSHTTPCookieName:[NSString stringWithUTF8String:n],NSHTTPCookieValue:[NSString stringWithUTF8String:v],NSHTTPCookieDomain:[NSString stringWithUTF8String:d],NSHTTPCookiePath:p&&p[0]?[NSString stringWithUTF8String:p]:@"/"} mutableCopy];if(expires>0)properties[NSHTTPCookieExpires]=[NSDate dateWithTimeIntervalSince1970:expires];NSHTTPCookie*cookie=[NSHTTPCookie cookieWithProperties:properties];[properties release];if(!cookie)return 0;WKHTTPCookieStore*s=c->webView.configuration.websiteDataStore.httpCookieStore;MacCookiesDoneCallback done=(MacCookiesDoneCallback)doneCallback;void*userData=c->userData;macViewRetainCallback(c);void(^completion)(void)=^{if(done)done(userData,request,1);macViewReleaseCallback(c);};if(remove)[s deleteCookie:cookie completionHandler:completion];else[s setCookie:cookie completionHandler:completion];return 1;}
 int nimino_macos_view_set_cookie(void*o,const char*n,const char*v,const char*d,const char*p,int s,int h,int64_t e,void*r,void*done){return nimino_cookie_operation(o,n,v,d,p,s,h,e,r,0,done);}
 int nimino_macos_view_delete_cookie(void*o,const char*n,const char*v,const char*d,const char*p,int s,int h,int64_t e,void*r,void*done){return nimino_cookie_operation(o,n,v,d,p,s,h,e,r,1,done);}
 
-int nimino_macos_open_file_dialog(void *opaque,const char *title,const char *suggestedName,int save,int multiple,const char **paths,int capacity){MacWindowContext*c=opaque;if(!c)return -1;NSSavePanel*savePanel=nil;NSOpenPanel*openPanel=nil;if(save){savePanel=[NSSavePanel savePanel];savePanel.title=[NSString stringWithUTF8String:title];if(suggestedName&&suggestedName[0])savePanel.nameFieldStringValue=[NSString stringWithUTF8String:suggestedName];NSInteger result=[savePanel runModal];if(result!=NSModalResponseOK)return 0;NSURL*u=savePanel.URL;if(capacity>0)paths[0]=strdup(u.path.UTF8String);return 1;}openPanel=[NSOpenPanel openPanel];openPanel.title=[NSString stringWithUTF8String:title];openPanel.canChooseFiles=YES;openPanel.canChooseDirectories=NO;openPanel.allowsMultipleSelection=multiple!=0;NSInteger result=[openPanel runModal];if(result!=NSModalResponseOK)return 0;NSInteger count=MIN((NSInteger)capacity,openPanel.URLs.count);for(NSInteger i=0;i<count;i++)paths[i]=strdup([openPanel.URLs[i] path].UTF8String);return (int)count;}
+int nimino_macos_open_file_dialog(void *opaque,const char *title,const char *suggestedName,int save,int multiple,const char **paths,int capacity){MacWindowContext*c=opaque;if(!c)return -1;NSSavePanel*savePanel=nil;NSOpenPanel*openPanel=nil;if(save){savePanel=[NSSavePanel savePanel];savePanel.title=[NSString stringWithUTF8String:title];if(suggestedName&&suggestedName[0])savePanel.nameFieldStringValue=[NSString stringWithUTF8String:suggestedName];NSInteger result=[savePanel runModal];if(result!=NSModalResponseOK)return 0;NSURL*u=savePanel.URL;if(capacity>0)paths[0]=strdup(u.path.UTF8String);return 1;}openPanel=[NSOpenPanel openPanel];openPanel.title=[NSString stringWithUTF8String:title];openPanel.canChooseFiles=YES;openPanel.canChooseDirectories=NO;openPanel.allowsMultipleSelection=multiple!=0;NSInteger result=[openPanel runModal];if(result!=NSModalResponseOK)return 0;NSInteger count=MIN((NSInteger)capacity,(NSInteger)[openPanel.URLs count]);for(NSInteger i=0;i<count;i++)paths[i]=strdup([openPanel.URLs[i] path].UTF8String);return (int)count;}
 void nimino_macos_free_string(const char *value){free((void*)value);}
 
 void nimino_macos_window_dispose(void *opaque) {
@@ -869,7 +984,6 @@ void nimino_macos_window_dispose(void *opaque) {
   for (MacViewContext *view = c->views; view;) {
     MacViewContext *next = view->next;
     nimino_macos_view_dispose(view);
-    free(view);
     view = next;
   }
   c->views = NULL;

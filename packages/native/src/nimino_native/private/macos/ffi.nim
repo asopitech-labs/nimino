@@ -7,6 +7,7 @@
 {.compile: "bridge.m".}
 {.passL: "-framework Cocoa".}
 {.passL: "-framework WebKit".}
+{.passL: "-framework UserNotifications".}
 {.passL: "-framework Network".}
 
 type
@@ -35,12 +36,12 @@ proc macosAppSendNotification*(app: pointer; id, title, body: cstring): cint
   {.cdecl, importc: "nimino_macos_app_send_notification".}
 proc macosAppRegisterScheme*(app: pointer; scheme: cstring; callback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_app_register_scheme".}
-proc macosSchemeRespond*(task: pointer; status: cint; mimeType, body: cstring)
+proc macosSchemeRespond*(app, task: pointer; status: cint; mimeType, body: cstring)
   {.cdecl, importc: "nimino_macos_scheme_respond".}
 
 proc macosWindowCreate*(app: pointer; userData: pointer; title: cstring;
                         width, height: cint; closeCallback, closedCallback,
-                        resizeCallback, fileDropCallback: MacCallback): pointer
+                        resizeCallback, moveCallback, fileDropCallback: MacCallback): pointer
   {.cdecl, importc: "nimino_macos_window_create".}
 proc macosWindowDispose*(window: pointer) {.cdecl, importc: "nimino_macos_window_dispose".}
 proc macosWindowShow*(window: pointer) {.cdecl, importc: "nimino_macos_window_show".}
@@ -61,6 +62,8 @@ proc macosWindowSetDecorated*(window: pointer; enabled: cint): cint
   {.cdecl, importc: "nimino_macos_window_set_decorated".}
 proc macosWindowSetTitleBarOverlay*(window: pointer; enabled: cint): cint
   {.cdecl, importc: "nimino_macos_window_set_title_bar_overlay".}
+proc macosWindowSetMinimumSize*(window: pointer; width, height: cint): cint
+  {.cdecl, importc: "nimino_macos_window_set_minimum_size".}
 proc macosWindowSetFullscreen*(window: pointer; enabled: cint): cint
   {.cdecl, importc: "nimino_macos_window_set_fullscreen".}
 proc macosWindowSetAlwaysOnTop*(window: pointer; enabled: cint): cint
