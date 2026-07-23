@@ -174,7 +174,7 @@ let jsonPath = getTempDir() / "nimino-pack-manifest.json"
 writeFile(jsonPath, """
 {"$schema":"https://example.invalid/schema.json","name":"JSON app","identifier":"app.json",
  "url":"https://example.com","width":1024,"height":768,"multiWindow":false,
- "safeDomain":"accounts.example.com,cdn.example.com","zoom":125,
+ "safeDomain":" accounts.example.com, ,cdn.example.com ","zoom":125,
  "inject":["custom.css","custom.js"],"appVersion":"2.3.4","newWindow":true}
 """)
 let jsonManifest = loadManifest(jsonPath)
@@ -185,6 +185,11 @@ doAssert jsonManifest.value.webview.newWindow
 doAssert jsonManifest.value.package.version == "2.3.4"
 doAssert jsonManifest.value.safeDomains == @[
   "accounts.example.com", "cdn.example.com"]
+doAssert jsonManifest.value.navigationAllow == @[
+  "https://accounts.example.com/**", "https://*.accounts.example.com/**",
+  "http://accounts.example.com/**", "http://*.accounts.example.com/**",
+  "https://cdn.example.com/**", "https://*.cdn.example.com/**",
+  "http://cdn.example.com/**", "http://*.cdn.example.com/**"]
 removeFile(jsonPath)
 when defined(macosx):
   writeFile(jsonPath, "{\"name\":\"JSON defaults\",\"id\":\"app.json-defaults\",\"url\":\"https://example.com\"}")

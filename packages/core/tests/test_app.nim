@@ -443,6 +443,17 @@ block navigationRulesAreExplicit:
     "https://example.com:8443/app")
   doAssert not matchesNavigationPattern("https://example.com:8443/**",
     "https://example.com/app")
+  ## Pake safe-domain behavior: allow the root and its subdomains across both
+  ## HTTP(S), without accepting look-alike hosts, user-info, or query text.
+  doAssert matchesNavigationPattern("https://slack.com/**", "https://slack.com:443/client")
+  doAssert matchesNavigationPattern("https://*.okta.com/**", "https://mycompany.okta.com/sso")
+  doAssert matchesNavigationPattern("http://*.slack.com/**", "http://app.slack.com/client")
+  doAssert not matchesNavigationPattern("https://slack.com/**", "https://evilslack.com")
+  doAssert not matchesNavigationPattern("https://*.slack.com/**", "https://slack.com.evil.example")
+  doAssert not matchesNavigationPattern("https://*.okta.com/**", "https://okta.com.evil.example/sso")
+  doAssert not matchesNavigationPattern("https://*.okta.com/**",
+    "https://example.com/callback?next=https://okta.com")
+  doAssert not matchesNavigationPattern("https://*.okta.com/**", "https://okta.com@evil.example/sso")
   doAssert defaultNavigationDecision("https://app.example.co.uk/",
     "https://login.example.co.uk/callback") == navigationAllow
   doAssert defaultNavigationDecision("https://app.example.co.uk/",

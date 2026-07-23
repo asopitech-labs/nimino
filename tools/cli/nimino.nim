@@ -738,7 +738,7 @@ proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
   of "--allow-url": manifest.navigationAllow.add(value)
   of "--safe-domain":
     manifest.safeDomains.add(value)
-    manifest.navigationAllow.add("https://" & value & "/**")
+    manifest.navigationAllow.add(safeDomainPatterns(value))
   of "--external-url": manifest.navigationExternal.add(value)
   else: discard
 
@@ -880,7 +880,7 @@ if sourceIsUrl or sourceIsLocal:
     of "--inject-css": css.add(value)
     of "--inject-js": javascript.add(value)
     of "--allow-url": navigationAllow.add(value)
-    of "--safe-domain": navigationAllow.add("https://" & value & "/**")
+    of "--safe-domain": navigationAllow.add(safeDomainPatterns(value))
     of "--external-url": navigationExternal.add(value)
     of "--json": discard
     of "--out", "--host", "--targets": discard

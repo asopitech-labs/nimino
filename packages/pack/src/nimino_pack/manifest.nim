@@ -1,4 +1,4 @@
-import std/[json, os, sequtils, strutils, uri]
+import std/[json, os, strutils, uri]
 
 type
   PackErrorKind* = enum
@@ -230,6 +230,18 @@ proc validApplicationId(value: string): bool =
     if segment.len == 0 or segment[0] notin {'a'..'z', 'A'..'Z', '_'}:
       return false
   true
+
+proc safeDomainPatterns*(domain: string): seq[string] =
+  ## Pake safe domains match the registered host itself and its subdomains on
+  ## either HTTP(S) scheme. Represent that policy as explicit Nimino
+  ## navigation rules so URL parsing, user-info rejection, and label-boundary
+  ## matching stay centralized in nimino-core.
+  let normalized = domain.strip().toLowerAscii().strip(chars = {'.'})
+  if normalized.len == 0:
+    return
+  for scheme in ["https", "http"]:
+    result.add(scheme & "://" & normalized & "/**")
+    result.add(scheme & "://*." & normalized & "/**")
 
 proc validMetadataText(value: string): bool =
   for character in value:
@@ -580,7 +592,7 @@ proc parse*(text: string): PackResult[PackManifest] =
         of "allow": manifest.navigationAllow = parsed.value
         of "safe-domain":
           for domain in parsed.value:
-            manifest.navigationAllow.add("https://" & domain & "/**")
+            manifest.navigationAllow.add(safeDomainPatterns(domain))
         of "external": manifest.navigationExternal = parsed.value
         else: return failure[PackManifest](invalidManifest, "unknown key: " & section & "." & key)
       of "permissions":
@@ -806,7 +818,12 @@ proc loadManifest*(path: string): PackResult[PackManifest] =
         for domain in safeDomain.value.split(','):
           let trimmed = domain.strip()
           if trimmed.len > 0:
-            allow.add("https://" & trimmed & "/**")
+            allow.add(safeDomainPatterns(trimmed))
+      var safeDomains: seq[string]
+      for domain in safeDomain.value.split(','):
+        let trimmed = domain.strip()
+        if trimmed.len > 0:
+          safeDomains.add(trimmed)
       var manifest = PackManifest(
         name: name.value, id: identifier.value, url: url.value, icon: icon.value,
         profile: profile.value, window: PackWindowOptions(title: title.value,
@@ -835,8 +852,7 @@ proc loadManifest*(path: string): PackResult[PackManifest] =
           install: install.value), navigationAllow: allow,
         permissionsAllow: permissions.value, css: css.value, javascript: javascript.value,
         deepLink: PackDeepLinkOptions(schemes: deepLinks.value), injectionFiles: inject.value,
-        useLocalFile: useLocalFile.value, safeDomains: if safeDomain.value.len == 0: @[] else:
-          safeDomain.value.split(',').mapIt(it.strip()))
+        useLocalFile: useLocalFile.value, safeDomains: safeDomains)
       return manifest.validate()
     parse(source)
   except OSError:
