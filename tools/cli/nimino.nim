@@ -5,7 +5,7 @@ import nimino_pack
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino pack --config <manifest.toml|config.json> [--out <directory>] [--host <executable>] [--targets <deb,rpm,appimage,flatpak,zst,nsis,msi>[,-arm64]...]")
-  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--hide-title-bar] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--show-system-tray] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--min-width <px>] [--min-height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--hide-title-bar] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--ignore-certificate-errors] [--dark-mode] [--disabled-web-shortcuts] [--enable-wasm] [--enable-find] [--new-window] [--force-internal-navigation] [--show-system-tray] [--system-tray-icon <path>] [--activation-shortcut <shortcut>] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak|zst> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory> [--arch <x64|arm64>]")
   stderr.writeLine("       nimino package-macos <bundle> --format <app|dmg> --out <directory> [--arch <arm64|x86_64>] [--sign-identity <identity>] [--notary-profile <keychain-profile>]")
@@ -655,7 +655,9 @@ proc packBooleanFlag(flag: string): bool =
   flag in ["--resizable", "--fullscreen", "--maximize", "--always-on-top",
            "--hide-window-decorations", "--hide-title-bar", "--incognito", "--show-system-tray",
            "--enable-drag-drop",
-           "--start-to-tray", "--hide-on-close", "--multi-window",
+           "--start-to-tray", "--hide-on-close", "--multi-window", "--dark-mode",
+           "--disabled-web-shortcuts", "--enable-wasm", "--enable-find", "--new-window",
+           "--force-internal-navigation",
            "--multi-instance", "--use-local-file", "--json"]
 
 proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
@@ -669,6 +671,12 @@ proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
     except ValueError: usage()
   of "--height":
     try: manifest.window.height = parseInt(value)
+    except ValueError: usage()
+  of "--min-width":
+    try: manifest.window.minWidth = parseInt(value)
+    except ValueError: usage()
+  of "--min-height":
+    try: manifest.window.minHeight = parseInt(value)
     except ValueError: usage()
   of "--resizable": manifest.window.resizable = parseCliBool(value)
   of "--fullscreen": manifest.window.fullscreen = parseCliBool(value)
@@ -685,7 +693,15 @@ proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
     except ValueError: usage()
   of "--ignore-certificate-errors":
     manifest.webview.ignoreCertificateErrors = parseCliBool(value)
+  of "--dark-mode": manifest.webview.darkMode = parseCliBool(value)
+  of "--disabled-web-shortcuts": manifest.webview.disabledWebShortcuts = parseCliBool(value)
+  of "--enable-wasm": manifest.webview.wasm = parseCliBool(value)
+  of "--enable-find": manifest.webview.enableFind = parseCliBool(value)
+  of "--new-window": manifest.webview.newWindow = parseCliBool(value)
+  of "--force-internal-navigation": manifest.webview.forceInternalNavigation = parseCliBool(value)
   of "--show-system-tray": manifest.runtime.showSystemTray = parseCliBool(value)
+  of "--system-tray-icon": manifest.runtime.systemTrayIcon = value
+  of "--activation-shortcut": manifest.runtime.activationShortcut = value
   of "--start-to-tray": manifest.runtime.startToTray = parseCliBool(value)
   of "--hide-on-close": manifest.runtime.hideOnClose = parseCliBool(value)
   of "--multi-window": manifest.runtime.multiWindow = parseCliBool(value)
@@ -735,6 +751,8 @@ if sourceIsUrl or sourceIsLocal:
   var icon = ""
   var width = 1200
   var height = 800
+  var minWidth = 0
+  var minHeight = 0
   var resizable = true
   var fullscreen = false
   var maximized = false
@@ -746,6 +764,14 @@ if sourceIsUrl or sourceIsLocal:
   var incognito = false
   var zoom = 100
   var ignoreCertificateErrors = false
+  var darkMode = false
+  var disabledWebShortcuts = false
+  var enableWasm = false
+  var enableFind = false
+  var newWindow = false
+  var forceInternalNavigation = false
+  var activationShortcut = ""
+  var systemTrayIcon = ""
   var showSystemTray = false
   var startToTray = false
   var hideOnClose = false
@@ -776,6 +802,12 @@ if sourceIsUrl or sourceIsLocal:
     of "--height":
       try: height = parseInt(value)
       except ValueError: usage()
+    of "--min-width":
+      try: minWidth = parseInt(value)
+      except ValueError: usage()
+    of "--min-height":
+      try: minHeight = parseInt(value)
+      except ValueError: usage()
     of "--resizable": resizable = parseCliBool(value)
     of "--fullscreen": fullscreen = parseCliBool(value)
     of "--maximize": maximized = parseCliBool(value)
@@ -791,7 +823,15 @@ if sourceIsUrl or sourceIsLocal:
       except ValueError: usage()
       if zoom < 25 or zoom > 500: usage()
     of "--ignore-certificate-errors": ignoreCertificateErrors = parseCliBool(value)
+    of "--dark-mode": darkMode = parseCliBool(value)
+    of "--disabled-web-shortcuts": disabledWebShortcuts = parseCliBool(value)
+    of "--enable-wasm": enableWasm = parseCliBool(value)
+    of "--enable-find": enableFind = parseCliBool(value)
+    of "--new-window": newWindow = parseCliBool(value)
+    of "--force-internal-navigation": forceInternalNavigation = parseCliBool(value)
     of "--show-system-tray": showSystemTray = parseCliBool(value)
+    of "--system-tray-icon": systemTrayIcon = value
+    of "--activation-shortcut": activationShortcut = value
     of "--start-to-tray": startToTray = parseCliBool(value)
     of "--hide-on-close": hideOnClose = parseCliBool(value)
     of "--multi-window": multiWindow = parseCliBool(value)
@@ -842,12 +882,23 @@ if sourceIsUrl or sourceIsLocal:
       multiInstance = multiInstance, permissionsAllow = permissionsAllow,
       css = css, javascript = javascript, navigationAllow = navigationAllow,
       navigationExternal = navigationExternal)
+  if loaded.isOk:
+    loaded.value.window.minWidth = minWidth
+    loaded.value.window.minHeight = minHeight
+    loaded.value.webview.darkMode = darkMode
+    loaded.value.webview.disabledWebShortcuts = disabledWebShortcuts
+    loaded.value.webview.wasm = enableWasm
+    loaded.value.webview.enableFind = enableFind
+    loaded.value.webview.newWindow = newWindow
+    loaded.value.webview.forceInternalNavigation = forceInternalNavigation
+    loaded.value.runtime.activationShortcut = activationShortcut
+    loaded.value.runtime.systemTrayIcon = systemTrayIcon
 else:
   loaded = loadManifest(source)
-if not loaded.isOk:
-  stderr.writeLine("nimino pack: " & loaded.error.detail)
-  quit(1)
-var output = manifestJson(loaded.value).pretty()
+  if not loaded.isOk:
+    stderr.writeLine("nimino pack: " & loaded.error.detail)
+    quit(1)
+var output = ""
 var outputDirectory = ""
 var hostPath = ""
 var jsonOutput = false
@@ -870,8 +921,11 @@ while index <= paramCount():
       if target.strip().len > 0: targets.add(target.strip().toLowerAscii())
   of "--config", "--name", "--id", "--profile", "--title", "--width", "--height", "--resizable",
      "--fullscreen", "--maximize", "--always-on-top", "--hide-window-decorations", "--hide-title-bar",
+     "--min-width", "--min-height",
      "--enable-drag-drop",
-     "--user-agent", "--proxy-url", "--incognito", "--zoom", "--ignore-certificate-errors", "--show-system-tray",
+     "--user-agent", "--proxy-url", "--incognito", "--zoom", "--ignore-certificate-errors",
+     "--dark-mode", "--disabled-web-shortcuts", "--enable-wasm", "--enable-find", "--new-window",
+     "--force-internal-navigation", "--show-system-tray", "--system-tray-icon", "--activation-shortcut",
      "--start-to-tray", "--hide-on-close", "--multi-window", "--multi-instance",
      "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--safe-domain", "--external-url",
      "--use-local-file":
@@ -888,6 +942,7 @@ if not validatedLoaded.isOk:
   stderr.writeLine("nimino pack: " & validatedLoaded.error.detail)
   quit(1)
 loaded = validatedLoaded
+output = manifestJson(loaded.value).pretty()
 if not loaded.value.package.bundle and outputDirectory.len > 0:
   stderr.writeLine("nimino pack: package.bundle=false is not supported for installer bundles; use --json without --out for metadata only")
   quit(1)
@@ -1013,6 +1068,18 @@ else:
       quit(1)
     packaged.icon = iconName
     localIconName = iconName
+  if packaged.runtime.systemTrayIcon.len > 0:
+    let traySource = packaged.runtime.systemTrayIcon
+    if not fileExists(traySource):
+      stderr.writeLine("nimino pack: system tray icon does not exist")
+      quit(1)
+    let trayName = extractFilename(traySource)
+    if trayName.len == 0 or trayName in [".", ".."]:
+      stderr.writeLine("nimino pack: system tray icon path has no usable filename")
+      quit(1)
+    if not fileExists(directory / trayName) and not copyGenerated(traySource, directory / trayName):
+      quit(1)
+    packaged.runtime.systemTrayIcon = trayName
   packageFiles(packaged.css)
   packageFiles(packaged.javascript)
   output = manifestJson(packaged).pretty()

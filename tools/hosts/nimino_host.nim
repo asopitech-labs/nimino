@@ -1,7 +1,7 @@
 ## Generic Nimino host used by packaged bundles and online builds.
 ## It intentionally depends on nimino-core only; packaging remains in nimino-pack.
 
-import std/[json, os, sequtils, strutils, uri]
+import std/[json, os, re, sequtils, strutils, uri]
 
 import nimino_core
 import ./policy
@@ -147,6 +147,8 @@ proc main() =
       false
   let allowedPermissions = permissions.stringArray("allow")
   let showSystemTray = runtime.boolean("showSystemTray", false)
+  let systemTrayIcon = optionalString(runtime, "systemTrayIcon", "")
+  let activationShortcut = optionalString(runtime, "activationShortcut", "")
   let startToTray = runtime.boolean("startToTray", false)
   let hideOnClose = runtime.boolean("hideOnClose", false)
   let multiWindow = runtime.boolean("multiWindow", true)
@@ -156,9 +158,11 @@ proc main() =
   let incognito = webview.boolean("incognito", false)
   let enableWasm = webview.boolean("wasm", false)
   let newWindow = webview.boolean("newWindow", false)
-  ## These Pake-compatible fields are accepted by the manifest schema, but
-  ## this generated host does not have a native implementation yet.  Fail at
-  ## startup instead of silently claiming that the requested control exists.
+  let darkMode = webview.boolean("darkMode", false)
+  let disabledWebShortcuts = webview.boolean("disabledWebShortcuts", false)
+  let enableFind = webview.boolean("enableFind", false)
+  let forceInternalNavigation = webview.boolean("forceInternalNavigation", false)
+  let internalUrlRegex = optionalString(webview, "internalUrlRegex", "")
   let minWidth = if windowNode.hasKey("minWidth") and windowNode["minWidth"].kind == JInt:
       windowNode["minWidth"].getInt() else: 0
   let minHeight = if windowNode.hasKey("minHeight") and windowNode["minHeight"].kind == JInt:
@@ -172,19 +176,12 @@ proc main() =
   when not defined(macosx):
     if hideTitleBar:
       fail("window.hideTitleBar is only supported by the macOS host")
-  if webview.boolean("darkMode", false):
-    fail("webview.darkMode is not supported by this host")
-  if webview.boolean("disabledWebShortcuts", false):
-    fail("webview.disabledWebShortcuts is not supported by this host")
-  if webview.boolean("enableFind", false):
-    fail("webview.enableFind is not supported by this host")
-  if webview.boolean("forceInternalNavigation", false) or
-      optionalString(webview, "internalUrlRegex", "").len > 0:
-    fail("webview.forceInternalNavigation is not supported by this host")
-  if optionalString(runtime, "activationShortcut", "").len > 0:
-    fail("runtime.activationShortcut is not supported by this host")
-  if optionalString(runtime, "systemTrayIcon", "").len > 0:
-    fail("runtime.systemTrayIcon is not supported by this host")
+  var internalRegex: Regex
+  if internalUrlRegex.len > 0:
+    try:
+      internalRegex = re(internalUrlRegex)
+    except CatchableError:
+      fail("webview.internalUrlRegex is not a valid regular expression")
   let zoomFactor = if webview.hasKey("zoom") and webview["zoom"].kind in {JInt, JFloat}:
       webview["zoom"].getFloat() / 100.0
     else: 1.0
@@ -207,6 +204,17 @@ proc main() =
   if not created.isOk:
     fail(created.failure.detail)
   let app = created.value
+  when defined(macosx):
+    if systemTrayIcon.len > 0:
+      let iconPath = if fileExists(systemTrayIcon): systemTrayIcon
+        elif fileExists(root / systemTrayIcon): root / systemTrayIcon
+        elif fileExists(root / extractFilename(systemTrayIcon)): root / extractFilename(systemTrayIcon)
+        else: ""
+      if iconPath.len == 0:
+        fail("runtime.systemTrayIcon does not identify a packaged icon: " & systemTrayIcon)
+      let trayIconConfigured = app.setSystemTrayIcon(iconPath)
+      if not trayIconConfigured.isOk:
+        fail(trayIconConfigured.failure.detail)
   ## Register before `run()` so both in-process WinRT activation and the
   ## terminated-process command-line activation path are delivered.  The
   ## generic host has no application-specific handler, therefore it reports
@@ -242,6 +250,9 @@ proc main() =
     proxyUrl: proxyUrl,
     incognito: incognito,
     enableWasm: enableWasm,
+    darkMode: darkMode,
+    disabledWebShortcuts: disabledWebShortcuts,
+    enableFind: enableFind,
     zoomFactor: zoomFactor,
     ignoreCertificateErrors: ignoreCertificateErrors,
     multiWindow: multiWindow,
@@ -259,12 +270,28 @@ proc main() =
       fail(closeConfigured.failure.detail)
   if showSystemTray:
     let trayConfigured = app.configureSystemTray([
-      DesktopMenuItem(id: 1, title: "Show", enabled: true),
-      DesktopMenuItem(id: 2, title: "Quit", enabled: true)
+      DesktopMenuItem(id: 1, title: "New Window", enabled: multiWindow),
+      DesktopMenuItem(id: 2, title: "Hide", enabled: true),
+      DesktopMenuItem(id: 3, title: "Show", enabled: true),
+      DesktopMenuItem(id: 4, title: "Quit", enabled: true)
     ], proc(itemId: uint32) =
       case itemId
-      of 1: discard window.show()
-      of 2: discard app.quit()
+      of 0:
+        ## Cocoa sends action 0 for a left-click on the status item. Match
+        ## Pake's toggle behavior while keeping the menu commands explicit.
+        if not window.isVisible:
+          discard window.show()
+          discard window.focus()
+        else:
+          discard window.hide()
+      of 1:
+        if multiWindow and url.len > 0:
+          discard window.openPopup(NewWindowRequest(url: url, focused: true), title = appName)
+      of 2: discard window.hide()
+      of 3:
+        discard window.show()
+        discard window.focus()
+      of 4: discard app.quit()
       else: discard)
     if not trayConfigured.isOk:
       fail(trayConfigured.failure.detail)
@@ -274,16 +301,34 @@ proc main() =
     let hidden = window.hide()
     if not hidden.isOk:
       fail(hidden.failure.detail)
+  when defined(macosx):
+    if activationShortcut.len > 0:
+      let shortcutConfigured = app.setActivationShortcut(activationShortcut, proc() =
+        if window.isVisible:
+          discard window.hide()
+        else:
+          discard window.show()
+          discard window.focus())
+      if not shortcutConfigured.isOk:
+        fail(shortcutConfigured.failure.detail)
   let allowPatterns = navigation.stringArray("allow")
   let externalPatterns = navigation.stringArray("external")
   ## URL-only bundles do not carry a site-specific allow-list.  Use the core
   ## runtime policy instead: same-site navigation and generic OAuth/SSO
   ## redirects stay in the WebView, while unrelated top-level destinations
   ## open externally.  An explicit manifest list remains an override.
+  proc isForcedInternalNavigation(target: string): bool =
+    if not forceInternalNavigation and internalUrlRegex.len == 0:
+      return false
+    if internalUrlRegex.len > 0:
+      return target.match(internalRegex)
+    true
   if url.len > 0:
     let policyConfigured = if allowPatterns.len > 0 or externalPatterns.len > 0:
       window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
-        if externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+        if isForcedInternalNavigation(request.url):
+          navigationAllow
+        elif externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
           navigationExternal
         elif allowPatterns.anyIt(matchesNavigationPattern(it, request.url)):
           navigationAllow
@@ -291,19 +336,23 @@ proc main() =
           navigationDeny)
     else:
       window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
-        defaultNavigationDecision(url, request.url))
+        if isForcedInternalNavigation(request.url): navigationAllow
+        else: defaultNavigationDecision(url, request.url))
     if not policyConfigured.isOk:
       fail(policyConfigured.failure.detail)
   let popupConfigured = window.onNewWindow(proc(request: NewWindowRequest): bool =
     let decision = if allowPatterns.len > 0 or externalPatterns.len > 0:
-      if externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+      if isForcedInternalNavigation(request.url):
+        navigationAllow
+      elif externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
         navigationExternal
       elif allowPatterns.anyIt(matchesNavigationPattern(it, request.url)):
         navigationAllow
       else:
         navigationDeny
     else:
-      defaultNavigationDecision(url, request.url)
+      if isForcedInternalNavigation(request.url): navigationAllow
+      else: defaultNavigationDecision(url, request.url)
     let popupDecision = if decision == navigationAllow and not newWindow and
         not isAuthenticationNavigation(request.url):
         navigationExternal
@@ -375,6 +424,20 @@ proc main() =
     if requested in allowedPermissions: permissionGrant else: permissionDeny)
   if not permissionConfigured.isOk:
     fail(permissionConfigured.failure.detail)
+  let notificationRpc = window.rpc.registerSync("app.sendNotification",
+    proc(params: JsonNode): RpcResult =
+      if params.kind != JObject or not params.hasKey("id") or
+          not params.hasKey("title") or not params.hasKey("body") or
+          params["id"].kind != JString or params["title"].kind != JString or
+          params["body"].kind != JString:
+        return rpcFailure(rpcError(invalidRequest, "id, title, and body are required"))
+      let sent = app.sendNotification(DesktopNotification(
+        id: params["id"].getStr(), title: params["title"].getStr(),
+        body: params["body"].getStr()))
+      if sent.isOk: rpcSuccess(%*{"ok": true})
+      else: rpcFailure(rpcError(handlerFailed, sent.failure.detail)))
+  if not notificationRpc:
+    fail("unable to register app.sendNotification RPC")
   if windowNode.boolean("enableDragDrop", false):
     let fileDropConfigured = window.onFileDrop(proc(paths: seq[string]) =
       var encoded = newJArray()
@@ -408,6 +471,31 @@ proc main() =
       CoreResult(isOk: true)
   if not loaded.isOk:
     fail(loaded.failure.detail)
+  when defined(macosx):
+    var menuItems = @[
+      DesktopMenuItem(id: 100, title: "Show", enabled: true),
+      DesktopMenuItem(id: 101, title: "Hide", enabled: true),
+      DesktopMenuItem(id: 102, title: "Reload", enabled: true),
+      DesktopMenuItem(id: 103, title: "Find", enabled: enableFind),
+      DesktopMenuItem(id: 104, title: "Quit", enabled: true)]
+    if multiWindow:
+      menuItems.insert(DesktopMenuItem(id: 105, title: "New Window", enabled: true), 0)
+    let menuConfigured = app.configureNativeMenu(appName, menuItems, proc(itemId: uint32) =
+      case itemId
+      of 100: discard window.show()
+      of 101: discard window.hide()
+      of 102: discard window.reload()
+      of 103:
+        if enableFind:
+          discard window.evalJavaScript(
+            "(() => { const q = prompt('Find'); if (q) window.nimino.find(q); })()")
+      of 104: discard app.quit()
+      of 105:
+        if multiWindow and url.len > 0:
+          discard window.openPopup(NewWindowRequest(url: url, focused: true), title = appName)
+      else: discard)
+    if not menuConfigured.isOk:
+      fail(menuConfigured.failure.detail)
   let running = app.run()
   if not running.isOk:
     fail(running.failure.detail)

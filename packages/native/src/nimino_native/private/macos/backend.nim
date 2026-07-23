@@ -35,6 +35,7 @@ proc macosLoadPendingContent(view: NativeWebView): NativeResult
 proc macosShowWindow(window: NativeWindow)
 proc macosSetTitleBarOverlay(window: NativeWindow; enabled: bool): NativeResult
 proc macosSetMinimumSize(window: NativeWindow; width, height: int): NativeResult
+proc macosSetDarkMode(window: NativeWindow; enabled: bool): NativeResult
 
 proc macosKeepCallbackSymbols() =
   discard cast[pointer](macosBrowsingDataCompleted)
@@ -207,6 +208,12 @@ proc macosTrayAction(data: pointer; itemId: cuint) {.cdecl.} =
   if app != nil:
     app.dispatchTrayMenu(itemId.uint32)
 
+proc macosShortcutAction(data: pointer) {.cdecl.} =
+  let app = cast[NativeApp](data)
+  if app != nil and not app.activationShortcutHandler.isNil:
+    try: app.activationShortcutHandler(0)
+    except CatchableError: discard
+
 proc macosNotificationActivated(data: pointer; notificationId: cstring) {.cdecl.} =
   let app = cast[NativeApp](data)
   if app != nil and not app.notificationActivatedHandler.isNil:
@@ -358,6 +365,13 @@ proc macosSetTitle(window: NativeWindow): NativeResult =
   if window.platformWindow.isNil: return success()
   if macosWindowSetTitle(window.platformWindow, window.title.cstring) == 0:
     return macosNativeFailure("window.setTitle", "NSWindow title update failed")
+  success()
+
+proc macosSetDarkMode(window: NativeWindow; enabled: bool): NativeResult =
+  if window.platformWindow.isNil:
+    return success()
+  if macosWindowSetDarkMode(window.platformWindow, if enabled: 1 else: 0) == 0:
+    return macosNativeFailure("window.setDarkMode", "NSWindow appearance update failed")
   success()
 
 proc macosSetSize(window: NativeWindow): NativeResult =
@@ -563,6 +577,10 @@ proc macosInstallSystemTray(app: NativeApp): NativeResult =
   if macosAppInstallTray(app.platformApp, addr ids[0], addr titles[0],
       addr enabled[0], ids.len.cint, cast[MacCallback](macosTrayAction)) == 0:
     return macosNativeFailure("app.configureSystemTray", "NSStatusItem creation failed")
+  if app.trayIconPath.len > 0 and
+      macosAppSetTrayIcon(app.platformApp, app.trayIconPath.cstring) == 0:
+    macosAppRemoveTray(app.platformApp)
+    return macosNativeFailure("app.setSystemTrayIcon", "tray icon could not be loaded")
   app.trayVisible = true
   success()
 
@@ -571,6 +589,19 @@ proc macosUninstallSystemTray(app: NativeApp) =
     return
   macosAppRemoveTray(app.platformApp)
   app.trayVisible = false
+
+proc macosInstallActivationShortcut(app: NativeApp): NativeResult =
+  if app.isNil or not app.activationShortcutConfigured:
+    return success()
+  if macosAppSetActivationShortcut(app.platformApp, app.activationShortcut.cstring,
+      cast[MacCallback](macosShortcutAction)) == 0:
+    return macosNativeFailure("app.setActivationShortcut", "invalid or unavailable global shortcut")
+  success()
+
+proc macosUninstallActivationShortcut(app: NativeApp) =
+  if app.isNil or app.platformApp.isNil or not app.activationShortcutConfigured:
+    return
+  macosAppRemoveActivationShortcut(app.platformApp)
 
 proc macosSetNotificationActivated(app: NativeApp;
                                    handler: NativeNotificationActivatedHandler): NativeResult =
@@ -655,6 +686,12 @@ proc macosRun(app: NativeApp): NativeResult =
       app.hasRunError = true
       app.runError = tray.failure
       app.quitRequested = true
+  if not app.quitRequested and app.activationShortcutConfigured:
+    let shortcut = app.macosInstallActivationShortcut()
+    if not shortcut.isOk:
+      app.hasRunError = true
+      app.runError = shortcut.failure
+      app.quitRequested = true
   if app.quitRequested:
     app.macosQuit()
   let status = if app.quitRequested: 0 else:
@@ -664,6 +701,7 @@ proc macosRun(app: NativeApp): NativeResult =
       window.macosDisposeWindow()
   app.macosUninstallNativeMenu()
   app.macosUninstallSystemTray()
+  app.macosUninstallActivationShortcut()
   app.macosDisposeApp()
   app.platformApp = nil
   app.state = finished

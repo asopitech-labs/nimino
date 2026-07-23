@@ -28,6 +28,12 @@ proc jsonString(node: JsonNode; key: string): string =
     return ""
   node[key].getStr()
 
+proc runtimeJsonString(manifest: JsonNode; key: string): string =
+  if manifest.kind != JObject or not manifest.hasKey("runtime") or
+      manifest["runtime"].kind != JObject:
+    return ""
+  manifest["runtime"].jsonString(key)
+
 proc shellQuote(value: string): string =
   "'" & value.replace("'", "'\"'\"'") & "'"
 
@@ -159,6 +165,7 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
     setFilePermissions(macos / id, {fpUserExec, fpUserRead, fpUserWrite,
       fpGroupExec, fpGroupRead, fpOthersExec, fpOthersRead})
     copyFile(manifestPath, resources / "nimino-manifest.json")
+    var packagedManifest = manifest
     for path in walkDirRec(bundle):
       if fileExists(path) and parentDir(path) == bundle:
         let fileName = extractFilename(path)
@@ -180,6 +187,19 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
         return failure[string](unsupportedFeature, "macOS application icons must use .icns")
       copyFile(bundle / icon, resources / extractFilename(icon))
       iconEntry = extractFilename(icon)
+    let trayIcon = manifest.runtimeJsonString("systemTrayIcon")
+    if trayIcon.len > 0:
+      let traySource = if fileExists(trayIcon): trayIcon
+        elif fileExists(bundle / trayIcon): bundle / trayIcon
+        elif fileExists(bundle / extractFilename(trayIcon)): bundle / extractFilename(trayIcon)
+        else: ""
+      if traySource.len == 0:
+        return failure[string](ioFailure, "macOS system tray icon is missing from the package bundle")
+      let trayName = extractFilename(traySource)
+      copyFile(traySource, resources / trayName)
+      if packagedManifest.hasKey("runtime") and packagedManifest["runtime"].kind == JObject:
+        packagedManifest["runtime"]["systemTrayIcon"] = %trayName
+      writeFile(resources / "nimino-manifest.json", packagedManifest.pretty())
     var urlTypes = ""
     if manifest.hasKey("deepLink") and manifest["deepLink"].kind == JObject and
         manifest["deepLink"].hasKey("schemes") and manifest["deepLink"]["schemes"].kind == JArray:

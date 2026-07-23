@@ -59,6 +59,7 @@ typedef struct MacViewContext MacViewContext;
 @interface NiminoMenuTarget : NSObject
 @property(nonatomic, assign) MacAppContext *context;
 @property(nonatomic, assign) BOOL tray;
+- (void)activateButton:(id)sender;
 @end
 
 @interface NiminoNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
@@ -88,6 +89,12 @@ struct MacAppContext {
   NSMutableSet *stoppedSchemeTasks;
   MacWindowContext *windows;
   MacMenuCallback menuCallback;
+  MacMenuCallback trayCallback;
+  MacIdleCallback shortcutCallback;
+  id shortcutMonitor;
+  id localShortcutMonitor;
+  NSString *shortcutKey;
+  NSUInteger shortcutModifiers;
   NSString *scheme;
   NiminoSchemeHandler *schemeHandler;
   MacSchemeCallback schemeCallback;
@@ -250,10 +257,15 @@ static MacIdleCallback g_idleCallback = NULL;
 
 @implementation NiminoMenuTarget
 - (void)activate:(NSMenuItem *)item {
-  if (self.tray && self.context && self.context->menuCallback)
-    self.context->menuCallback(self.context->userData, (unsigned int)item.tag);
+  if (self.tray && self.context && self.context->trayCallback)
+    self.context->trayCallback(self.context->userData, (unsigned int)item.tag);
   else if (self.context && self.context->menuCallback)
     self.context->menuCallback(self.context->userData, (unsigned int)item.tag);
+}
+- (void)activateButton:(id)sender {
+  (void)sender;
+  if (self.tray && self.context && self.context->trayCallback)
+    self.context->trayCallback(self.context->userData, 0);
 }
 @end
 
@@ -586,6 +598,11 @@ void nimino_macos_app_dispose(void *opaque) {
     [[NSStatusBar systemStatusBar] removeStatusItem:context->statusItem];
   [context->statusItem release]; context->statusItem = nil;
   [context->trayTarget release]; context->trayTarget = nil;
+  [NSEvent removeMonitor:context->shortcutMonitor];
+  [NSEvent removeMonitor:context->localShortcutMonitor];
+  context->shortcutMonitor = nil;
+  context->localShortcutMonitor = nil;
+  [context->shortcutKey release]; context->shortcutKey = nil;
   [context->menu release]; context->menu = nil;
   [context->menuTarget release]; context->menuTarget = nil;
   if ([NSBundle mainBundle].bundleIdentifier.length > 0 &&
@@ -600,6 +617,8 @@ void nimino_macos_app_dispose(void *opaque) {
   [context->schemeHandler release]; context->schemeHandler = nil;
   [context->scheme release]; context->scheme = nil;
   context->menuCallback = NULL;
+  context->trayCallback = NULL;
+  context->shortcutCallback = NULL;
   context->notificationCallback = NULL;
   context->deepLinkCallback = NULL;
   context->reopenCallback = NULL;
@@ -662,9 +681,11 @@ int nimino_macos_app_install_tray(void *opaque, uint32_t *ids, const char **titl
   context->trayTarget = [NiminoMenuTarget new];
   context->trayTarget.context = context;
   context->trayTarget.tray = YES;
-  context->menuCallback = (MacMenuCallback)callback;
+  context->trayCallback = (MacMenuCallback)callback;
   context->statusItem = [[[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength] retain];
   context->statusItem.button.title = @"Nimino";
+  context->statusItem.button.target = context->trayTarget;
+  context->statusItem.button.action = @selector(activateButton:);
   NSMenu *menu = [[[NSMenu alloc] initWithTitle:@"Nimino"] autorelease];
   for (int i = 0; i < count; ++i) {
     NSMenuItem *item = [[[NSMenuItem alloc] initWithTitle:titles[i] ? [NSString stringWithUTF8String:titles[i]] : @""
@@ -685,6 +706,87 @@ void nimino_macos_app_remove_tray(void *opaque) {
     [[NSStatusBar systemStatusBar] removeStatusItem:context->statusItem];
   [context->statusItem release]; context->statusItem = nil;
   [context->trayTarget release]; context->trayTarget = nil;
+  context->trayCallback = NULL;
+}
+
+int nimino_macos_app_set_tray_icon(void *opaque, const char *path) {
+  MacAppContext *context = (MacAppContext *)opaque;
+  if (!context || !context->statusItem || !path || path[0] == '\0') return 0;
+  NSString *value = [NSString stringWithUTF8String:path];
+  NSImage *image = [[[NSImage alloc] initWithContentsOfFile:value] autorelease];
+  if (!image) return 0;
+  image.template = NO;
+  context->statusItem.button.image = image;
+  context->statusItem.button.title = @"";
+  return 1;
+}
+
+static BOOL nimino_macos_shortcut_matches(MacAppContext *context, NSEvent *event) {
+  if (!context || !event || !context->shortcutKey) return NO;
+  NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+  if (flags != context->shortcutModifiers) return NO;
+  NSString *characters = event.charactersIgnoringModifiers.lowercaseString;
+  return [characters isEqualToString:context->shortcutKey];
+}
+
+int nimino_macos_app_set_activation_shortcut(void *opaque, const char *shortcut, void *callback) {
+  MacAppContext *context = (MacAppContext *)opaque;
+  if (!context || !shortcut || !callback || shortcut[0] == '\0') return 0;
+  NSString *value = [NSString stringWithUTF8String:shortcut];
+  NSArray *parts = [value componentsSeparatedByString:@"+"];
+  if (parts.count < 2) return 0;
+  NSUInteger modifiers = 0;
+  NSString *key = nil;
+  for (NSString *part in parts) {
+    NSString *token = part.lowercaseString;
+    if ([token isEqualToString:@"cmd"] || [token isEqualToString:@"command"] ||
+        [token isEqualToString:@"cmdorctrl"])
+      modifiers |= NSEventModifierFlagCommand;
+    else if ([token isEqualToString:@"ctrl"] || [token isEqualToString:@"control"])
+      modifiers |= NSEventModifierFlagControl;
+    else if ([token isEqualToString:@"shift"])
+      modifiers |= NSEventModifierFlagShift;
+    else if ([token isEqualToString:@"alt"] || [token isEqualToString:@"option"])
+      modifiers |= NSEventModifierFlagOption;
+    else if ([token isEqualToString:@"space"])
+      key = @" ";
+    else if (token.length == 1)
+      key = token;
+    else
+      return 0;
+  }
+  if (!key || modifiers == 0) return 0;
+  [NSEvent removeMonitor:context->shortcutMonitor];
+  [NSEvent removeMonitor:context->localShortcutMonitor];
+  context->shortcutMonitor = nil;
+  context->localShortcutMonitor = nil;
+  [context->shortcutKey release];
+  context->shortcutKey = [key copy];
+  context->shortcutModifiers = modifiers;
+  context->shortcutCallback = (MacIdleCallback)callback;
+  context->shortcutMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+    handler:^(NSEvent *event) {
+      if (nimino_macos_shortcut_matches(context, event) && context->shortcutCallback)
+        context->shortcutCallback(context->userData);
+    }];
+  context->localShortcutMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+    handler:^NSEvent *(NSEvent *event) {
+      if (nimino_macos_shortcut_matches(context, event) && context->shortcutCallback)
+        context->shortcutCallback(context->userData);
+      return event;
+    }];
+  return context->shortcutMonitor || context->localShortcutMonitor ? 1 : 0;
+}
+
+void nimino_macos_app_remove_activation_shortcut(void *opaque) {
+  MacAppContext *context = (MacAppContext *)opaque;
+  if (!context) return;
+  [NSEvent removeMonitor:context->shortcutMonitor];
+  [NSEvent removeMonitor:context->localShortcutMonitor];
+  context->shortcutMonitor = nil;
+  context->localShortcutMonitor = nil;
+  [context->shortcutKey release]; context->shortcutKey = nil;
+  context->shortcutCallback = NULL;
 }
 
 int nimino_macos_app_set_notification_callback(void *opaque, void *callback) {
@@ -842,6 +944,12 @@ int nimino_macos_window_set_title_bar_overlay(void *opaque, int enabled) {
 }
 int nimino_macos_window_set_fullscreen(void *opaque, int enabled) { MacWindowContext *c=opaque; if (!c) return 0; BOOL current=(c->window.styleMask & NSWindowStyleMaskFullScreen)!=0; if ((enabled!=0) != current) [c->window toggleFullScreen:nil]; return 1; }
 int nimino_macos_window_set_always_on_top(void *opaque, int enabled) { MacWindowContext *c=opaque; if (!c) return 0; [c->window setLevel:enabled?NSFloatingWindowLevel:NSNormalWindowLevel]; return 1; }
+int nimino_macos_window_set_dark_mode(void *opaque, int enabled) {
+  MacWindowContext *c=opaque; if (!c) return 0;
+  if (@available(macOS 10.14, *))
+    c->window.appearance = enabled ? [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua] : nil;
+  return 1;
+}
 
 void *nimino_macos_view_create(void *windowOpaque, void *userData, const char *userAgent,
                                const char *profilePath, const char *scheme,

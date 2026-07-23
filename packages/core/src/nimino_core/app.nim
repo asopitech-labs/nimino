@@ -164,6 +164,13 @@ type
     ## WebAssembly enabled by default; Chromium-only browser flags are not
     ## available through Apple's public WKWebView API.
     enableWasm*: bool
+    ## Force the native WebView/window appearance to dark mode where the
+    ## platform exposes that control (macOS currently).
+    darkMode*: bool
+    ## Block browser-style keyboard shortcuts at document start.
+    disabledWebShortcuts*: bool
+    ## Enable the generated find helper exposed as `window.nimino.find`.
+    enableFind*: bool
     ## WebView zoom factor. 1.0 is the platform default.
     zoomFactor*: float
     ignoreCertificateErrors*: bool
@@ -317,6 +324,9 @@ type
     proxyUrl: string
     incognito: bool
     enableWasm: bool
+    darkMode: bool
+    disabledWebShortcuts: bool
+    enableFind: bool
     zoomFactor: float
     ignoreCertificateErrors: bool
     hideTitleBar: bool
@@ -734,6 +744,17 @@ proc injectionDocumentStartSource(window: Window): string =
       "document.addEventListener('DOMContentLoaded', install, { once: true }); })();")
   for script in window.injectionJavaScript:
     source.add("(() => { try { " & script & " } catch (_) {} })();")
+  if window.disabledWebShortcuts:
+    source.add("(() => { const blocked = new Set(['r','l','n','w','t','d','p','s','u']); " &
+      "document.addEventListener('keydown', (event) => { if (!(event.metaKey || event.ctrlKey) || " &
+      "event.altKey) return; const key = String(event.key || '').toLowerCase(); " &
+      "if (blocked.has(key) || (key === 'f' && event.shiftKey)) { event.preventDefault(); " &
+      "event.stopPropagation(); } }, true); })();")
+  if window.enableFind:
+    source.add("(() => { if (globalThis.nimino && globalThis.nimino.find) return; " &
+      "const find = (text, backwards = false) => { if (!text) return false; " &
+      "if (typeof globalThis.find === 'function') return globalThis.find(text, backwards, false, true, false, false, false); " &
+      "return false; }; globalThis.nimino = globalThis.nimino || {}; globalThis.nimino.find = find; })();")
   source
 
 proc documentStartBridgeSource(url: string): string =
@@ -1342,6 +1363,36 @@ proc configureSystemTray*(app: App; items: openArray[DesktopMenuItem];
   app.trayMenuHandler = handler
   coreSuccess()
 
+proc setSystemTrayIcon*(app: App; path: string): CoreResult =
+  if app.isNil or app.state != coreCreated:
+    return coreFailure(coreError(invalidState, "app.setSystemTrayIcon"))
+  if path.len == 0:
+    return coreFailure(coreError(invalidArgument, "app.setSystemTrayIcon",
+      detail = "a non-empty icon path is required"))
+  case app.backend
+  of nativeBackend:
+    let configured = native.setSystemTrayIcon(app.nativeApp, path)
+    if configured.isOk: coreSuccess() else: coreFailure(configured.failure.mapNativeError())
+  of wslBackend:
+    coreFailure(coreError(platformUnavailable, "app.setSystemTrayIcon"))
+
+proc setActivationShortcut*(app: App; shortcut: string;
+                            handler: proc() {.closure.}): CoreResult =
+  if app.isNil or app.state != coreCreated:
+    return coreFailure(coreError(invalidState, "app.setActivationShortcut"))
+  if shortcut.len == 0 or handler.isNil:
+    return coreFailure(coreError(invalidArgument, "app.setActivationShortcut"))
+  case app.backend
+  of nativeBackend:
+    let configured = native.setActivationShortcut(app.nativeApp, shortcut,
+      proc(itemId: uint32) =
+        discard itemId
+        try: handler()
+        except CatchableError: discard)
+    if configured.isOk: coreSuccess() else: coreFailure(configured.failure.mapNativeError())
+  of wslBackend:
+    coreFailure(coreError(platformUnavailable, "app.setActivationShortcut"))
+
 proc sendNotification*(app: App; notification: DesktopNotification): CoreResult =
   if app.isNil or app.state != coreRunning:
     return coreFailure(coreError(invalidState, "app.sendNotification"))
@@ -1548,6 +1599,9 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
         "alwaysOnTop": options.alwaysOnTop,
         "hideWindowDecorations": options.hideWindowDecorations,
         "hideTitleBar": options.hideTitleBar,
+        "darkMode": options.darkMode,
+        "disabledWebShortcuts": options.disabledWebShortcuts,
+        "enableFind": options.enableFind,
         "userAgent": options.userAgent,
         "proxyUrl": options.proxyUrl,
         "incognito": options.incognito,
@@ -1579,6 +1633,9 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                           proxyUrl: options.proxyUrl,
                           incognito: options.incognito,
                           enableWasm: options.enableWasm,
+                          darkMode: options.darkMode,
+                          disabledWebShortcuts: options.disabledWebShortcuts,
+                          enableFind: options.enableFind,
                           zoomFactor: initialZoomFactor,
                           ignoreCertificateErrors: options.ignoreCertificateErrors,
                           hideTitleBar: options.hideTitleBar,
@@ -1595,7 +1652,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                           injectionCss: options.injectionCss,
                           injectionJavaScript: options.injectionJavaScript,
                           injectionEnabled: options.injectionEnabled or
-                            options.injectionCss.len > 0 or options.injectionJavaScript.len > 0,
+                            options.injectionCss.len > 0 or options.injectionJavaScript.len > 0 or
+                            options.disabledWebShortcuts or options.enableFind,
                           devToolsEnabled: not options.disableDevTools)
       window.webViews = @[WebView(window: window, webViewId: webViewId.value)]
       let devTools = window.configureDevTools(not options.disableDevTools)
@@ -1619,6 +1677,11 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     if not titleBar.isOk:
       discard nativeWindow.value.close()
       return coreFailureOf[Window](titleBar.failure.mapNativeError())
+  if options.darkMode:
+    let appearance = nativeWindow.value.setDarkMode(true)
+    if not appearance.isOk:
+      discard nativeWindow.value.close()
+      return coreFailureOf[Window](appearance.failure.mapNativeError())
   if options.minWidth > 0 or options.minHeight > 0:
     let minimumWidth = if options.minWidth > 0: options.minWidth else: options.width
     let minimumHeight = if options.minHeight > 0: options.minHeight else: options.height
@@ -1660,6 +1723,9 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                       proxyUrl: options.proxyUrl,
                       incognito: options.incognito,
                       enableWasm: options.enableWasm,
+                      darkMode: options.darkMode,
+                      disabledWebShortcuts: options.disabledWebShortcuts,
+                      enableFind: options.enableFind,
                       zoomFactor: zoomFactor,
                       ignoreCertificateErrors: options.ignoreCertificateErrors,
                       hideTitleBar: options.hideTitleBar,
@@ -1676,7 +1742,8 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
                       injectionCss: options.injectionCss,
                       injectionJavaScript: options.injectionJavaScript,
                       injectionEnabled: options.injectionEnabled or
-                        options.injectionCss.len > 0 or options.injectionJavaScript.len > 0,
+                        options.injectionCss.len > 0 or options.injectionJavaScript.len > 0 or
+                        options.disabledWebShortcuts or options.enableFind,
                       devToolsEnabled: not options.disableDevTools)
   window.webViews = @[WebView(window: window, nativeView: nativeView.value)]
   let devTools = window.configureDevTools(not options.disableDevTools)
@@ -2700,6 +2767,9 @@ proc hide*(window: Window): CoreResult =
     if not saved.isOk: return saved
   hidden
 
+proc isVisible*(window: Window): bool =
+  not window.isNil and not window.closed and window.windowState.visible
+
 proc minimize*(window: Window): CoreResult =
   if window.isNil or window.closed or window.app.isNil:
     return coreFailure(coreError(invalidState, "window.minimize"))
@@ -3037,6 +3107,9 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
     proxyUrl: window.proxyUrl,
     incognito: window.incognito,
     enableWasm: window.enableWasm,
+    darkMode: window.darkMode,
+    disabledWebShortcuts: window.disabledWebShortcuts,
+    enableFind: window.enableFind,
     zoomFactor: window.zoomFactor,
     ignoreCertificateErrors: window.ignoreCertificateErrors,
     multiWindow: window.multiWindow,

@@ -26,6 +26,13 @@ proc macosAppInstallTray*(app: pointer; ids: ptr uint32; titles: ptr cstring;
                           enabled: ptr cint; count: cint; callback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_app_install_tray".}
 proc macosAppRemoveTray*(app: pointer) {.cdecl, importc: "nimino_macos_app_remove_tray".}
+proc macosAppSetActivationShortcut*(app: pointer; shortcut: cstring;
+                                    callback: MacCallback): cint
+  {.cdecl, importc: "nimino_macos_app_set_activation_shortcut".}
+proc macosAppRemoveActivationShortcut*(app: pointer) {.cdecl,
+  importc: "nimino_macos_app_remove_activation_shortcut".}
+proc macosAppSetTrayIcon*(app: pointer; path: cstring): cint
+  {.cdecl, importc: "nimino_macos_app_set_tray_icon".}
 proc macosAppSetNotificationCallback*(app: pointer; callback: MacCallback): cint
   {.cdecl, importc: "nimino_macos_app_set_notification_callback".}
 proc macosAppSetDeepLinkCallback*(app: pointer; callback: MacCallback): cint
@@ -68,6 +75,8 @@ proc macosWindowSetFullscreen*(window: pointer; enabled: cint): cint
   {.cdecl, importc: "nimino_macos_window_set_fullscreen".}
 proc macosWindowSetAlwaysOnTop*(window: pointer; enabled: cint): cint
   {.cdecl, importc: "nimino_macos_window_set_always_on_top".}
+proc macosWindowSetDarkMode*(window: pointer; enabled: cint): cint
+  {.cdecl, importc: "nimino_macos_window_set_dark_mode".}
 
 proc macosViewCreate*(window: pointer; userData: pointer; userAgent, profilePath,
                       scheme, documentStartScript, proxyUrl: cstring; incognito,

@@ -161,6 +161,15 @@ proc parsePositiveInt(value, field: string): PackResult[int] =
   except ValueError:
     failure[int](invalidManifest, field & " must be an integer")
 
+proc parseNonNegativeInt(value, field: string): PackResult[int] =
+  try:
+    let parsed = parseInt(value.strip())
+    if parsed < 0:
+      return failure[int](invalidManifest, field & " must not be negative")
+    success(parsed)
+  except ValueError:
+    failure[int](invalidManifest, field & " must be an integer")
+
 proc validMetadataText(value: string): bool
 
 proc validateUrl(value: string): bool =
@@ -333,6 +342,12 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
         "unknown permission: " & permission)
   if normalized.window.width <= 0 or normalized.window.height <= 0:
     return failure[PackManifest](invalidManifest, "window dimensions must be positive")
+  if normalized.window.minWidth < 0 or normalized.window.minHeight < 0:
+    return failure[PackManifest](invalidManifest, "window minimum dimensions must not be negative")
+  if normalized.window.minWidth > 0 and normalized.window.minWidth > normalized.window.width:
+    return failure[PackManifest](invalidManifest, "window.minWidth must not exceed window.width")
+  if normalized.window.minHeight > 0 and normalized.window.minHeight > normalized.window.height:
+    return failure[PackManifest](invalidManifest, "window.minHeight must not exceed window.height")
   if not validMetadataText(normalized.window.title):
     return failure[PackManifest](invalidManifest, "window.title must not contain control characters")
   if not validPackageVersion(normalized.package.version):
@@ -426,6 +441,14 @@ proc parse*(text: string): PackResult[PackManifest] =
         let parsed = parsePositiveInt(value, "window.height")
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
         manifest.window.height = parsed.value
+      of "min-width", "minwidth":
+        let parsed = parseNonNegativeInt(value, "window.minWidth")
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.window.minWidth = parsed.value
+      of "min-height", "minheight":
+        let parsed = parseNonNegativeInt(value, "window.minHeight")
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.window.minHeight = parsed.value
       of "resizable":
         let parsed = parseBool(value)
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
@@ -472,17 +495,47 @@ proc parse*(text: string): PackResult[PackManifest] =
         let parsed = parseBool(value)
         if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
         manifest.webview.ignoreCertificateErrors = parsed.value
+      of "dark-mode", "darkmode":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.webview.darkMode = parsed.value
+      of "disabled-web-shortcuts", "disabledwebshortcuts":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.webview.disabledWebShortcuts = parsed.value
+      of "enable-find", "enablefind":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.webview.enableFind = parsed.value
+      of "wasm", "enable-wasm", "enablewasm":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.webview.wasm = parsed.value
+      of "new-window", "newwindow":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.webview.newWindow = parsed.value
+      of "force-internal-navigation", "forceinternalnavigation":
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        manifest.webview.forceInternalNavigation = parsed.value
+      of "internal-url-regex", "internalurlregex":
+        manifest.webview.internalUrlRegex = unquote(value)
       else: return failure[PackManifest](invalidManifest, "unknown webview key: " & key)
     of "runtime":
-      let parsed = parseBool(value)
-      if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
       case key
-      of "show-system-tray": manifest.runtime.showSystemTray = parsed.value
-      of "start-to-tray": manifest.runtime.startToTray = parsed.value
-      of "hide-on-close": manifest.runtime.hideOnClose = parsed.value
-      of "multi-window": manifest.runtime.multiWindow = parsed.value
-      of "multi-instance": manifest.runtime.multiInstance = parsed.value
-      else: return failure[PackManifest](invalidManifest, "unknown runtime key: " & key)
+      of "activation-shortcut": manifest.runtime.activationShortcut = unquote(value)
+      of "system-tray-icon": manifest.runtime.systemTrayIcon = unquote(value)
+      else:
+        let parsed = parseBool(value)
+        if not parsed.isOk: return failure[PackManifest](parsed.error.kind, parsed.error.detail)
+        case key
+        of "show-system-tray": manifest.runtime.showSystemTray = parsed.value
+        of "start-to-tray": manifest.runtime.startToTray = parsed.value
+        of "hide-on-close": manifest.runtime.hideOnClose = parsed.value
+        of "multi-window": manifest.runtime.multiWindow = parsed.value
+        of "multi-instance": manifest.runtime.multiInstance = parsed.value
+        else: return failure[PackManifest](invalidManifest, "unknown runtime key: " & key)
     of "package":
       case key
       of "version": manifest.package.version = unquote(value)

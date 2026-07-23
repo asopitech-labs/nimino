@@ -191,6 +191,10 @@ type
     uiTasks: seq[NativeUiHandler]
     trayMenuItems: seq[NativeMenuItem]
     trayMenuHandler: NativeMenuHandler
+    trayIconPath: string
+    activationShortcut: string
+    activationShortcutHandler: NativeMenuHandler
+    activationShortcutConfigured: bool
     trayConfigured: bool
     trayVisible: bool
     trayWindow: pointer
@@ -896,6 +900,32 @@ proc configureSystemTray*(app: NativeApp; items: openArray[NativeMenuItem];
   app.trayConfigured = true
   success()
 
+proc setSystemTrayIcon*(app: NativeApp; path: string): NativeResult =
+  ## Set a filesystem-backed tray icon before the native run loop installs it.
+  if app.isNil or app.state != created:
+    return failure(nativeError(invalidState, "app.setSystemTrayIcon"))
+  if not app.supports(systemTray):
+    return failure(nativeError(unsupported, "app.setSystemTrayIcon"))
+  if path.len == 0 or '\0' in path:
+    return failure(nativeError(invalidArgument, "app.setSystemTrayIcon",
+      detail = "a non-empty icon path is required"))
+  app.trayIconPath = path
+  success()
+
+proc setActivationShortcut*(app: NativeApp; shortcut: string;
+                            handler: NativeMenuHandler): NativeResult =
+  if app.isNil or app.state != created:
+    return failure(nativeError(invalidState, "app.setActivationShortcut"))
+  if not app.supports(systemTray):
+    return failure(nativeError(unsupported, "app.setActivationShortcut"))
+  if shortcut.len == 0 or handler.isNil or '\0' in shortcut:
+    return failure(nativeError(invalidArgument, "app.setActivationShortcut",
+      detail = "a shortcut and handler are required"))
+  app.activationShortcut = shortcut
+  app.activationShortcutHandler = handler
+  app.activationShortcutConfigured = true
+  success()
+
 proc validNativeDesktopText(value: string): bool {.inline.} =
   '\0' notin value
 
@@ -1250,6 +1280,16 @@ proc setTitleBarOverlay*(window: NativeWindow; enabled: bool): NativeResult =
     configured
   else:
     failure(nativeError(unsupported, "window.setTitleBarOverlay"))
+
+proc setDarkMode*(window: NativeWindow; enabled: bool): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.setDarkMode"))
+  when defined(macosx):
+    if window.state == pending:
+      return success()
+    window.macosSetDarkMode(enabled)
+  else:
+    failure(nativeError(unsupported, "window.setDarkMode"))
 
 proc close*(view: NativeWebView): NativeResult =
   if view.isNil or view.window.isNil or view.state in {closing, closed}:
