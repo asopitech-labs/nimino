@@ -30,6 +30,7 @@ fi
 printf '%s\n' 'nested macOS package resource' > "$root/site/fixtures/nested/marker.txt"
 "$cli" pack "$root/site" --name 'Nimino macOS Smoke' --id com.nimino.macos.smoke \
   --deep-link nimino --allow-permission camera --allow-permission microphone \
+  --icon "$tray_icon" \
   --hide-title-bar --min-width 900 --min-height 600 --dark-mode \
   --disabled-web-shortcuts --enable-wasm --enable-find --new-window \
   --force-internal-navigation --show-system-tray \
@@ -43,6 +44,7 @@ grep -F '"minHeight": 600' "$root/bundle/nimino-manifest.json"
 grep -F '"darkMode": true' "$root/bundle/nimino-manifest.json"
 grep -F '"activationShortcut": "CmdOrCtrl+Shift+Space"' "$root/bundle/nimino-manifest.json"
 grep -F '"hideOnClose": true' "$root/bundle/nimino-manifest.json"
+grep -F '"icon": "GenericApplicationIcon.icns"' "$root/bundle/nimino-manifest.json"
 grep -F '"systemTrayIcon": "GenericApplicationIcon.icns"' "$root/bundle/nimino-manifest.json"
 test -f "$root/bundle/GenericApplicationIcon.icns"
 ## Tauri's macOS bundle tests require custom files and nested directories to
@@ -65,6 +67,7 @@ app=$($cli package-macos "$root/bundle" --format app --out "$root/out")
 test -x "$app/Contents/MacOS/com.nimino.macos.smoke"
 file "$app/Contents/MacOS/com.nimino.macos.smoke" | grep -E 'Mach-O|executable'
 plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist" | grep -Fx 'com.nimino.macos.smoke'
+plutil -extract CFBundleIconFile raw "$app/Contents/Info.plist" | grep -Fx 'GenericApplicationIcon.icns'
 plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes.0 raw "$app/Contents/Info.plist" | grep -Fx 'nimino'
 plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist" | grep -Fx '14.0'
 plutil -extract NSCameraUsageDescription raw "$app/Contents/Info.plist" | grep -F 'Camera access'
