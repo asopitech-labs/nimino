@@ -33,6 +33,7 @@ proc macosCreateView(view: NativeWebView): NativeResult
 proc macosSetZoom(view: NativeWebView; factor: float): NativeResult
 proc macosLoadPendingContent(view: NativeWebView): NativeResult
 proc macosShowWindow(window: NativeWindow)
+proc macosFocusWindow(window: NativeWindow)
 proc macosSetTitleBarOverlay(window: NativeWindow; enabled: bool): NativeResult
 proc macosSetMinimumSize(window: NativeWindow; width, height: int): NativeResult
 proc macosSetDarkMode(window: NativeWindow; enabled: bool): NativeResult
@@ -231,10 +232,15 @@ proc macosReopen(data: pointer) {.cdecl.} =
   let app = cast[NativeApp](data)
   if app.isNil:
     return
-  ## Restore all live hidden windows when the Dock icon is activated.
+  ## Restore hidden windows and focus one live window. The same callback is
+  ## used for Dock reopen and the generated host's single-instance activation.
+  var focused = false
   for window in app.windows:
     if not window.isNil and window.state == ready and window.hidden:
       macosShowWindow(window)
+    if not focused and not window.isNil and window.state == ready:
+      macosFocusWindow(window)
+      focused = true
   app.dispatchReopen()
 
 proc macosPermission(data: pointer; kind, url: cstring): cint {.cdecl.} =
