@@ -201,6 +201,8 @@ discard app.sendNativeNotification(NativeNotification(
 
 macOSはCocoa/WebKitのprivate bridgeで`NSApplication`、`NSWindow`、複数`WKWebView`、native menu、`NSStatusItem` tray、`UNUserNotificationCenter`、通知activation、`NSApplication`の`openURLs` deep linkを提供します。通知登録時はAlert/Sound/Badge権限を要求し、activationは`UNNotificationRequest.identifier`で通知します。`onPermissionRequested`はWKWebKitのmedia capture（camera/microphone）をdeny-defaultで判定し、`onDownloadStarting`/`onDownloadPath`/`onDownloadEvent`はWKDownloadの開始・保存先・進捗・完了/失敗へ接続します。Dockクリック時の`applicationShouldHandleReopen`では、非表示の全Windowを再表示します。
 
+macOSの未署名／Ad-hocローカルbundleは起動・WebView・Deep Link等の確認には使えますが、現行macOSのUserNotificationsサービスに拒否される場合があるため、通知表示・クリックはApple-issuedな開発用署名で確認してください。通知要求が拒否された場合、bridgeはstderrへ開発署名またはin-app fallbackの案内を出します。
+
 非incognito WebViewの`profilePath`はSHA-256から安定UUIDを作り、`WKWebsiteDataStore dataStoreForIdentifier:`でprofileごとに分離します。空のprofileは既定store、incognitoはnon-persistent storeです。`proxyUrl`はmacOS 14+でWebView構築時にNetwork.frameworkのHTTP CONNECT/SOCKS5設定として適用し、ready後の変更は`invalidState`で拒否します。`transparentWindow`とsystem proxyの動的変更はmacOS WebKitの共通API境界では提供しません。`hideTitleBar`は`NSWindowTitleHidden`、透明titlebar、`NSWindowStyleMaskFullSizeContentView`を組み合わせたoverlayとして提供します。
 
 `nimino package-macos --format app|dmg`はbundle内のmanifest、Mach-O host、assetsをmacOS application bundleへ配置し、manifestのdeep-link schemeとcamera/microphone用途説明を`Info.plist`へ登録します。macOSアイコンは`.icns`を使用します。`--arch`でhostのMach-Oアーキテクチャを検証し、`--sign-identity`を指定した場合は`codesign --verify --deep --strict`と`spctl --assess --type execute`まで成功しなければ完了扱いにしません。DMGのnotarizationは`--notary-profile`で明示的に要求でき、staple後に`xcrun stapler validate`を実行します。

@@ -4,6 +4,7 @@
 #import <Network/Network.h>
 #import <dispatch/dispatch.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <CommonCrypto/CommonDigest.h>
@@ -288,6 +289,17 @@ static MacIdleCallback g_idleCallback = NULL;
   if (completionHandler) completionHandler();
 }
 @end
+
+static void niminoLogNotificationFailure(const char *operation, NSError *error) {
+  fprintf(stderr, "nimino macOS notification unavailable (%s)",
+          operation ? operation : "unknown");
+  if (error && error.localizedDescription.UTF8String)
+    fprintf(stderr, ": %s", error.localizedDescription.UTF8String);
+  fprintf(stderr,
+          ". An unsigned or Ad-hoc local bundle may launch but can be rejected by "
+          "macOS UserNotifications; use an Apple-issued development identity for "
+          "notification testing or provide an in-app fallback.\n");
+}
 
 @implementation NiminoApplicationDelegate
 - (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {
@@ -807,7 +819,8 @@ int nimino_macos_app_set_notification_callback(void *opaque, void *callback) {
                                             UNAuthorizationOptionSound |
                                             UNAuthorizationOptionBadge)
                          completionHandler:^(BOOL granted, NSError *error) {
-    (void)granted; (void)error;
+    if (!granted || error)
+      niminoLogNotificationFailure("requestAuthorization", error);
   }];
   return 1;
 }
@@ -844,7 +857,8 @@ int nimino_macos_app_send_notification(void *opaque, const char *identifier,
       content:content trigger:nil];
   [[UNUserNotificationCenter currentNotificationCenter]
       addNotificationRequest:request withCompletionHandler:^(NSError *error) {
-    (void)error;
+    if (error)
+      niminoLogNotificationFailure("addNotificationRequest", error);
   }];
   [content release];
   return 1;

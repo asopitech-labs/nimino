@@ -202,7 +202,7 @@ See [`docs/api/nimino-pack.md`](docs/api/nimino-pack.md) for manifests, navigati
 | Windows | Win32 + WebView2 Evergreen Runtime | Supported development target; GUI smoke requires a logged-in Windows desktop. |
 | Native Linux | GTK 4 + WebKitGTK 6.0 | Supported development target; tested in the Docker GUI harness. |
 | WSL 2 | WSL Nim client + Windows host + WebView2 | Supported development target; requires functional Windows Interop. |
-| macOS | Cocoa + WKWebView | Native backend and `.app`/`.dmg` generation implemented; use `make macos-smoke` and `nimble testPackMacos`. Signing/notarization require explicit Apple credentials. |
+| macOS | Cocoa + WKWebView | Native backend and `.app`/`.dmg` generation implemented; use `make macos-smoke` and `nimble testPackMacos`. Signing/notarization require explicit Apple credentials. Local unsigned/Ad-hoc builds can validate UI and Deep Link, but macOS notification testing requires an Apple-issued development identity; see [`docs/api/nimino-pack.md`](docs/api/nimino-pack.md). |
 
 Nimino does not use `webview/webview`, Photino.Native, Tauri, Electron, WRY, TAO, CEF, Qt WebEngine, Sciter, or an embedded Chromium runtime.
 

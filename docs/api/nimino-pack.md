@@ -269,6 +269,16 @@ nimino package-macos dist/discord --format dmg --out dist/packages \
 
 `Contents/Info.plist`にはmanifestのbundle ID、version、deep-link URL scheme、camera/microphone権限用途説明を記録し、Mach-O host、manifest、assetsを`Contents/MacOS`と`Contents/Resources`へ配置します。指定アイコンは`.icns`に限定し、`--arch`でhostが要求アーキテクチャを含むことを検証します。DMGは`hdiutil create`で生成します。`--sign-identity`を指定しない場合は未署名bundleを生成し、指定時だけ`codesign --deep --options runtime`を実行します。`--notary-profile`を指定した場合は、署名済みDMGを`xcrun notarytool submit --wait`へ送り、成功後に`xcrun stapler staple`を実行します。notary profile、Apple証明書、実機Gatekeeper確認はrelease環境で行います。
 
+ローカル開発用の未署名／Ad-hoc bundleは、アプリ起動、WebView、メニュー、トレイ、Deep Linkなどの実機確認には利用できます。ただし、現行macOSでは`UNUserNotificationCenter`がApple-issuedなアプリ識別情報を要求するため、未署名／Ad-hoc bundleではmacOSネイティブ通知の登録・通知クリックを利用できない場合があります。ブラウザの`notifications` permissionもmacOS generated hostでは明示拒否されます。通知を使うアプリは、通知が使えない場合のin-app bannerや状態表示を用意してください。
+
+通知を実機確認する場合は、Apple-issuedな開発用署名（例: Apple Development）を用意して`--sign-identity`へ渡します。配布確認はDeveloper ID Application署名とnotarizationを使用します。利用可能な署名 identityは次で確認できます。
+
+```bash
+security find-identity -p codesigning -v
+```
+
+`0 valid identities found`の場合、Ad-hocでの起動テストはできますが、macOS通知の表示・クリック検証は完了できません。Developer ID配布署名・notarizationの手順は[AppleのDeveloper IDガイド](https://developer.apple.com/developer-id/)と[Issue #3](https://github.com/asopitech-labs/nimino/issues/3)で管理します。
+
 ## 固定された検証手順
 
 ローカルへNimを導入せず、次のMakeターゲットをDocker経由で実行します。
