@@ -26,11 +26,15 @@ var raceBrowsingData: Future[NativeResult]
 var raceCookies: Future[NativeResultOf[seq[NativeCookie]]]
 var activationShortcutConfigured: bool
 var runtimeWindowCreated: bool
+var webPopupTriggerIssued: bool
+var webPopupRequested: bool
+var webPopupWindowCreated: bool
 
 proc finishIfReady() =
   if idleTicks > 0 and messageReceived and navigationCompleted and
       evaluationFinished and resizeReceived and protocolCalled and
-      customResponseObserved and runtimeWindowCreated and (not raceStarted or raceTicks > 100):
+      customResponseObserved and runtimeWindowCreated and webPopupRequested and
+      webPopupWindowCreated and (not raceStarted or raceTicks > 100):
     doAssert cast[NativeApp](appPtr).quit().isOk
 
 proc onEvaluation(completed: Future[NativeResultOf[string]]) {.gcsafe.} =
@@ -58,6 +62,13 @@ proc onIdle() =
   if navigationCompleted and not customRequested:
     customRequested = true
     doAssert viewRef.loadUrl("nimino://app/hello.txt").isOk
+  if navigationCompleted and not webPopupTriggerIssued:
+    ## Pake's macOS #1194 regression exercises a real `window.open` request.
+    ## The native delegate must surface it so the application can create a
+    ## separate NSWindow/WKWebView rather than reuse the opener configuration.
+    webPopupTriggerIssued = true
+    discard viewRef.evalJavaScript(
+      "window.open('https://popup.example/auth', '_blank', 'width=320,height=180');")
   if idleTicks == 2 and not raceStarted:
     raceStarted = true
     raceEvaluation = raceView.evalJavaScript("'close-race'")
@@ -145,6 +156,17 @@ doAssert viewRef.onNavigationCompleted(proc(url: string; succeeded: bool) =
   doAssert succeeded
   navigationCompleted = true
 ).isOk
+doAssert viewRef.onNewWindowRequested(proc(request: NativeNewWindowRequest): bool =
+  doAssert request.url == "https://popup.example/auth"
+  let popup = appRef.newWindow("Nimino macOS WebView popup", 320, 180)
+  doAssert popup.isOk
+  let popupView = popup.value.newWebView()
+  doAssert popupView.isOk
+  doAssert popupView.value.loadHtml("<main>WebView popup</main>").isOk
+  webPopupWindowCreated = true
+  webPopupRequested = true
+  true
+).isOk
 doAssert viewRef.setDocumentStartScript(
   "globalThis.niminoDocumentStart = true;").isOk
 doAssert viewRef.loadHtml("""
@@ -170,5 +192,7 @@ doAssert navigationCompleted
 doAssert evaluationFinished
 doAssert resizeReceived
 doAssert runtimeWindowCreated
+doAssert webPopupRequested
+doAssert webPopupWindowCreated
 doAssert not activationShortcutConfigured
 echo "macOS native smoke passed"
