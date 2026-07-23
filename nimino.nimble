@@ -31,6 +31,33 @@ task test, "Run Nimino unit tests in ARC mode":
   ## Linux WebKit backend so unsupported runtime behavior is deterministic.
   exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-test-host-adapter --path:packages/wsl --path:packages/native packages/wsl/tests/test_host_adapter.nim"
 
+task testReferenceParity, "Run common reference-parity tests and selected OS suites":
+  ## The reference projects cover all three desktop platforms. Keep their
+  ## runtime-dependent suites explicit so a macOS runner never reports Linux
+  ## or Windows tests as silently skipped. Set any combination of:
+  ## NIMINO_TEST_REFERENCE_MACOS=1
+  ## NIMINO_TEST_REFERENCE_LINUX=1
+  ## NIMINO_TEST_REFERENCE_WINDOWS=1
+  exec "nimble testPackManifest"
+  exec "nimble testPackCli"
+  exec "nimble testWebView2ProfileFfi"
+  if getEnv("NIMINO_TEST_REFERENCE_MACOS") == "1":
+    exec "nimble testMacosSmoke"
+    exec "nimble testPackMacos"
+  if getEnv("NIMINO_TEST_REFERENCE_LINUX") == "1":
+    exec "nimble testLinuxSmoke"
+    exec "nimble testLinuxCustomProtocolSmoke"
+    exec "nimble testLinuxTraySmoke"
+    exec "nimble testCoreLinuxRpcSmoke"
+    exec "nimble testCoreLinuxRpcUrlSmoke"
+    exec "nimble testCoreLinuxRpcAsyncSmoke"
+    exec "nimble testPackLinux"
+  if getEnv("NIMINO_TEST_REFERENCE_WINDOWS") == "1":
+    exec "nimble testWindowsCross"
+    exec "nimble testWindowsProfileFfiCross"
+    exec "nimble testCoreWindowsCross"
+    exec "nimble testPackWindows"
+
 task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-linux-smoke-nimcache --out:/tmp/nimino-linux-smoke --path:packages/native packages/native/tests/test_linux_smoke.nim"
   ## Give GNotification a private session bus; Xvfb alone does not provide one.
