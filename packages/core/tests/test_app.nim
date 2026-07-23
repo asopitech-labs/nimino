@@ -414,7 +414,19 @@ block localAssetRootRejectsTraversal:
 block navigationRulesAreExplicit:
   doAssert isAuthenticationNavigation("https://accounts.google.com/o/oauth2/auth")
   doAssert isAuthenticationNavigation("https://tenant.okta.com/login/login.htm")
+  ## Pake's enterprise SSO cases: recognize endpoint-shaped SAML, SSO, and
+  ## ADFS paths without treating arbitrary documentation/settings paths as
+  ## authentication redirects.
+  doAssert isAuthenticationNavigation("https://acme.onelogin.com/login")
+  doAssert isAuthenticationNavigation("https://idp.example.com/saml/acs")
+  doAssert isAuthenticationNavigation("https://idp.example.com/sso/redirect")
+  doAssert isAuthenticationNavigation("https://fs.example.com/adfs/ls/?wa=wsignin1.0")
   doAssert not isAuthenticationNavigation("https://example.invalid/oauth/callback")
+  doAssert not isAuthenticationNavigation("https://app.example.com/settings/sso/providers")
+  doAssert not isAuthenticationNavigation("https://app.example.com/docs/saml/overview")
+  doAssert not isAuthenticationNavigation(
+    "https://app.example.com/?next=https://idp.example.com/sso/saml")
+  doAssert not isAuthenticationNavigation("https://okta.com.evil.test/app")
   doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",
     "https://accounts.google.com/signin/v2/identifier") == navigationAllow
   doAssert defaultNavigationDecision("https://mail.google.com/mail/u/0/",

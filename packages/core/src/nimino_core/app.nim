@@ -546,9 +546,10 @@ proc navigationSiteKey(host: string): string =
   labels[^2] & "." & labels[^1]
 
 proc isAuthenticationNavigation*(url: string): bool =
-  ## Detect known identity-provider hosts.  A path containing `/login` or
-  ## `/oauth` is not sufficient on its own: treating every unrelated host as
-  ## an authentication transition would defeat external URL separation.
+  ## Detect known identity-provider hosts and narrowly shaped enterprise SSO
+  ## endpoints. A path containing `/login` or `/oauth` on its own is not
+  ## sufficient: treating every unrelated host as an authentication transition
+  ## would defeat external URL separation.
   let host = navigationHost(url)
   if host.len == 0:
     return false
@@ -558,7 +559,21 @@ proc isAuthenticationNavigation*(url: string): bool =
       host == "login.live.com" or host.endsWith(".okta.com") or
       host.endsWith(".auth0.com") or host.endsWith(".onelogin.com"):
     return true
-  false
+  try:
+    let path = parseUri(url).path.toLowerAscii()
+    let samlPrefix = if path.startsWith("/saml2/"): "/saml2/"
+      elif path.startsWith("/saml/"): "/saml/" else: ""
+    if samlPrefix.len > 0:
+      let endpoint = path[samlPrefix.len .. ^1].split('/')[0]
+      return endpoint in ["sso", "acs", "login", "metadata", "consume",
+        "redirect", "callback", "continue"]
+    if path.startsWith("/sso/"):
+      let endpoint = path[5 .. ^1].split('/')[0]
+      return endpoint in ["saml", "oidc", "oauth", "login", "authorize",
+        "redirect", "callback", "acs", "start", "continue", "metadata"]
+    path == "/adfs/ls" or path.startsWith("/adfs/ls/")
+  except CatchableError:
+    false
 
 proc defaultNavigationDecision*(entryUrl, requestUrl: string): NavigationDecision =
   ## Runtime default for URL-only bundles.  The app's own site and an
