@@ -38,6 +38,7 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
   ## NIMINO_TEST_REFERENCE_MACOS=1
   ## NIMINO_TEST_REFERENCE_LINUX=1
   ## NIMINO_TEST_REFERENCE_WINDOWS=1
+  exec "nimble testReferenceInventory"
   exec "nimble testPackManifest"
   exec "nimble testPackCli"
   exec "nimble testWebView2ProfileFfi"
@@ -57,6 +58,9 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
     exec "nimble testWindowsProfileFfiCross"
     exec "nimble testCoreWindowsCross"
     exec "nimble testPackWindows"
+
+task testReferenceInventory, "Verify the checked-in Pake/Tauri test inventory":
+  exec "bash tools/ci/test_reference_inventory.sh"
 
 task testLinuxSmoke, "Run the Linux GTK/WebKitGTK M1 smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-linux-smoke-nimcache --out:/tmp/nimino-linux-smoke --path:packages/native packages/native/tests/test_linux_smoke.nim"
