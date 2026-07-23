@@ -13,7 +13,11 @@ task test, "Run Nimino unit tests in ARC mode":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-nimcache --out:/tmp/nimino-test-foundation --path:packages/native packages/native/tests/test_foundation.nim"
   exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-desktop-capabilities-nimcache --out:/tmp/nimino-test-wsl-desktop-capabilities --path:packages/native packages/native/tests/test_wsl_desktop_capabilities.nim"
   exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-load-html-base-url-nimcache --out:/tmp/nimino-test-wsl-load-html-base-url --path:packages/native packages/native/tests/test_wsl_load_html_base_url.nim"
-  exec "nimble testWebView2ProfileFfi"
+  ## WebView2 is Windows-specific. Keep its fake-vtable ABI test opt-in on
+  ## non-Windows development machines; the normal Core tests below remain
+  ## platform-neutral.
+  if getEnv("NIMINO_TEST_REFERENCE_WINDOWS") == "1":
+    exec "nimble testWebView2ProfileFfi"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-nimcache --out:/tmp/nimino-test-core-rpc --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_rpc.nim"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-app-nimcache --out:/tmp/nimino-test-core-app --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_app.nim"
   exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-core-app"
@@ -40,7 +44,6 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
   ## NIMINO_TEST_REFERENCE_WINDOWS=1
   exec "nimble testPackManifest"
   exec "nimble testPackCli"
-  exec "nimble testWebView2ProfileFfi"
   if getEnv("NIMINO_TEST_REFERENCE_MACOS") == "1":
     exec "nimble testMacosSmoke"
     exec "nimble testCoreMacosFindSmoke"
@@ -54,6 +57,7 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
     exec "nimble testCoreLinuxRpcAsyncSmoke"
     exec "nimble testPackLinux"
   if getEnv("NIMINO_TEST_REFERENCE_WINDOWS") == "1":
+    exec "nimble testWebView2ProfileFfi"
     exec "nimble testWindowsCross"
     exec "nimble testWindowsProfileFfiCross"
     exec "nimble testCoreWindowsCross"
