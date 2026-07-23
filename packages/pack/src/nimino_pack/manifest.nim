@@ -317,6 +317,11 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
     normalized.package.description = normalized.name
   if normalized.package.categories.len == 0:
     normalized.package.categories = @["Network"]
+  ## Pake only starts an application in the tray when a tray has also been
+  ## configured. Normalizing here keeps an otherwise valid portable bundle
+  ## from reaching the host and failing at launch time.
+  if normalized.runtime.startToTray and not normalized.runtime.showSystemTray:
+    normalized.runtime.startToTray = false
   var invalidName = false
   for character in normalized.name:
     if ord(character) < 32:

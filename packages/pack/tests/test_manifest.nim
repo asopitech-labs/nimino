@@ -67,6 +67,19 @@ doAssert parsed.value.package.version == "1.2.3"
 doAssert parsed.value.package.categories == @["Network", "Utility"]
 doAssert parsed.value.deepLink.schemes == @["nimino", "foo+bar"]
 
+## Pake only emits start_to_tray when a system tray is enabled. Keep a
+## portable Nimino manifest launchable instead of deferring this conflict to
+## the platform host.
+let startWithoutTray = parse("name = \"No tray\"\nid = \"app.no-tray\"\nurl = \"https://example.com\"\n[runtime]\nstart-to-tray = true")
+doAssert startWithoutTray.isOk
+doAssert not startWithoutTray.value.runtime.startToTray
+let jsonStartWithoutTray = getTempDir() / "nimino-pack-start-without-tray.json"
+writeFile(jsonStartWithoutTray, "{\"name\":\"No tray JSON\",\"id\":\"app.no-tray-json\",\"url\":\"https://example.com\",\"startToTray\":true}")
+let loadedStartWithoutTray = loadManifest(jsonStartWithoutTray)
+doAssert loadedStartWithoutTray.isOk
+doAssert not loadedStartWithoutTray.value.runtime.startToTray
+removeFile(jsonStartWithoutTray)
+
 let local = parse("name = \"Local\"\nid = \"app.local\"\nlocal-entry = \"assets/index.html\"")
 doAssert local.isOk
 doAssert local.value.url.len == 0

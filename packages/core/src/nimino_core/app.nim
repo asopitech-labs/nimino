@@ -1744,11 +1744,12 @@ proc newWindow*(app: App; options: CoreWindowOptions): CoreResultOf[Window] =
     profile.value)
   if not nativeWindow.isOk:
     return coreFailureOf[Window](nativeWindow.failure.mapNativeError())
-  if options.hideTitleBar:
-    let titleBar = nativeWindow.value.setTitleBarOverlay(true)
-    if not titleBar.isOk:
-      discard nativeWindow.value.close()
-      return coreFailureOf[Window](titleBar.failure.mapNativeError())
+  when defined(macosx):
+    if options.hideTitleBar:
+      let titleBar = nativeWindow.value.setTitleBarOverlay(true)
+      if not titleBar.isOk:
+        discard nativeWindow.value.close()
+        return coreFailureOf[Window](titleBar.failure.mapNativeError())
   if options.darkMode:
     let appearance = nativeWindow.value.setDarkMode(true)
     if not appearance.isOk:

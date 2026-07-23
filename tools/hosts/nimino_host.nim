@@ -229,12 +229,14 @@ proc main() =
   when not defined(macosx):
     if minWidth > 0 or minHeight > 0:
       fail("window minimum size is only supported by the macOS host")
-  let hideTitleBar = windowNode.boolean("hideTitleBar", false)
+  var hideTitleBar = windowNode.boolean("hideTitleBar", false)
   let initialAlwaysOnTop = windowNode.boolean("alwaysOnTop", false)
   var currentFullscreen = windowNode.boolean("fullscreen", false)
   when not defined(macosx):
     if hideTitleBar:
-      fail("window.hideTitleBar is only supported by the macOS host")
+      ## Match Pake: this macOS-only decoration request is ignored when the
+      ## same portable bundle is launched on Linux or Windows.
+      hideTitleBar = false
   var internalRegex: Regex
   if internalUrlRegex.len > 0:
     try:
