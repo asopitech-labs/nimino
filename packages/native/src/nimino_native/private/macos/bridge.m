@@ -85,6 +85,7 @@ struct MacAppContext {
   NSMenu *menu;
   NiminoMenuTarget *menuTarget;
   NSStatusItem *statusItem;
+  NSMenu *trayMenu;
   NiminoMenuTarget *trayTarget;
   NiminoNotificationDelegate *notificationDelegate;
   NiminoApplicationDelegate *applicationDelegate;
@@ -284,8 +285,19 @@ static MacIdleCallback g_idleCallback = NULL;
 }
 - (void)activateButton:(id)sender {
   (void)sender;
-  if (self.tray && self.context && self.context->trayCallback)
-    self.context->trayCallback(self.context->userData, 0);
+  if (!self.tray || !self.context || !self.context->trayCallback) return;
+  /* Assigning NSStatusItem.menu makes AppKit consume every primary click, so
+   * the host never receives its Pake-compatible show/hide action.  Retain the
+   * menu separately: primary click invokes item 0; secondary click opens the
+   * explicit tray menu. */
+  NSEvent *event = [NSApp currentEvent];
+  if (event.type == NSEventTypeRightMouseUp || event.type == NSEventTypeRightMouseDown ||
+      event.type == NSEventTypeOtherMouseUp || event.type == NSEventTypeOtherMouseDown) {
+    if (self.context->statusItem && self.context->trayMenu)
+      [self.context->statusItem popUpStatusItemMenu:self.context->trayMenu];
+    return;
+  }
+  self.context->trayCallback(self.context->userData, 0);
 }
 @end
 
@@ -648,6 +660,7 @@ void nimino_macos_app_dispose(void *opaque) {
   if (context->statusItem)
     [[NSStatusBar systemStatusBar] removeStatusItem:context->statusItem];
   [context->statusItem release]; context->statusItem = nil;
+  [context->trayMenu release]; context->trayMenu = nil;
   [context->trayTarget release]; context->trayTarget = nil;
   if (context->shortcutHotKey) UnregisterEventHotKey(context->shortcutHotKey);
   if (context->shortcutHandler) RemoveEventHandler(context->shortcutHandler);
@@ -805,7 +818,10 @@ int nimino_macos_app_install_tray(void *opaque, uint32_t *ids, const char **titl
                                   int *enabled, int count, void *callback) {
   MacAppContext *context = (MacAppContext *)opaque;
   if (!context || count <= 0 || !callback) return 0;
+  if (context->statusItem)
+    [[NSStatusBar systemStatusBar] removeStatusItem:context->statusItem];
   [context->statusItem release];
+  [context->trayMenu release]; context->trayMenu = nil;
   [context->trayTarget release];
   context->trayTarget = [NiminoMenuTarget new];
   context->trayTarget.context = context;
@@ -820,8 +836,12 @@ int nimino_macos_app_install_tray(void *opaque, uint32_t *ids, const char **titl
     context->statusItem.button.title = @"Nimino";
   }
   context->statusItem.button.toolTip = [NSProcessInfo processInfo].processName ?: @"Nimino";
+  context->statusItem.button.accessibilityLabel = [NSString stringWithFormat:@"%@ status menu",
+    [NSProcessInfo processInfo].processName ?: @"Nimino"];
   context->statusItem.button.target = context->trayTarget;
   context->statusItem.button.action = @selector(activateButton:);
+  [context->statusItem.button sendActionOn:(NSEventMaskLeftMouseUp | NSEventMaskRightMouseUp |
+                                            NSEventMaskOtherMouseUp)];
   NSMenu *menu = [[[NSMenu alloc] initWithTitle:@"Nimino"] autorelease];
   for (int i = 0; i < count; ++i) {
     NSMenuItem *item = [[[NSMenuItem alloc] initWithTitle:titles[i] ? [NSString stringWithUTF8String:titles[i]] : @""
@@ -831,7 +851,7 @@ int nimino_macos_app_install_tray(void *opaque, uint32_t *ids, const char **titl
     item.enabled = enabled[i] != 0;
     [menu addItem:item];
   }
-  context->statusItem.menu = menu;
+  context->trayMenu = [menu retain];
   return context->statusItem != nil ? 1 : 0;
 }
 
@@ -841,6 +861,7 @@ void nimino_macos_app_remove_tray(void *opaque) {
   if (context->statusItem)
     [[NSStatusBar systemStatusBar] removeStatusItem:context->statusItem];
   [context->statusItem release]; context->statusItem = nil;
+  [context->trayMenu release]; context->trayMenu = nil;
   [context->trayTarget release]; context->trayTarget = nil;
   context->trayCallback = NULL;
 }

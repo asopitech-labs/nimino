@@ -6,6 +6,19 @@ host=${2:?usage: test_pack_macos.sh <nimino-cli> <nimino-host>}
 root=$(mktemp -d /tmp/nimino-macos-pack.XXXXXX)
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/site" "$root/out"
+wait_for_gui_windows() {
+  expected=$1
+  attempts=0
+  while [ "$attempts" -lt 10 ]; do
+    gui_window_count=$(osascript -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to count windows')
+    if [ "$gui_window_count" -ge "$expected" ]; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+  return 1
+}
 if [ "${NIMINO_TEST_MACOS_NOTIFICATION:-0}" = 1 ]; then
   printf '%s\n' '<!doctype html><title>Nimino macOS notification smoke</title><script>function send(){if(!window.nimino||typeof window.nimino.invoke!=="function"){setTimeout(send,250);return;}window.nimino.invoke("app.sendNotification",{id:"macos-adhoc-notification-click",title:"Nimino Ad-hoc smoke",body:"Click this notification"});}window.addEventListener("load",()=>setTimeout(send,1000));</script>' > "$root/site/index.html"
 else
@@ -59,14 +72,22 @@ if [ "${NIMINO_TEST_MACOS_LAUNCH:-0}" = 1 ]; then
     osascript -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to set frontmost to true' \
       -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to click menu bar item "File" of menu bar 1' \
       -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to click menu item "New Window" of menu "File" of menu bar item "File" of menu bar 1'
-    sleep 1
-    gui_window_count=$(osascript -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to count windows')
-    test "$gui_window_count" -ge 2
+    wait_for_gui_windows 2
     osascript -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to click menu bar item "File" of menu bar 1' \
       -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to click menu item "Clear Cache & Reload" of menu "File" of menu bar item "File" of menu bar 1'
-    sleep 1
-    gui_window_count=$(osascript -e 'tell application "System Events" to tell process "com.nimino.macos.smoke" to count windows')
-    test "$gui_window_count" -ge 2
+    wait_for_gui_windows 2
+    if [ "${NIMINO_TEST_MACOS_TRAY:-0}" = 1 ]; then
+      ## The menu-bar status item belongs to SystemUIServer's accessibility
+      ## tree. On this GUI runner it is the only exposed AXMenuExtra. Exercise
+      ## two actual primary clicks, verifying that AppKit publishes the signed
+      ## status item and accepts real Accessibility-driven pointer events.
+      tray_count=$(osascript -e 'tell application "System Events" to tell process "SystemUIServer" to tell menu bar 1 to count (every menu bar item whose subrole is "AXMenuExtra")')
+      test "$tray_count" -eq 1
+      osascript -e 'tell application "System Events" to tell process "SystemUIServer" to tell menu bar 1 to click first menu bar item whose subrole is "AXMenuExtra"'
+      sleep 1
+      osascript -e 'tell application "System Events" to tell process "SystemUIServer" to tell menu bar 1 to click first menu bar item whose subrole is "AXMenuExtra"'
+      sleep 1
+    fi
   fi
   pkill -f "$app/Contents/MacOS/com.nimino.macos.smoke" || true
   sleep 1
