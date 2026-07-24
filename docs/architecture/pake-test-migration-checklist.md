@@ -42,7 +42,7 @@ Linux/Windows を実行したことにしない。
 | [x] | `validate-url-input` | `tools/ci/test_pack_cli.sh` |
 | [ ] | `window-icon-reapply` | Windows taskbar icon lifecycle。`NIMINO_TEST_REFERENCE_WINDOWS=1` |
 | [x] | `integration/workflow-paths` | `tools/ci/test_pack_cli.sh` の URL/local/config path flows |
-| [ ] | `release` | Pake release packaging workflow への Nimino 対応テストを明示化する必要あり |
+| [x] | `release` | `tools/ci/test_pack_macos_release.sh` が2アプリのbundle→DMG生成とartifact検査を実行。Linux/Windowsのrelease再構築は手動CIフラグに分離 |
 
 ## 実行分離
 
