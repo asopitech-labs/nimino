@@ -15,6 +15,7 @@ task test, "Run Nimino unit tests in ARC mode":
   ## non-Windows development machines; the normal Core tests below remain
   ## platform-neutral.
   if getEnv("NIMINO_TEST_REFERENCE_WINDOWS") == "1":
+    exec "nimble testPackIco"
     exec "nimble testWindowsIconReapplyContract"
     exec "nimble testWebView2ProfileFfi"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-nimcache --out:/tmp/nimino-test-core-rpc --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_rpc.nim"
@@ -120,6 +121,9 @@ task testPackReferenceFoundation, "Run common Pake error and artifact-discovery 
 
 task testPackIconSource, "Run Pake-compatible automatic icon-source tests":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-icon-source-nimcache --out:/tmp/nimino-test-pack-icon-source --path:packages/pack packages/pack/tests/test_icon_source.nim"
+
+task testPackIco, "Run Pake Windows multi-resolution ICO tests":
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-ico-nimcache --out:/tmp/nimino-test-pack-ico --path:packages/pack packages/pack/tests/test_ico.nim"
 
 task buildPackCli, "Build the nimino-pack validation CLI":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"

@@ -5,7 +5,7 @@
 
 import std/[algorithm, json, os, osproc, strutils]
 
-import ./manifest
+import ./[ico, manifest]
 
 const webView2AppGuid = "F3017226-FE2A-4295-8BDF-00C3A9A7E4C5"
 const webView2BootstrapperUrl = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
@@ -553,6 +553,12 @@ proc buildWindowsPackage*(options: WindowsPackageOptions): PackResult[string] =
   let metadata = options.bundleDirectory.readWindowsBundleMetadata()
   if not metadata.isOk:
     return failure[string](metadata.error.kind, metadata.error.detail)
+  if metadata.value.displayIcon.toLowerAscii().endsWith(".ico"):
+    ## Expand a valid PNG-in-ICO source before NSIS/MSI copy the bundle. A
+    ## malformed legacy icon remains packageable exactly as before; the icon
+    ## helper's fallback is intentionally non-destructive in that case.
+    let iconPath = options.bundleDirectory / metadata.value.displayIcon
+    discard ensureMultiResolutionIco(iconPath, iconPath)
   let output = options.outputDirectory.ensureDirectory()
   if not output.isOk:
     return failure[string](output.error.kind, output.error.detail)
