@@ -52,6 +52,7 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
   if getEnv("NIMINO_TEST_REFERENCE_MACOS") == "1":
     exec "nimble testMacosSmoke"
     exec "nimble testCoreMacosFindSmoke"
+    exec "nimble testCoreMacosWebCompatibilitySmoke"
     exec "nimble testPackMacos"
     exec "nimble testPackMacosRelease"
   if getEnv("NIMINO_TEST_REFERENCE_LINUX") == "1":
@@ -83,6 +84,10 @@ task testMacosSmoke, "Run the macOS Cocoa/WKWebView native smoke test":
 task testCoreMacosFindSmoke, "Run the macOS WKWebView find-in-page injection smoke test":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-macos-find-nimcache --out:/tmp/nimino-core-macos-find --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_macos_find_smoke.nim"
   exec "perl -e 'alarm 45; exec @ARGV' /tmp/nimino-core-macos-find"
+
+task testCoreMacosWebCompatibilitySmoke, "Run the macOS Pake Web API compatibility smoke test":
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-core-macos-web-compat-nimcache --out:/tmp/nimino-core-macos-web-compat --path:packages/core --path:packages/native --path:packages/wsl --path:tools/hosts packages/core/tests/test_macos_web_compat_smoke.nim"
+  exec "perl -e 'alarm 45; exec @ARGV' /tmp/nimino-core-macos-web-compat"
 
 task testPackMacos, "Build and inspect a macOS app bundle and DMG":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-macos-cli-nimcache --out:/tmp/nimino-pack-macos-cli --path:packages/pack tools/cli/nimino.nim"
