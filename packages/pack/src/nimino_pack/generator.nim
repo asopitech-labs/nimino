@@ -42,7 +42,22 @@ proc generatedName(host: string): string =
   if normalized.startsWith("www."):
     normalized = normalized[4 .. ^1]
   let labels = normalized.split('.')
-  let label = if labels.len > 0 and labels[0].len > 0: labels[0] else: "site"
+  ## Pake derives a display name from the registrable domain rather than an
+  ## arbitrary product subdomain (`weekly.tw93.fun` -> `Tw93`). Keep the
+  ## public-suffix exceptions needed by common multi-label TLDs explicit; the
+  ## fallback remains safe for private/local host names.
+  const twoLabelSuffixes = [
+    "ac.uk", "co.uk", "gov.uk", "ltd.uk", "me.uk", "net.uk", "nhs.uk",
+    "org.uk", "plc.uk", "sch.uk", "com.au", "net.au", "org.au", "edu.au",
+    "gov.au", "co.jp", "ne.jp", "or.jp", "com.br", "com.cn", "com.mx",
+    "co.nz", "org.nz", "co.kr", "co.in", "com.sg", "com.hk", "com.tw"
+  ]
+  let suffixLength = if labels.len >= 2 and
+      (labels[^2] & "." & labels[^1]) in twoLabelSuffixes: 2 else: 1
+  let labelAt = labels.len - suffixLength - 1
+  let label = if labelAt >= 0 and labels[labelAt].len > 0: labels[labelAt]
+    elif labels.len > 0 and labels[0].len > 0: labels[0]
+    else: "site"
   titleWord(label.replace('-', ' ').replace('_', ' '))
 
 proc localApplicationName*(source: string): string =

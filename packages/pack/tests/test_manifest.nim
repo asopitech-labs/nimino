@@ -101,6 +101,14 @@ doAssert numericHost.isOk
 for segment in numericHost.value.id.split('.'):
   doAssert segment[0] in {'a'..'z', 'A'..'Z', '_'}
 
+## Port Pake's URL getDomain behavior to Nimino's default display-name path.
+## A wrapper for a subdomain should use the registrable site's identity, not
+## an arbitrary routing subdomain.
+doAssert generateManifest("https://github.com").value.name == "Github"
+doAssert generateManifest("https://www.google.com").value.name == "Google"
+doAssert generateManifest("https://weekly.tw93.fun").value.name == "Tw93"
+doAssert generateManifest("https://sub.example.co.uk").value.name == "Example"
+
 ## Port Pake's options-name suite. Dots are meaningful desktop-name text on
 ## macOS while leading dot/dash/space input must never become a bundle name.
 doAssert validApplicationName("Vectorizer.AI")
