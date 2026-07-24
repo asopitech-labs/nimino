@@ -94,8 +94,17 @@ let explicitGmail = generateManifest("https://gmail.com", name = "Work Gmail",
   id = "com.example.work-gmail")
 doAssert explicitGmail.isOk
 doAssert explicitGmail.value.id == "com.example.work-gmail"
+let stableWorkGmail = generateManifest("https://gmail.com", name = "Work Gmail")
+doAssert stableWorkGmail.isOk
+doAssert stableWorkGmail.value.id == workGmail.value.id
+for validId in ["com.example.myapp", "io.github.myapp", "com.my-company.app2"]:
+  let generated = generateManifest("https://gmail.com", id = validId)
+  doAssert generated.isOk
+  doAssert generated.value.id == validId
 let digitLeadingIdentifier = generateManifest("https://gmail.com", id = "123.invalid")
 doAssert not digitLeadingIdentifier.isOk
+for invalidId in ["has spaces", "bad!chars"]:
+  doAssert not generateManifest("https://gmail.com", id = invalidId).isOk
 let numericHost = generateManifest("https://123.example.com", name = "123 Client")
 doAssert numericHost.isOk
 for segment in numericHost.value.id.split('.'):
