@@ -1,4 +1,4 @@
-import std/[os, strutils]
+import std/[json, os, strutils]
 import nimino_pack
 
 let parsed = parse("""
@@ -66,6 +66,21 @@ doAssert parsed.value.permissionsAllow == @["microphone", "notifications"]
 doAssert parsed.value.package.version == "1.2.3"
 doAssert parsed.value.package.categories == @["Network", "Utility"]
 doAssert parsed.value.deepLink.schemes == @["nimino", "foo+bar"]
+
+## Port Pake's config-file schema contract. The checked-in schema must expose
+## exactly the JSON fields the strict loader accepts (apart from `$schema`,
+## which is a JSON-Schema annotation rather than a property declaration).
+let schema = parseJson(readFile("packages/pack/schema/nimino-pack.schema.json"))
+doAssert schema.kind == JObject
+doAssert schema["additionalProperties"].getBool == false
+doAssert schema["properties"].kind == JObject
+for key in JsonManifestKeys:
+  if key != "$schema":
+    doAssert schema["properties"].hasKey(key), "schema is missing " & key
+for key, _ in schema["properties"].pairs:
+  doAssert key in JsonManifestKeys, "schema exposes unsupported key " & key
+doAssert schema["properties"]["zoom"]["minimum"].getInt == 25
+doAssert schema["properties"]["zoom"]["maximum"].getInt == 500
 
 ## Pake's generated identifiers are stable, honor an explicit ID, and keep
 ## differently named wrappers for the same site in separate desktop/profile

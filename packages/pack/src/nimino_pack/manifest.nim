@@ -670,7 +670,7 @@ proc jsonStringArray(node: JsonNode; keys: openArray[string]): PackResult[seq[st
       return success(values)
   success(newSeq[string]())
 
-const JsonManifestKeys = [
+const JsonManifestKeys* = [
   "$schema", "url", "name", "identifier", "id", "title", "icon", "width", "height", "resizable",
   "useLocalFile", "use_local_file", "fullscreen", "hideTitleBar", "hide_title_bar",
   "hideWindowDecorations", "hide_window_decorations", "multiArch", "multi_arch", "inject",
@@ -685,8 +685,8 @@ const JsonManifestKeys = [
   "safe_domain", "enableFind", "enable_find", "installerLanguage", "installer_language", "zoom",
   "minWidth", "min_width", "minHeight", "min_height", "ignoreCertificateErrors",
   "ignore_certificate_errors", "iterativeBuild", "iterative_build", "newWindow", "new_window",
-  "install", "camera", "microphone", "profile", "description", "publisher", "homepage",
-  "categories", "permissions", "deepLink", "deep_link", "css", "javascript", "injection"
+  "install", "profile", "description", "publisher", "homepage", "categories", "permissions",
+  "deepLink", "deep_link", "css", "javascript"
 ]
 
 proc loadManifest*(path: string): PackResult[PackManifest] =
