@@ -34,6 +34,7 @@ proc onEvaluation(completed: Future[CoreResultOf[string]]) {.gcsafe.} =
   doAssert evaluated.value.contains("\\\"searchWorked\\\":true")
   doAssert evaluated.value.contains("\\\"matchCount\\\":2")
   doAssert evaluated.value.contains("\\\"closed\\\":true")
+  doAssert evaluated.value.contains("\\\"cssInjected\\\":true")
   doAssert evaluated.value.contains("\\\"f11Untouched\\\":true")
   doAssert evaluated.value.contains("\\\"clipboardUntouched\\\":true")
   doAssert evaluated.value.contains("\\\"trailingCommentInjected\\\":true")
@@ -98,6 +99,7 @@ proc onNavigation(url: string; succeeded: bool) {.gcsafe.} =
     searchWorked,
     matchCount: state.matchCount,
     closed: closed.matchCount === 0 && closed.isOpen === false,
+    cssInjected: document.querySelector('style[data-nimino-injection="css"]')?.textContent.includes('--nimino-find-smoke-color') === true,
     f11Untouched: f11Event.defaultPrevented === false,
     clipboardUntouched: clipboardEvent.defaultPrevented === false,
     trailingCommentInjected: window.niminoTrailingCommentInjected === true,
@@ -138,6 +140,7 @@ appPtr = cast[pointer](app)
 let window = app.newWindow(CoreWindowOptions(
   title: "Nimino macOS Find Smoke", width: 480, height: 280,
   enableFind: true, injectionEnabled: true, multiWindow: false,
+  injectionCss: @["main { --nimino-find-smoke-color: rgb(1, 2, 3); }"],
   injectionJavaScript: @["globalThis.niminoTrailingCommentInjected=true;// source-map style trailing comment"]))
 doAssert window.isOk, window.failure.detail
 let appWindow = window.value
