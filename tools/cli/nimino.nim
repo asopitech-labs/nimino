@@ -1214,7 +1214,11 @@ else:
         quit(1)
       artifacts.add(%artifact.value)
   if jsonOutput:
-    echo (%*{"manifest": manifestPath, "directory": directory,
-      "localEntry": packaged.localEntry, "artifacts": artifacts}).pretty()
+    ## Machine mode must emit exactly one JSON value on stdout. Diagnostics are
+    ## written to stderr above, so callers can parse this line without having
+    ## to join a pretty-printed document first (Pake json-output parity).
+    let result = %*{"manifest": manifestPath, "directory": directory,
+      "localEntry": packaged.localEntry, "artifacts": artifacts}
+    echo $result
   else:
     echo manifestPath

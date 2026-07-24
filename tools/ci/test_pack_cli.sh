@@ -3,6 +3,8 @@ set -eu
 
 nimino="${1:-/tmp/nimino}"
 root=/tmp/nimino-pack-cli-test
+test_linux="${NIMINO_TEST_REFERENCE_LINUX:-0}"
+test_windows="${NIMINO_TEST_REFERENCE_WINDOWS:-0}"
 
 rm -rf "$root"
 mkdir -p "$root"
@@ -48,26 +50,34 @@ test -s "$root/out/nimino-sbom.cdx.json"
 grep -q 'CycloneDX' "$root/out/nimino-sbom.cdx.json"
 test -x "$root/out/run-nimino.sh"
 test -x "$root/out/host"
-test -s "$root/out/run-nimino.cmd"
-grep -q 'host"' "$root/out/run-nimino.cmd"
-test -s "$root/out/app.nimino.demo.desktop"
-test -s "$root/out/nimino-linux-package.json"
-test -s "$root/out/nimino-windows-installer.json"
-test -s "$root/out/install-windows.ps1"
-test -s "$root/out/uninstall-windows.ps1"
-grep -Fx 'Version=1.0' "$root/out/app.nimino.demo.desktop"
-grep -Fx 'Name=Demo' "$root/out/app.nimino.demo.desktop"
-grep -Fx 'Comment=Demo desktop application' "$root/out/app.nimino.demo.desktop"
-grep -Fx 'Exec=/opt/nimino/app.nimino.demo/run-nimino.sh' "$root/out/app.nimino.demo.desktop"
-grep -Fx 'TryExec=/opt/nimino/app.nimino.demo/run-nimino.sh' "$root/out/app.nimino.demo.desktop"
-grep -Fx 'Icon=/opt/nimino/app.nimino.demo/icon.png' "$root/out/app.nimino.demo.desktop"
-grep -Fx 'Categories=Network;Utility;' "$root/out/app.nimino.demo.desktop"
-grep -Fx 'MimeType=x-scheme-handler/nimino;x-scheme-handler/foo+bar;' "$root/out/app.nimino.demo.desktop"
-grep -Fx 'X-Nimino-Deep-Link-Schemes=nimino;foo+bar;' "$root/out/app.nimino.demo.desktop"
+if [ "$test_windows" = 1 ]; then
+  test -s "$root/out/run-nimino.cmd"
+  grep -q 'host"' "$root/out/run-nimino.cmd"
+  test -s "$root/out/nimino-windows-installer.json"
+  test -s "$root/out/install-windows.ps1"
+  test -s "$root/out/uninstall-windows.ps1"
+fi
+if [ "$test_linux" = 1 ]; then
+  test -s "$root/out/app.nimino.demo.desktop"
+  test -s "$root/out/nimino-linux-package.json"
+  grep -Fx 'Version=1.0' "$root/out/app.nimino.demo.desktop"
+  grep -Fx 'Name=Demo' "$root/out/app.nimino.demo.desktop"
+  grep -Fx 'Comment=Demo desktop application' "$root/out/app.nimino.demo.desktop"
+  grep -Fx 'Exec=/opt/nimino/app.nimino.demo/run-nimino.sh' "$root/out/app.nimino.demo.desktop"
+  grep -Fx 'TryExec=/opt/nimino/app.nimino.demo/run-nimino.sh' "$root/out/app.nimino.demo.desktop"
+  grep -Fx 'Icon=/opt/nimino/app.nimino.demo/icon.png' "$root/out/app.nimino.demo.desktop"
+  grep -Fx 'Categories=Network;Utility;' "$root/out/app.nimino.demo.desktop"
+  grep -Fx 'MimeType=x-scheme-handler/nimino;x-scheme-handler/foo+bar;' "$root/out/app.nimino.demo.desktop"
+  grep -Fx 'X-Nimino-Deep-Link-Schemes=nimino;foo+bar;' "$root/out/app.nimino.demo.desktop"
+fi
 grep -q '"version": "1.2.3"' "$root/out/nimino-manifest.json"
 grep -q '"deepLink": {' "$root/out/nimino-manifest.json"
-grep -q '"deepLinkSchemes": \[' "$root/out/nimino-linux-package.json"
-grep -q '"deepLinkSchemes": \[' "$root/out/nimino-windows-installer.json"
+if [ "$test_linux" = 1 ]; then
+  grep -q '"deepLinkSchemes": \[' "$root/out/nimino-linux-package.json"
+fi
+if [ "$test_windows" = 1 ]; then
+  grep -q '"deepLinkSchemes": \[' "$root/out/nimino-windows-installer.json"
+fi
 grep -q '"nimino"' "$root/out/nimino-manifest.json"
 
 "$nimino" pack --config "$root/input.toml" --out "$root/config-out" --host "$root/host"
@@ -88,18 +98,22 @@ grep -q '"zoom": 125' "$root/json-config-out/nimino-manifest.json"
   --out "$root/json-config-override-out" --host "$root/host"
 grep -q 'CLI Window' "$root/json-config-override-out/nimino-manifest.json"
 grep -q '"zoom": 150' "$root/json-config-override-out/nimino-manifest.json"
-grep -q '"installScope": "perUser"' "$root/out/nimino-windows-installer.json"
-grep -Eq '"toastActivatorClsid": "[0-9A-Fa-f-]{36}"' "$root/out/nimino-windows-installer.json"
-grep -q 'System.AppUserModel.ToastActivatorCLSID' "$root/out/register-windows-shortcut.ps1"
-grep -q 'LocalServer32' "$root/out/install-windows.ps1"
-grep -q 'DisplayVersion' "$root/out/install-windows.ps1"
-grep -q 'UninstallString' "$root/out/install-windows.ps1"
-grep -q 'Remove-Item -LiteralPath \$target' "$root/out/uninstall-windows.ps1"
+if [ "$test_windows" = 1 ]; then
+  grep -q '"installScope": "perUser"' "$root/out/nimino-windows-installer.json"
+  grep -Eq '"toastActivatorClsid": "[0-9A-Fa-f-]{36}"' "$root/out/nimino-windows-installer.json"
+  grep -q 'System.AppUserModel.ToastActivatorCLSID' "$root/out/register-windows-shortcut.ps1"
+  grep -q 'LocalServer32' "$root/out/install-windows.ps1"
+  grep -q 'DisplayVersion' "$root/out/install-windows.ps1"
+  grep -q 'UninstallString' "$root/out/install-windows.ps1"
+  grep -q 'Remove-Item -LiteralPath \$target' "$root/out/uninstall-windows.ps1"
+fi
 
 printf '#!/bin/sh\n' > "$root/host&name"
 "$nimino" pack https://example.com --name DemoCmdEscape --id app.nimino.demo-cmd-escape \
   --out "$root/cmd-escape-out" --host "$root/host&name"
-grep -q 'host^&name' "$root/cmd-escape-out/run-nimino.cmd"
+if [ "$test_windows" = 1 ]; then
+  grep -q 'host^&name' "$root/cmd-escape-out/run-nimino.cmd"
+fi
 
 ! "$nimino" pack https://example.com --name MissingHost --id app.nimino.missing-host \
   --out "$root/missing-host-no-flag-out"
@@ -111,8 +125,10 @@ grep -q 'DemoUrl' "$root/url-out/nimino-manifest.json"
 grep -q 'https://example.com' "$root/url-out/nimino-manifest.json"
 grep -q '"icon": "icon.png"' "$root/url-out/nimino-manifest.json"
 test -s "$root/url-out/icon.png"
-test -s "$root/url-out/app.nimino.demo-url.desktop"
-grep -Fx 'Icon=/opt/nimino/app.nimino.demo-url/icon.png' "$root/url-out/app.nimino.demo-url.desktop"
+if [ "$test_linux" = 1 ]; then
+  test -s "$root/url-out/app.nimino.demo-url.desktop"
+  grep -Fx 'Icon=/opt/nimino/app.nimino.demo-url/icon.png' "$root/url-out/app.nimino.demo-url.desktop"
+fi
 
 mkdir -p "$root/icon-server"
 printf 'remote-icon' > "$root/icon-server/remote.png"
@@ -137,7 +153,9 @@ trap - EXIT
   --deep-link "DEMO" --out "$root/url-deep-out" --host "$root/host"
 grep -Fq '"schemes": [' "$root/url-deep-out/nimino-manifest.json"
 grep -Fq '"demo"' "$root/url-deep-out/nimino-manifest.json"
-grep -Fq 'MimeType=x-scheme-handler/demo;' "$root/url-deep-out/app.nimino.demo-url-deep.desktop"
+if [ "$test_linux" = 1 ]; then
+  grep -Fq 'MimeType=x-scheme-handler/demo;' "$root/url-deep-out/app.nimino.demo-url-deep.desktop"
+fi
 
 "$nimino" pack HTTPS://example.com --name DemoUpperUrl --id app.nimino.demo-upper-url \
   --out "$root/upper-url-out" --host "$root/host"
@@ -184,6 +202,9 @@ test ! -e "$root/local-app/bundle"
 
 json_result=$("$nimino" pack https://example.com --name DemoJson --id app.nimino.demo-json \
   --json --out "$root/json-out" --host "$root/host")
+## Port Pake's json-output contract: machine mode has one parseable JSON line
+## on stdout, with diagnostics kept separate on stderr.
+test "$(printf '%s\n' "$json_result" | wc -l | tr -d ' ')" -eq 1
 printf '%s\n' "$json_result" | grep -q '"manifest"'
 printf '%s\n' "$json_result" | grep -q 'nimino-manifest.json'
 
