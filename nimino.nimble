@@ -11,8 +11,6 @@ task test, "Run Nimino unit tests in ARC mode":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-host-policy-nimcache --out:/tmp/nimino-test-host-policy tools/hosts/tests/test_policy.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-logging-nimcache --out:/tmp/nimino-test-core-logging --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_logging.nim"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-nimcache --out:/tmp/nimino-test-foundation --path:packages/native packages/native/tests/test_foundation.nim"
-  exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-desktop-capabilities-nimcache --out:/tmp/nimino-test-wsl-desktop-capabilities --path:packages/native packages/native/tests/test_wsl_desktop_capabilities.nim"
-  exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-load-html-base-url-nimcache --out:/tmp/nimino-test-wsl-load-html-base-url --path:packages/native packages/native/tests/test_wsl_load_html_base_url.nim"
   ## WebView2 is Windows-specific. Keep its fake-vtable ABI test opt-in on
   ## non-Windows development machines; the normal Core tests below remain
   ## platform-neutral.
@@ -21,19 +19,24 @@ task test, "Run Nimino unit tests in ARC mode":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-nimcache --out:/tmp/nimino-test-core-rpc --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_rpc.nim"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-app-nimcache --out:/tmp/nimino-test-core-app --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_app.nim"
   exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-core-app"
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-core-fake-host-nimcache --out:/tmp/nimino-wsl-core-fake-host --path:packages/wsl packages/wsl/tests/fake_core_host.nim"
-  exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-test-wsl-core-adapter-nimcache --out:/tmp/nimino-test-wsl-core-adapter --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_wsl_core_adapter.nim"
-  exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-wsl-core-adapter /tmp/nimino-wsl-core-fake-host"
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-core-async-fake-host-nimcache --out:/tmp/nimino-wsl-core-async-fake-host --path:packages/wsl packages/wsl/tests/fake_core_async_host.nim"
-  exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-test-wsl-core-async-adapter-nimcache --out:/tmp/nimino-test-wsl-core-async-adapter --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_wsl_core_async_adapter.nim"
-  exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-wsl-core-async-adapter /tmp/nimino-wsl-core-async-fake-host"
-  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-nimcache --out:/tmp/nimino-test-protocol --path:packages/wsl --path:packages/native packages/wsl/tests/test_protocol.nim"
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-fake-launcher-host-nimcache --out:/tmp/nimino-wsl-fake-launcher-host --path:packages/wsl packages/wsl/tests/fake_launcher_host.nim"
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-launcher-nimcache --out:/tmp/nimino-test-launcher --path:packages/wsl --path:packages/native packages/wsl/tests/test_launcher.nim"
-  exec "/tmp/nimino-test-launcher /tmp/nimino-wsl-fake-launcher-host"
-  ## Host adapter tests model the Windows host contract; compile without the
-  ## Linux WebKit backend so unsupported runtime behavior is deterministic.
-  exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-test-host-adapter --path:packages/wsl --path:packages/native packages/wsl/tests/test_host_adapter.nim"
+  ## WSL models the Windows host protocol.  It is deliberately opt-in so the
+  ## default macOS/common run never claims to have exercised Windows behavior.
+  if getEnv("NIMINO_TEST_REFERENCE_WSL") == "1":
+    exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-desktop-capabilities-nimcache --out:/tmp/nimino-test-wsl-desktop-capabilities --path:packages/native packages/native/tests/test_wsl_desktop_capabilities.nim"
+    exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-load-html-base-url-nimcache --out:/tmp/nimino-test-wsl-load-html-base-url --path:packages/native packages/native/tests/test_wsl_load_html_base_url.nim"
+    exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-core-fake-host-nimcache --out:/tmp/nimino-wsl-core-fake-host --path:packages/wsl packages/wsl/tests/fake_core_host.nim"
+    exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-test-wsl-core-adapter-nimcache --out:/tmp/nimino-test-wsl-core-adapter --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_wsl_core_adapter.nim"
+    exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-wsl-core-adapter /tmp/nimino-wsl-core-fake-host"
+    exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-core-async-fake-host-nimcache --out:/tmp/nimino-wsl-core-async-fake-host --path:packages/wsl packages/wsl/tests/fake_core_async_host.nim"
+    exec "nim c -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-test-wsl-core-async-adapter-nimcache --out:/tmp/nimino-test-wsl-core-async-adapter --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_wsl_core_async_adapter.nim"
+    exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-wsl-core-async-adapter /tmp/nimino-wsl-core-async-fake-host"
+    exec "nim c -r --mm:arc --nimcache:/tmp/nimino-wsl-nimcache --out:/tmp/nimino-test-protocol --path:packages/wsl --path:packages/native packages/wsl/tests/test_protocol.nim"
+    exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-fake-launcher-host-nimcache --out:/tmp/nimino-wsl-fake-launcher-host --path:packages/wsl packages/wsl/tests/fake_launcher_host.nim"
+    exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-launcher-nimcache --out:/tmp/nimino-test-launcher --path:packages/wsl --path:packages/native packages/wsl/tests/test_launcher.nim"
+    exec "/tmp/nimino-test-launcher /tmp/nimino-wsl-fake-launcher-host"
+    ## Compile without the Linux WebKit backend so unsupported behavior is
+    ## deterministic under the WSL host contract.
+    exec "nim c -r -d:niminoWsl --mm:arc --nimcache:/tmp/nimino-wsl-host-nimcache --out:/tmp/nimino-test-host-adapter --path:packages/wsl --path:packages/native packages/wsl/tests/test_host_adapter.nim"
 
 task testReferenceParity, "Run common reference-parity tests and selected OS suites":
   ## The reference projects cover all three desktop platforms. Keep their
