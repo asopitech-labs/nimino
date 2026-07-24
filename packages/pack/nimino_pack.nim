@@ -6,5 +6,6 @@ import ./src/nimino_pack/macos_package
 import ./src/nimino_pack/flatpak
 import ./src/nimino_pack/catalog
 import ./src/nimino_pack/generator
+import ./src/nimino_pack/artifacts
 
-export manifest, linux_package, windows_package, macos_package, flatpak, catalog, generator
+export manifest, linux_package, windows_package, macos_package, flatpak, catalog, generator, artifacts

@@ -10,16 +10,16 @@ Linux/Windows を実行したことにしない。
 | 状態 | Pake suite | Nimino の対応先・実行条件 |
 |---|---|---|
 | [x] | `auth-sso-patterns` | `packages/core/tests/test_app.nim` |
-| [ ] | `base-builder` | Nimino pack builder の toolchain/host artifact 契約として個別移植が必要 |
+| [~] | `base-builder` | host/toolchain artifact 契約の失敗境界は package smoke で確認済み。環境選択の独立ケースを追加中 |
 | [ ] | `builders` | Linux target parser。`NIMINO_TEST_REFERENCE_LINUX=1` |
 | [x] | `cli-options` | `tools/ci/test_pack_macos.sh`, `tools/ci/test_pack_cli.sh` |
 | [x] | `combine` | `packages/core/tests/test_macos_find_smoke.nim`, `test_pack_cli.sh` |
 | [x] | `config-file` | `packages/pack/tests/test_manifest.nim`, `packages/pack/schema/nimino-pack.schema.json` |
-| [~] | `error` | `PackResult` failure pathsはテスト済み。Pake相当のCLI error/exit-code契約は未移植 |
+| [x] | `error` | `packages/pack/tests/test_reference_foundation.nim` が成功・失敗branch、全`PackErrorKind`とdetail契約を確認 |
 | [~] | `event-clipboard-shortcuts` | macOS 非介入は `test_macos_find_smoke`。Windows/Linux editable/fallback ケースは各 OS suite が未移植 |
 | [~] | `event-fullscreen-shortcuts` | macOS F11 非介入は `test_macos_find_smoke`。Windows/Linux F11 は各 OS suite が未移植 |
 | [~] | `event-link-guard` | auth/popup/navigation は `test_app` と macOS smoke。Badge/Notification DOM 契約は未移植 |
-| [ ] | `file-finding` | pack artifact discovery helper の独立テストが未移植 |
+| [x] | `file-finding` | `test_reference_foundation.nim` がglob、`.app`、directory除外、primary/fallback discoveryを確認 |
 | [x] | `find-shortcuts` | `packages/core/tests/test_macos_find_smoke.nim` |
 | [ ] | `ico` | Windows ICO multi-resolution。`NIMINO_TEST_REFERENCE_WINDOWS=1` |
 | [ ] | `icon-source` | dashboard/local icon source priority helper が未移植 |
@@ -34,6 +34,7 @@ Linux/Windows を実行したことにしない。
 | [x] | `mac-builder-targets` | `tools/ci/test_pack_macos.sh`; `NIMINO_TEST_REFERENCE_MACOS=1` |
 | [~] | `merge-window-options` | macOS defaults/options は manifest + package smoke。Windows/Linux platform mapping は未移植 |
 | [~] | `name` | registrable URL名・local display name は移植済み。Pakeの全 sanitizer utility ケースは未移植 |
+| [x] | `new-window-macos` | `packages/native/tests/test_macos_smoke.nim` が実WKWebViewの`window.open`を別NSWindow/WKWebViewとして生成することを確認。`NIMINO_TEST_REFERENCE_MACOS=1` |
 | [x] | `no-bundle` | `tools/ci/test_pack_cli.sh` |
 | [x] | `options-name` | `packages/pack/tests/test_manifest.nim` |
 | [x] | `safe-domains` | `test_manifest.nim`, `test_app.nim`, `test_pack_cli.sh` |
