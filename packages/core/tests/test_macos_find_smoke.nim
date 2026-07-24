@@ -37,6 +37,7 @@ proc onEvaluation(completed: Future[CoreResultOf[string]]) {.gcsafe.} =
   doAssert evaluated.value.contains("\\\"cssInjected\\\":true")
   doAssert evaluated.value.contains("\\\"f11Untouched\\\":true")
   doAssert evaluated.value.contains("\\\"clipboardUntouched\\\":true")
+  doAssert evaluated.value.contains("\\\"reloadBlocked\\\":true")
   doAssert evaluated.value.contains("\\\"trailingCommentInjected\\\":true")
   evaluationFinished = true
   finish()
@@ -89,8 +90,12 @@ proc onNavigation(url: string; succeeded: bool) {.gcsafe.} =
   const clipboardEvent = new KeyboardEvent('keydown', {
     key: 'c', metaKey: true, bubbles: true, cancelable: true
   });
+  const reloadEvent = new KeyboardEvent('keydown', {
+    key: 'r', metaKey: true, bubbles: true, cancelable: true
+  });
   document.dispatchEvent(f11Event);
   document.dispatchEvent(clipboardEvent);
+  document.dispatchEvent(reloadEvent);
   return JSON.stringify({
     findApi: typeof window.nimino?.find === 'function',
     findPanel,
@@ -102,6 +107,7 @@ proc onNavigation(url: string; succeeded: bool) {.gcsafe.} =
     cssInjected: document.querySelector('style[data-nimino-injection="css"]')?.textContent.includes('--nimino-find-smoke-color') === true,
     f11Untouched: f11Event.defaultPrevented === false,
     clipboardUntouched: clipboardEvent.defaultPrevented === false,
+    reloadBlocked: reloadEvent.defaultPrevented === true,
     trailingCommentInjected: window.niminoTrailingCommentInjected === true,
   });
 })()
@@ -139,7 +145,8 @@ let app = created.value
 appPtr = cast[pointer](app)
 let window = app.newWindow(CoreWindowOptions(
   title: "Nimino macOS Find Smoke", width: 480, height: 280,
-  enableFind: true, injectionEnabled: true, multiWindow: false,
+  enableFind: true, injectionEnabled: true, disabledWebShortcuts: true,
+  multiWindow: false,
   injectionCss: @["main { --nimino-find-smoke-color: rgb(1, 2, 3); }"],
   injectionJavaScript: @["globalThis.niminoTrailingCommentInjected=true;// source-map style trailing comment"]))
 doAssert window.isOk, window.failure.detail
