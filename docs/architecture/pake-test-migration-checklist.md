@@ -41,7 +41,7 @@ Linux/Windows を実行したことにしない。
 | [x] | `system-tray-icon` | `test_pack_macos.sh` がdefault tray、ICNS copy、欠落/dir copy失敗、SVG拒否を確認。NiminoはPakeのwarn+fallbackより厳格に配布前失敗とする |
 | [x] | `url` | `packages/pack/tests/test_manifest.nim`, `test_pack_cli.sh` |
 | [x] | `validate-url-input` | `tools/ci/test_pack_cli.sh` |
-| [ ] | `window-icon-reapply` | Windows taskbar icon lifecycle。`NIMINO_TEST_REFERENCE_WINDOWS=1` |
+| [x] | `window-icon-reapply` | `test_windows_icon_reapply_contract.nim` が`WM_SETICON`のlarge/small設定とexplicit show後の再適用を確認。`NIMINO_TEST_REFERENCE_WINDOWS=1`（このmacOSでは未実行） |
 | [x] | `integration/workflow-paths` | `tools/ci/test_pack_cli.sh` の URL/local/config path flows |
 | [x] | `release` | `tools/ci/test_pack_macos_release.sh` が2アプリのbundle→DMG生成とartifact検査を実行。Linux/Windowsのrelease再構築は手動CIフラグに分離 |
 
