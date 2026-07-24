@@ -380,13 +380,13 @@ proc main() =
     else:
       if isForcedInternalNavigation(request.url): navigationAllow
       else: defaultNavigationDecision(appUrl, request.url)
-    let popupDecision = if decision == navigationAllow and not newWindow and
-        not isAuthenticationNavigation(request.url):
-        navigationExternal
-      else:
-        decision
+    let popupDecision = popupLinkDisposition(
+      allowed = decision == navigationAllow,
+      external = decision == navigationExternal,
+      newWindow = newWindow,
+      authentication = isAuthenticationNavigation(request.url))
     case popupDecision
-    of navigationAllow:
+    of popupLinkAllow:
       ## The request came from the WebView's user gesture.  Consume it by
       ## creating the popup explicitly; native backends never create one
       ## implicitly.
@@ -394,10 +394,10 @@ proc main() =
       if not popup.isOk:
         fail("nimino-host: popup creation failed: " & popup.failure.detail)
       true
-    of navigationExternal:
+    of popupLinkExternal:
       discard window.openExternally(request.url)
       true
-    of navigationDeny:
+    of popupLinkDeny:
       true)
   if not popupConfigured.isOk:
     fail(popupConfigured.failure.detail)
