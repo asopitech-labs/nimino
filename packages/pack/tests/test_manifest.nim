@@ -156,6 +156,18 @@ removeFile(dottedLocal)
 removeFile(hiddenLocal)
 removeDir(localNamesRoot)
 
+## Port Pake's local-input guard: an entry nested below the selected directory
+## is not a valid local web application entry point.
+let missingEntryRoot = getTempDir() / "nimino-pack-missing-local-entry"
+createDir(missingEntryRoot / "nested")
+writeFile(missingEntryRoot / "nested" / "index.html", "<!doctype html>")
+let missingEntry = generateLocalManifest(missingEntryRoot)
+doAssert not missingEntry.isOk
+doAssert missingEntry.error.kind == invalidManifest
+removeFile(missingEntryRoot / "nested" / "index.html")
+removeDir(missingEntryRoot / "nested")
+removeDir(missingEntryRoot)
+
 ## Pake only emits start_to_tray when a system tray is enabled. Keep a
 ## portable Nimino manifest launchable instead of deferring this conflict to
 ## the platform host.

@@ -207,6 +207,20 @@ grep -q '"localEntry": "assets/index.html"' "$root/single-file-out/nimino-manife
 test -s "$root/local-dir-out/assets/index.html"
 test -s "$root/local-dir-out/assets/subdir/app.js"
 grep -q '"localEntry": "assets/index.html"' "$root/local-dir-out/nimino-manifest.json"
+## Pake stages a symlinked input tree without mutating the source. Nimino
+## copies the resolved logical tree into the bundle and never writes beside it.
+ln -s "$root/local-app" "$root/local-app-link"
+"$nimino" pack "$root/local-app-link" --name DemoLocalSymlink \
+  --id app.nimino.demo-local-symlink --out "$root/local-symlink-out" --host "$root/host"
+test -s "$root/local-symlink-out/assets/index.html"
+test -s "$root/local-app/index.html"
+## A symlink inside the asset tree could escape the selected source root.
+## Fail closed and leave no successfully assembled bundle behind.
+ln -s "$root/no-such-local-asset" "$root/local-app/dangling-asset"
+! "$nimino" pack "$root/local-app" --name DanglingLocalAsset \
+  --id app.nimino.dangling-local-asset --out "$root/dangling-local-asset-out" --host "$root/host"
+test ! -e "$root/dangling-local-asset-out/nimino-manifest.json"
+rm "$root/local-app/dangling-asset"
 ! "$nimino" pack "$root/local-app" --name NestedOutput --id app.nimino.nested-output \
   --out "$root/local-app/bundle" --host "$root/host"
 test ! -e "$root/local-app/bundle"
