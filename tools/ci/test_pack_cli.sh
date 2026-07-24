@@ -158,9 +158,12 @@ wait "$icon_server" 2>/dev/null || true
 trap - EXIT
 
 "$nimino" pack https://example.com --name DemoUrlDeep --id app.nimino.demo-url-deep \
-  --deep-link "DEMO" --out "$root/url-deep-out" --host "$root/host"
+  --deep-link "DEMO" --safe-domain ' slack.com , , acme.com ' \
+  --out "$root/url-deep-out" --host "$root/host"
 grep -Fq '"schemes": [' "$root/url-deep-out/nimino-manifest.json"
 grep -Fq '"demo"' "$root/url-deep-out/nimino-manifest.json"
+grep -Fq 'https://*.slack.com/**' "$root/url-deep-out/nimino-manifest.json"
+grep -Fq 'https://*.acme.com/**' "$root/url-deep-out/nimino-manifest.json"
 if [ "$test_linux" = 1 ]; then
   grep -Fq 'MimeType=x-scheme-handler/demo;' "$root/url-deep-out/app.nimino.demo-url-deep.desktop"
 fi

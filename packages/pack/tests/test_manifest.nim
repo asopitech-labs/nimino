@@ -109,6 +109,16 @@ doAssert generateManifest("https://www.google.com").value.name == "Google"
 doAssert generateManifest("https://weekly.tw93.fun").value.name == "Tw93"
 doAssert generateManifest("https://sub.example.co.uk").value.name == "Example"
 
+## Port Pake's safe-domains normalization. CLI and config inputs may contain
+## comma-separated hosts; blank elements must not widen navigation policy.
+doAssert safeDomainPatterns("") == @[]
+doAssert safeDomainPatterns("  ,  , ") == @[]
+doAssert safeDomainPatterns(" slack.com , , acme.com ") == @[
+  "https://slack.com/**", "https://*.slack.com/**",
+  "http://slack.com/**", "http://*.slack.com/**",
+  "https://acme.com/**", "https://*.acme.com/**",
+  "http://acme.com/**", "http://*.acme.com/**"]
+
 ## Port Pake's options-name suite. Dots are meaningful desktop-name text on
 ## macOS while leading dot/dash/space input must never become a bundle name.
 doAssert validApplicationName("Vectorizer.AI")

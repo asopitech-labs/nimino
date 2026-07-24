@@ -248,12 +248,13 @@ proc safeDomainPatterns*(domain: string): seq[string] =
   ## either HTTP(S) scheme. Represent that policy as explicit Nimino
   ## navigation rules so URL parsing, user-info rejection, and label-boundary
   ## matching stay centralized in nimino-core.
-  let normalized = domain.strip().toLowerAscii().strip(chars = {'.'})
-  if normalized.len == 0:
-    return
-  for scheme in ["https", "http"]:
-    result.add(scheme & "://" & normalized & "/**")
-    result.add(scheme & "://*." & normalized & "/**")
+  for requestedDomain in domain.split(','):
+    let normalized = requestedDomain.strip().toLowerAscii().strip(chars = {'.'})
+    if normalized.len == 0:
+      continue
+    for scheme in ["https", "http"]:
+      result.add(scheme & "://" & normalized & "/**")
+      result.add(scheme & "://*." & normalized & "/**")
 
 proc validMetadataText(value: string): bool =
   for character in value:
