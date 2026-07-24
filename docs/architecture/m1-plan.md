@@ -2,16 +2,16 @@
 
 **M1の完了条件:** Windows、Linux、WSL、macOSのすべてで、Window生成、WebView生成、URL読込、リサイズ、タイトル変更、正常終了を確認すること。任意の一ターゲットだけの成功は完了ではありません。
 
-## 実装・検証状況（2026-07-18）
+## 実装・検証状況（2026-07-24）
 
 | 対象 | 実装済み | 確認済み | 未確認・理由 |
 | --- | --- | --- | --- |
 | Linux | GTK 4/ WebKitGTK 6.0 Window、WebView、URL/HTML、title、終了 | `make test`、`make linux-smoke` | 実表示の拡張機能はM2以降 |
-| Windows | Win32 Window、STA、WebView2 Environment/Controller/Core、Bounds、URL/HTML、COM明示解放 | `make windows-cross`でx64 PEとFFI/COM callback ABIを検査。`make wsl-host-smoke`で導入済みRuntime上の実WebView生成、HTML/URL、navigation完了、title/resize、JavaScript評価、message、終了を検査 | 実ユーザー操作によるnew-windowと通常Windows GUI CIは未確認 |
-| WSL | CSPRNG token、`WSLENV`転送、constant-time認証、stdio frame、Windows host、object table、URL/HTML要求、shutdown、permission/download/navigation同期decision relay | `make test`、`make wsl-host-cross`、`make wsl-host-smoke`、`make wsl-client-smoke`、`make wsl-core-rpc-async-smoke`（通常core APIでWindows childを起動し、hello→Window→WebView→async RPC→timeout→shutdown） | redirectの実遷移、再接続契約、実ユーザー操作は未確認 |
+| Windows | Win32 Window、STA、WebView2 Environment/Controller/Core、Bounds、URL/HTML、COM明示解放 | `make windows-cross`でx64 PEとFFI/COM callback ABIを検査。`make wsl-host-smoke`、`make wsl-host-abnormal-smoke`、`make wsl-host-popup-smoke`で導入済みRuntime上の実WebView生成、HTML/URL、navigation完了、title/resize、JavaScript評価、message、new-window、異常終了、resource解放を検査 | 実ユーザー操作と通常Windows GUI CIは未確認 |
+| WSL | CSPRNG token、`WSLENV`転送、constant-time認証、stdio frame、Windows host、object table、URL/HTML要求、shutdown、permission/download/navigation同期decision relay | Windows 11上のWSL2で`NIMINO_TEST_REFERENCE_WINDOWS=1 NIMINO_TEST_REFERENCE_WSL=1 make test`、`make wsl-host-cross`、host/abnormal/popup/client/core/RPC/site smokeを実行。通常core APIでWindows childを起動し、hello→Window→WebView→async RPC→timeout→shutdownまで確認 | redirectの実遷移、再接続契約、実ユーザー操作は未確認 |
 | macOS | Cocoa `NSApplication`/`NSWindow`、WKWebView、delegate、document-start script、JS/message/navigation、native menu/tray/notification、deep link、custom scheme、profile store、permission/download delegate、`.app`/`.dmg` packaging | `nimble testMacosSmoke`、`nimble testPackMacos`でnative/package smokeを確認 | Apple署名/notarization、通知クリック・deep linkの実ユーザー操作は資格情報/GUI環境依存のrelease確認 |
 
-M1の対象（Window/WebView生成、URL読込、resize、title、正常終了）は4ターゲットで確認済みである。architecture-matched `WebView2Loader.dll`を成果物へ同梱したWindows開発機で、Window→WebView→HTML/URL→resize→title→message→closeを確認し、WSL clientもWindows hostへのURL要求を確認する。macOSはAppKit main run loop上のWKWebViewをローカルGUI smokeで確認する。実ユーザー操作によるnew-windowと通常Windows GUI CIはM2以降の未完了項目として管理する。WebView2 Evergreen RuntimeはWindowsの前提であり、開発WindowsではRegistry検出済みである。
+M1の対象（Window/WebView生成、URL読込、resize、title、正常終了）は4ターゲットで確認済みである。architecture-matched `WebView2Loader.dll`を成果物へ同梱したWindows開発機で、Window→WebView→HTML/URL→resize→title→message→new-window→closeを確認し、WSL clientもWindows hostへのURL要求を確認済みである。macOSはAppKit main run loop上のWKWebViewをローカルGUI smokeで確認する。実ユーザー操作と通常Windows GUI CIはM2以降の未完了項目として管理する。WebView2 Evergreen RuntimeはWindowsの前提であり、開発WindowsではRegistry検出済みである。
 
 ## 実装前ゲート
 
@@ -71,7 +71,7 @@ M1の対象（Window/WebView生成、URL読込、resize、title、正常終了�
 | GObject | `g_signal_connect_data`, `g_signal_handler_disconnect`, `g_object_ref_sink`, `g_object_unref` | callbackと参照寿命 |
 | GLib | `g_main_context_invoke_full` | workerからUI threadへの復帰 |
 
-M2の縦機能として、native の `webkit_web_view_evaluate_javascript`/`_finish` と WebView2 `ExecuteScript`、文字列message、ナビゲーション開始/完了、基本error通知、新規Window要求を実装した。Linuxの開始/new-windowは`WebKitWebView::decide-policy`と`::create`、完了/errorは`::load-changed`と`::load-failed`、WindowsはWebView2 `NavigationStarting`/`NavigationCompleted`/`NewWindowRequested`を使用し、WSL hostはeventとして中継する。Windows/Linuxは開始callbackによる中止を実装し、新規Windowは暗黙作成せず拒否する。一方、WSL client同期判定は[ADR-0005提案](../adr/0005-wsl-navigation-policy.md)のスパイク待ちである。新規Windowの実ユーザー操作テストとWindows Runtime実行は未確認である。HTML読込にはM1から`webkit_web_view_load_html`を使用する。GTKのレイアウトがWindowリサイズへ追従するため、WindowsのようなBounds更新は不要である。
+M2の縦機能として、native の `webkit_web_view_evaluate_javascript`/`_finish` と WebView2 `ExecuteScript`、文字列message、ナビゲーション開始/完了、基本error通知、新規Window要求を実装した。Linuxの開始/new-windowは`WebKitWebView::decide-policy`と`::create`、完了/errorは`::load-changed`と`::load-failed`、WindowsはWebView2 `NavigationStarting`/`NavigationCompleted`/`NewWindowRequested`を使用し、WSL hostはeventとして中継する。Windows/Linuxは開始callbackによる中止を実装し、新規Windowは暗黙作成せず拒否する。一方、WSL client同期判定は[ADR-0005提案](../adr/0005-wsl-navigation-policy.md)のスパイク待ちである。新規WindowはWindows Runtime上の自動smokeで確認済みであり、実ユーザー操作のみ未確認である。HTML読込にはM1から`webkit_web_view_load_html`を使用する。GTKのレイアウトがWindowリサイズへ追従するため、WindowsのようなBounds更新は不要である。
 
 公式根拠: [GTK application initialization](https://docs.gtk.org/gtk4/initialization.html)、[GTK threading](https://docs.gtk.org/gtk4/section-threading.html)、[WebKitWebView](https://webkitgtk.org/reference/webkit2gtk/stable/class.WebView.html)、[JavaScript evaluation](https://webkitgtk.org/reference/webkit2gtk/stable/method.WebView.evaluate_javascript.html)。
 

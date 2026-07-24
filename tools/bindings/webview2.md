@@ -50,7 +50,7 @@ runtime are not copied into this repository.
 * `ICoreWebView2NavigationStartingEventArgs::{get_Uri, put_Cancel}`
   (vtable slots 3 and 8)
 * `ICoreWebView2::{add_NewWindowRequested, remove_NewWindowRequested}`
-  (vtable slots 45 and 46)
+  (vtable slots 44 and 45)
 * `ICoreWebView2NewWindowRequestedEventHandler` and IID
   `d4c185fe-c81c-4989-97af-2d3fa7ab5651`
 * `ICoreWebView2NewWindowRequestedEventArgs::{get_Uri, put_Handled}`

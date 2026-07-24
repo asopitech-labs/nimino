@@ -3,7 +3,9 @@ param(
   [string]$HostExecutable,
   [switch]$AbnormalClientEof,
   [switch]$VerifyNewWindow,
-  [string]$InitialUrl = "about:blank"
+  [string]$InitialUrl = "about:blank",
+  [ValidateRange(1000, 180000)]
+  [int]$ReadTimeoutMs = 3000
 )
 
 ## Keep this value in sync with packages/wsl/src/nimino_wsl/protocol/versioning.nim.
@@ -82,8 +84,16 @@ function Read-Exactly([int]$count) {
   $offset = 0
   while ($offset -lt $count) {
     $readTask = $process.StandardOutput.BaseStream.ReadAsync($buffer, $offset, $count - $offset)
-    if (-not $readTask.Wait(3000)) {
-      throw "Host stdout timed out during $script:smokePhase before a complete frame was received"
+    if (-not $readTask.Wait($ReadTimeoutMs)) {
+      if (-not $process.HasExited) {
+        & taskkill.exe /PID $process.Id /T /F *> $null
+        [void]$process.WaitForExit(5000)
+      }
+      $stderrText = $process.StandardError.ReadToEnd().Trim()
+      $diagnostic = if ([string]::IsNullOrEmpty($stderrText)) { "" } else {
+        " (stderr: $stderrText)"
+      }
+      throw "Host stdout timed out during $script:smokePhase before a complete frame was received$diagnostic"
     }
     $read = $readTask.Result
     if ($read -le 0) {
@@ -290,7 +300,13 @@ function Wait-ForNewWindowRequest([string]$webViewId) {
   $sawTrigger = $false
   $sawNewWindowRequest = $false
   for ($attempt = 0; $attempt -lt 64; $attempt++) {
-    $message = Read-Frame
+    try {
+      $message = Read-Frame
+    }
+    catch {
+      throw ("New-window event wait failed (trigger={0}, request={1}): {2}" -f
+        $sawTrigger, [bool]$sawNewWindowRequest, $_.Exception.Message)
+    }
     if ($message.kind -eq "event" -and $message.method -eq "native.webview.error") {
       throw "WebView reported an error: $(Get-WebViewErrorText $message)"
     }
@@ -302,8 +318,7 @@ function Wait-ForNewWindowRequest([string]$webViewId) {
     }
     if ($message.method -eq "native.webview.newWindowRequested" -and
         $payload.webViewId -eq $webViewId) {
-      if ([string]::IsNullOrEmpty($payload.url) -or
-          -not $payload.url.StartsWith("data:text/html,")) {
+      if ($payload.url -ne "https://example.invalid/nimino-popup-smoke") {
         throw "WebView emitted a new-window request with an unexpected URL"
       }
       $sawNewWindowRequest = $payload
@@ -586,7 +601,10 @@ try {
       throw "Host did not set the new-window test title"
     }
 
-    $popupUrl = "data:text/html," + [System.Uri]::EscapeDataString("<!doctype html><p>Nimino popup target</p>")
+    # Chromium blocks top-level data: navigations before WebView2 can emit
+    # NewWindowRequested. Use a non-resolving HTTPS URL; the native callback
+    # marks it handled, so the test never performs a network navigation.
+    $popupUrl = "https://example.invalid/nimino-popup-smoke"
     $newWindowHtml = '<!doctype html><meta charset="utf-8"><button id="open" style="position:fixed;inset:0;border:0;background:#19324d;color:white;font-size:32px" onclick="chrome.webview.postMessage(''new-window-triggered''); window.open(''' + $popupUrl + ''', ''_blank'');">Open a new window</button>'
     Set-SmokePhase "new-window page loading"
     Write-Frame @{
@@ -620,7 +638,7 @@ try {
     ## managed popup creation so the harness cannot pass by creating a window
     ## directly and skipping the WebView event path.
     Set-SmokePhase "new-window callback"
-    $clickRequestId = "20-click"
+    $clickRequestId = "201"
     Write-Frame @{
       version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
       requestId = $clickRequestId; eventId = "0"; method = "native.webview.evalJavaScript"

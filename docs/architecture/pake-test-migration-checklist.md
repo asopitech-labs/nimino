@@ -4,8 +4,8 @@
 参照 suite の入力境界と期待結果が Nimino のテストで実行されることを完了条件とする。
 `[~]` は一部のケースのみ移植済みであり、完了扱いにしない。
 
-OS 固有 suite は実行フラグを必須とする。macOS では共通と macOS のみを実行し、
-Linux/Windows を実行したことにしない。
+OS 固有 suite は実行フラグを必須とする。実行中OSと異なるsuiteを実行したことにせず、
+該当OSまたはWSL2経由のWindows実行環境で結果を確認する。
 
 | 状態 | Pake suite | Nimino の対応先・実行条件 |
 |---|---|---|
@@ -16,12 +16,12 @@ Linux/Windows を実行したことにしない。
 | [x] | `combine` | `packages/core/tests/test_macos_find_smoke.nim`, `test_pack_cli.sh` |
 | [x] | `config-file` | `packages/pack/tests/test_manifest.nim`, `packages/pack/schema/nimino-pack.schema.json` |
 | [x] | `error` | `packages/pack/tests/test_reference_foundation.nim` が成功・失敗branch、全`PackErrorKind`とdetail契約を確認 |
-| [x] | `event-clipboard-shortcuts` | `test_macos_find_smoke` が実WKWebViewで無効化対象のCmd+Rと、Niminoが介入しないCmd+Cを同時に確認。Pake の Ctrl+C/X/A/V、rich-paste 優先、text fallback、TTL、synthetic/非テキスト input を `tools/hosts/tests/test_web_shortcuts.js` に移植し、Windows/Linux フラグ時のみ実行（このmacOSでは未実行） |
-| [x] | `event-fullscreen-shortcuts` | `test_macos_find_smoke` が実WKWebViewでF11を抑止しないことを確認。Pake の Windows/Linux F11 trusted/repeat/disabled/Alt+Enter と `hide_window_decorations` 時だけのtop drag region・native drag RPC・double-click fullscreen を `tools/hosts/tests/test_web_shortcuts.js` に移植し、Windows/Linux フラグ時のみ実行（このmacOSでは未実行） |
+| [x] | `event-clipboard-shortcuts` | `test_macos_find_smoke` が実WKWebViewで無効化対象のCmd+Rと、Niminoが介入しないCmd+Cを同時に確認。Pake の Ctrl+C/X/A/V、rich-paste 優先、text fallback、TTL、synthetic/非テキスト input を `tools/hosts/tests/test_web_shortcuts.js` に移植し、Windows/Linux フラグ時のみ実行。Windows suiteはWSL2で確認済み |
+| [x] | `event-fullscreen-shortcuts` | `test_macos_find_smoke` が実WKWebViewでF11を抑止しないことを確認。Pake の Windows/Linux F11 trusted/repeat/disabled/Alt+Enter と `hide_window_decorations` 時だけのtop drag region・native drag RPC・double-click fullscreen を `tools/hosts/tests/test_web_shortcuts.js` に移植し、Windows/Linux フラグ時のみ実行。Windows suiteはWSL2で確認済み |
 | [x] | `event-link-guard` | `test_policy`、`test_app`、実 WKWebView の `test_macos_web_compat_smoke`、`tools/hosts/tests/test_macos_link_guard.js` が `javascript:`/hash bypass、内部 `target=_blank` の `_self` 再ターゲット、Badge/Notification DOM、通常認証の同一 window、`about:blank` / named Apple popup の WindowProxy・後続遷移・blocked fallback を確認 |
 | [x] | `file-finding` | `test_reference_foundation.nim` がglob、`.app`、directory除外、primary/fallback discoveryを確認 |
 | [x] | `find-shortcuts` | `packages/core/tests/test_macos_find_smoke.nim` |
-| [x] | `ico` | `test_ico.nim` がPNG-in-ICOのheader/layout、preferred frame、全Windows標準サイズ、既存exact PNG保持、異常入力を確認。`NIMINO_TEST_REFERENCE_WINDOWS=1`（このmacOSでは未実行） |
+| [x] | `ico` | `test_ico.nim` がPNG-in-ICOのheader/layout、preferred frame、全Windows標準サイズ、既存exact PNG保持、異常入力を確認。`NIMINO_TEST_REFERENCE_WINDOWS=1`でWSL2から確認済み |
 | [x] | `icon-source` | `packages/pack/tests/test_icon_source.nim` と自動icon解決がdashboard-icons/domain faviconの優先順位・local host判定を確認 |
 | [x] | `icon` | `test_icon_source.nim` と`test_pack_cli.sh`がsource priority、dashboard icon取得、MIME型受理/拒否を確認 |
 | [x] | `identifier` | `packages/pack/tests/test_manifest.nim` |
@@ -41,7 +41,7 @@ Linux/Windows を実行したことにしない。
 | [x] | `system-tray-icon` | `test_pack_macos.sh` がdefault tray、ICNS copy、欠落/dir copy失敗、SVG拒否を確認。NiminoはPakeのwarn+fallbackより厳格に配布前失敗とする |
 | [x] | `url` | `packages/pack/tests/test_manifest.nim`, `test_pack_cli.sh` |
 | [x] | `validate-url-input` | `tools/ci/test_pack_cli.sh` |
-| [x] | `window-icon-reapply` | `test_windows_icon_reapply_contract.nim` が`WM_SETICON`のlarge/small設定とexplicit show後の再適用を確認。`NIMINO_TEST_REFERENCE_WINDOWS=1`（このmacOSでは未実行） |
+| [x] | `window-icon-reapply` | `test_windows_icon_reapply_contract.nim` が`WM_SETICON`のlarge/small設定とexplicit show後の再適用を確認。`NIMINO_TEST_REFERENCE_WINDOWS=1`でWSL2から確認済み |
 | [x] | `integration/workflow-paths` | `tools/ci/test_pack_cli.sh` の URL/local/config path flows |
 | [x] | `release` | `tools/ci/test_pack_macos_release.sh` が2アプリのbundle→DMG生成とartifact検査を実行。Linux/Windowsのrelease再構築は手動CIフラグに分離 |
 

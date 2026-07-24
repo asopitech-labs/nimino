@@ -11,9 +11,16 @@ if not launched.isOk:
   quit(QuitFailure)
 let client = launched.value
 
-let window = client.call("native.window.create",
-  "{\"title\":\"WSL client smoke\",\"width\":800,\"height\":600}")
-doAssert window.isOk
+let window = client.call("native.window.create", $(%*{
+  "title": "WSL client smoke",
+  "width": 800,
+  "height": 600,
+  "appId": "tech.asopi.wsl-client-smoke",
+  "profile": "default"
+}))
+if not window.isOk:
+  stderr.writeLine("WSL client window creation failed: " & window.failure.detail)
+  quit(QuitFailure)
 let windowId = parseJson(window.value.payload)["windowId"].getStr()
 
 let view = client.call("native.webview.create", $(%*{"windowId": windowId}))

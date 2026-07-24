@@ -6,6 +6,8 @@ dockerfile="$root/tools/docker/Dockerfile"
 compose="$root/compose.yaml"
 makefile="$root/Makefile"
 setup="$root/tools/ci/setup-windows-webview2.ps1"
+cleanup="$root/tools/ci/kill-nimino-windows.ps1"
+makefile="$root/Makefile"
 
 grep -Fq 'libgtk-4-dev' "$dockerfile"
 grep -Fq 'libwebkitgtk-6.0-dev' "$dockerfile"
@@ -21,5 +23,15 @@ grep -Fq 'Start-Process -FilePath $installer -ArgumentList "/silent", "/install"
 grep -Fq 'WebView2 Runtime already installed' "$setup"
 grep -Fq 'WebView2 Runtime installation could not be verified' "$setup"
 grep -Fq 'Where-Object { $_.Name -match' "$setup"
+if grep -Fq 'Verb RunAs' "$cleanup"; then
+  echo "Windows test cleanup must not block on a UAC elevation prompt" >&2
+  exit 1
+fi
+grep -Fq '& taskkill.exe /PID $process.ProcessId /T /F' "$cleanup"
+grep -Fq 'clean: container-runtime-check kill-nimino-windows' "$makefile"
+if grep -Fq 'taskkill.exe /IM nimino-wsl-host.exe' "$makefile"; then
+  echo "Make cleanup must use the scoped Windows cleanup target" >&2
+  exit 1
+fi
 
 echo "Nimino setup contract passed"

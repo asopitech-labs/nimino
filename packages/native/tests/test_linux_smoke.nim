@@ -24,6 +24,7 @@ var resizeReceived: bool
 var resizeRequested: bool
 var fullscreenRequested: bool
 var fullscreenRestored: bool
+var runtimeWindowCreated: bool
 
 const BaseUrl = "https://example.invalid/assets/"
 const BaseUrlMessage = "Nimino Linux base:https://example.invalid/assets/images/logo.svg"
@@ -35,6 +36,7 @@ proc quitWhenComplete() =
       cookieMutationFinished and
       notificationRequested and baseDocumentCompleted and baseUrlResolved and
       urlRequested and uiTaskExecuted and fullscreenRestored and
+      runtimeWindowCreated and
       (resizeReceived or idleTicks > 200):
     doAssert cast[NativeApp](callbackApp).quit().isOk
 
@@ -112,6 +114,15 @@ proc receiveIdle() =
   elif not fullscreenRestored:
     doAssert cast[NativeWindow](callbackWindow).setFullscreen(false).isOk
     fullscreenRestored = true
+  if not runtimeWindowCreated:
+    let popup = cast[NativeApp](callbackApp).newWindow(
+      "Nimino Linux runtime window", 300, 180)
+    doAssert popup.isOk
+    let popupView = popup.value.newWebView()
+    doAssert popupView.isOk
+    doAssert popupView.value.loadHtml("<main>runtime window</main>").isOk
+    doAssert popup.value.close().isOk
+    runtimeWindowCreated = true
   if not resizeRequested:
     doAssert cast[NativeWindow](callbackWindow).setSize(700, 500).isOk
     resizeRequested = true

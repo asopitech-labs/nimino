@@ -660,17 +660,16 @@ when defined(windows):
     except CatchableError:
       discard
 
-when defined(macosx):
-  proc dispatchDeepLink(app: NativeApp; url: string) =
-    if app.isNil or url.len == 0:
-      return
-    if app.deepLinkHandler.isNil:
-      app.pendingDeepLinks.add(url)
-      return
-    try:
-      app.deepLinkHandler(url)
-    except CatchableError:
-      discard
+proc dispatchDeepLink(app: NativeApp; url: string) =
+  if app.isNil or url.len == 0:
+    return
+  if app.deepLinkHandler.isNil:
+    app.pendingDeepLinks.add(url)
+    return
+  try:
+    app.deepLinkHandler(url)
+  except CatchableError:
+    discard
 
 when defined(windows) or (defined(linux) and not defined(niminoWsl)) or defined(macosx):
   proc dispatchNativeMenu(app: NativeApp; itemId: uint32) =
@@ -1185,9 +1184,9 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
   )
   app.windows.add(window)
   ## Popups and menu-created windows are requested after the native event loop
-  ## has started.  macOS must create the NSWindow immediately; otherwise the
-  ## subsequent WebView creation sees a nil platform window and New Window
-  ## silently fails for packaged localEntry apps.
+  ## has started. macOS creates the empty NSWindow immediately. Windows and
+  ## Linux create their native window when the first WebView is attached,
+  ## because those backends require a view during window creation.
   if app.state == running:
     when defined(macosx):
       let created = window.macosCreateWindow()
@@ -1206,12 +1205,20 @@ proc newWebView*(window: NativeWindow; userAgent = ""; proxyUrl = "";
   window.views.add(view)
   if window.app.state == running:
     when defined(linux) and not defined(niminoWsl):
-      let created = view.linuxCreateView()
+      let created =
+        if window.platformWindow.isNil:
+          window.linuxCreateWindow()
+        else:
+          view.linuxCreateView()
       if not created.isOk:
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
     elif defined(windows):
-      let created = view.windowsStartWebView()
+      let created =
+        if window.platformWindow.isNil:
+          window.windowsCreateWindow()
+        else:
+          view.windowsStartWebView()
       if not created.isOk:
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
@@ -1638,7 +1645,7 @@ proc setMinimumSize*(window: NativeWindow; width, height: int): NativeResult =
     macosSetMinimumSize(window, width, height)
   else:
     failure(nativeError(unsupported, "window.setMinimumSize",
-      detail: "minimum content size is only implemented by the macOS backend"))
+      detail = "minimum content size is only implemented by the macOS backend"))
 
 proc focus*(window: NativeWindow): NativeResult =
   if window.isNil or window.state in {closing, closed}:

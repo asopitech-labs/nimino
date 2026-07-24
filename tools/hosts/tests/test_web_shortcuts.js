@@ -74,6 +74,8 @@ function load({ active = element('body'), selection = '', clipboard = 'clipboard
 
 async function flush() { await Promise.resolve(); await Promise.resolve(); }
 
+function plain(value) { return JSON.parse(JSON.stringify(value)); }
+
 const tests = [];
 function test(name, body) { tests.push([name, body]); }
 
@@ -158,7 +160,7 @@ test('does not paste when clipboard access is denied', async () => {
 test('toggles fullscreen on a trusted non-repeated F11', async () => {
   const page = load(); const event = key('F11', { ctrlKey: false }); page.fire('keydown', event); await flush();
   assert.equal(event.prevented && event.stopped, true);
-  assert.deepEqual(page.invokes, [['app.toggleFullscreen', {}]]);
+  assert.deepEqual(plain(page.invokes), [['app.toggleFullscreen', {}]]);
 });
 
 test('does not claim synthetic, repeated, Alt+Enter, or disabled F11', async () => {
@@ -184,7 +186,7 @@ test('creates the non-macOS drag region only for hidden decorations', async () =
   top.dispatchEvent({ type: 'dblclick' });
   await flush();
   assert.equal(prevented, true);
-  assert.deepEqual(immersive.invokes, [
+  assert.deepEqual(plain(immersive.invokes), [
     ['app.startDragging', { x: 12, y: 8, timestamp: 42 }],
     ['app.toggleFullscreen', {}],
   ]);

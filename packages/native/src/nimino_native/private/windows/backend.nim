@@ -2402,6 +2402,8 @@ proc windowsStartWebView(view: NativeWebView): NativeResult =
     return failure(hresultError("webview.environment", status))
   success()
 
+proc windowsApplyWindowIcon(window: NativeWindow): NativeResult
+
 proc windowsShowWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     discard showWindow(window.platformWindow, SwShow)

@@ -74,6 +74,10 @@ proc decodeBuffered(input: HostInput): ProtocolResult =
 
     let decoded = input.buffer[4 ..< frameLength].fromJson()
     if not decoded.isOk:
+      ## A malformed frame is a fatal protocol error. Do not retain and
+      ## repeatedly re-parse the same attacker-controlled bytes while the UI
+      ## loop processes its close request.
+      input.buffer.setLen(0)
       return failure(decoded.failure)
     input.pending.add(decoded.value)
     if input.buffer.len == frameLength:

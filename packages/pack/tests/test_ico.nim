@@ -1,7 +1,7 @@
 ## Pake ICO suite parity. This is Windows-targeted packaging behavior and is
 ## intentionally run only through NIMINO_TEST_REFERENCE_WINDOWS=1.
 
-import std/[base64, os, sequtils]
+import std/[base64, os]
 
 import nimino_pack
 
@@ -28,14 +28,14 @@ proc bytes(value: string): seq[byte] =
 
 proc readBytes(path: string): seq[byte] = bytes(readFile(path))
 
-proc writeBytes(path: string; value: openArray[byte]) =
-  writeFile(path, value.stringFromBytes)
-
 proc stringFromBytes(value: openArray[byte]): string =
   result = newString(value.len)
   for index, character in value: result[index] = char(character)
 
-let png1x1 = bytes(decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL9xQAAAABJRU5ErkJggg=="))
+proc writeBytes(path: string; value: openArray[byte]) =
+  writeFile(path, stringFromBytes(value))
+
+let png1x1 = bytes(decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="))
 
 block buildIcoLayout:
   let one = buildIcoFromPngBuffers([IcoPngFrame(size: 16, png: @[1'u8, 2, 3])])
@@ -57,7 +57,6 @@ block buildIcoLayout:
 let root = getTempDir() / "nimino-pake-ico-parity"
 if dirExists(root): removeDir(root)
 createDir(root)
-defer: removeDir(root)
 
 block reorderAndMalformedInput:
   let source = root / "source.ico"
@@ -98,4 +97,5 @@ block multiResolutionAndExactFramePreservation:
   writeFile(malformed, "\0\0")
   doAssert not ensureMultiResolutionIco(malformed, root / "bad-out.ico")
 
+removeDir(root)
 echo "Pake ICO parity tests passed"

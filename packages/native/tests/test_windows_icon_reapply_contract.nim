@@ -5,7 +5,7 @@
 
 import std/[os, strutils]
 
-let root = currentSourcePath.parentDir.parentDir.parentDir
+let root = currentSourcePath.parentDir.parentDir.parentDir.parentDir
 let backend = readFile(root / "packages/native/src/nimino_native/private/windows/backend.nim")
 let ffi = readFile(root / "packages/native/src/nimino_native/private/windows/ffi.nim")
 
@@ -15,6 +15,9 @@ doAssert backend.contains("proc windowsApplyWindowIcon")
 doAssert backend.contains("sendMessageW(window.platformWindow, WmSetIcon, IconBig")
 doAssert backend.contains("sendMessageW(window.platformWindow, WmSetIcon, IconSmall")
 let show = backend.find("proc windowsShowWindow")
+let iconHelper = backend.find("proc windowsApplyWindowIcon")
 doAssert show >= 0
+doAssert iconHelper >= 0
+doAssert iconHelper < show
 doAssert backend[show ..< min(backend.len, show + 500)].contains("windowsApplyWindowIcon")
 echo "Windows icon reapply contract passed"
