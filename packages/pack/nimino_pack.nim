@@ -7,5 +7,6 @@ import ./src/nimino_pack/flatpak
 import ./src/nimino_pack/catalog
 import ./src/nimino_pack/generator
 import ./src/nimino_pack/artifacts
+import ./src/nimino_pack/icon_source
 
-export manifest, linux_package, windows_package, macos_package, flatpak, catalog, generator, artifacts
+export manifest, linux_package, windows_package, macos_package, flatpak, catalog, generator, artifacts, icon_source

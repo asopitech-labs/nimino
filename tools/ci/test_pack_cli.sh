@@ -144,6 +144,7 @@ fi
 mkdir -p "$root/icon-server"
 printf 'remote-icon' > "$root/icon-server/remote.png"
 printf 'auto-favicon' > "$root/icon-server/favicon.ico"
+printf 'dashboard-icon' > "$root/icon-server/demoautofavicon.png"
 printf '<svg xmlns="http://www.w3.org/2000/svg"></svg>' > "$root/icon-server/icon.svg"
 printf '<!doctype html><svg></svg>' > "$root/icon-server/not-an-icon.html"
 python3 -m http.server 18765 --bind 0.0.0.0 --directory "$root/icon-server" > "$root/icon-server.log" 2>&1 &
@@ -160,10 +161,10 @@ test -s "$root/svg-icon-out/icon.svg"
 grep -q '"icon": "icon.svg"' "$root/svg-icon-out/nimino-manifest.json"
 ! "$nimino" pack https://example.com --name HtmlIcon --id app.nimino.html-icon \
   --icon http://127.0.0.1:18765/not-an-icon.html --out "$root/html-icon-out" --host "$root/host"
-"$nimino" pack http://127.0.0.1:18765/app --name DemoAutoFavicon --id app.nimino.demo-auto-favicon \
+NIMINO_DASHBOARD_ICON_BASE_URL=http://127.0.0.1:18765 "$nimino" pack http://127.0.0.1:18765/app --name DemoAutoFavicon --id app.nimino.demo-auto-favicon \
   --out "$root/auto-favicon-out" --host "$root/host"
-test -s "$root/auto-favicon-out/favicon.ico"
-grep -q '"icon": "favicon.ico"' "$root/auto-favicon-out/nimino-manifest.json"
+test -s "$root/auto-favicon-out/dashboard-demoautofavicon.png"
+grep -q '"icon": "dashboard-demoautofavicon.png"' "$root/auto-favicon-out/nimino-manifest.json"
 kill "$icon_server" 2>/dev/null || true
 wait "$icon_server" 2>/dev/null || true
 trap - EXIT

@@ -22,8 +22,8 @@ Linux/Windows を実行したことにしない。
 | [x] | `file-finding` | `test_reference_foundation.nim` がglob、`.app`、directory除外、primary/fallback discoveryを確認 |
 | [x] | `find-shortcuts` | `packages/core/tests/test_macos_find_smoke.nim` |
 | [ ] | `ico` | Windows ICO multi-resolution。`NIMINO_TEST_REFERENCE_WINDOWS=1` |
-| [ ] | `icon-source` | dashboard/local icon source priority helper が未移植 |
-| [~] | `icon` | MIME 型受理/拒否は `test_pack_cli.sh`。source priority は未移植 |
+| [x] | `icon-source` | `packages/pack/tests/test_icon_source.nim` と自動icon解決がdashboard-icons/domain faviconの優先順位・local host判定を確認 |
+| [x] | `icon` | `test_icon_source.nim` と`test_pack_cli.sh`がsource priority、dashboard icon取得、MIME型受理/拒否を確認 |
 | [x] | `identifier` | `packages/pack/tests/test_manifest.nim` |
 | [x] | `json-output` | `tools/ci/test_pack_cli.sh` |
 | [x] | `linux-desktop` | `test_pack_linux.sh` がExec/Icon/categories/deep-linkとUTF-8表示名を確認。`NIMINO_TEST_REFERENCE_LINUX=1` |

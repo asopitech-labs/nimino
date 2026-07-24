@@ -684,6 +684,39 @@ proc fetchRemoteIcon(url, destination: string): bool =
     stderr.writeLine("nimino pack: unable to download remote icon")
     false
 
+proc dashboardIconBaseUrl(): string =
+  ## An override keeps local/air-gapped integration tests deterministic while
+  ## retaining Pake's public dashboard-icons source for ordinary builds.
+  let configured = getEnv("NIMINO_DASHBOARD_ICON_BASE_URL").strip(chars = {'/'})
+  if configured.len > 0: configured
+  else: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png"
+
+proc fetchAutomaticIcon(url, appName, directory: string): string =
+  ## Resolve auto icons in Pake-compatible source order. Every download stays
+  ## bounded and a failure simply tries the next source; a wrapper without an
+  ## icon remains valid.
+  try:
+    let page = parseUri(url)
+    if page.scheme.toLowerAscii() notin ["http", "https"] or page.hostname.len == 0:
+      return ""
+    let authority = page.hostname & (if page.port.len > 0: ":" & page.port else: "")
+    for source in iconSourcePriority(url, appName):
+      case source
+      of domainIconSource:
+        let destination = directory / "favicon.ico"
+        if not fileExists(destination) and fetchRemoteIcon(page.scheme & "://" & authority & "/favicon.ico", destination):
+          return "favicon.ico"
+      of dashboardIconSource:
+        for slug in dashboardIconSlugs(appName):
+          let fileName = "dashboard-" & safeIconName(slug, ".png")
+          let destination = directory / fileName
+          if not fileExists(destination) and
+              fetchRemoteIcon(dashboardIconBaseUrl() & "/" & slug & ".png", destination):
+            return fileName
+  except CatchableError:
+    discard
+  ""
+
 proc parseCliBool(value: string): bool =
   case value.toLowerAscii()
   of "true", "1", "yes": result = true
@@ -1099,19 +1132,9 @@ else:
       paths[index] = fileName
   var localIconName = ""
   if packaged.icon.len == 0 and packaged.url.len > 0:
-    ## Pake-compatible default: URL bundles get the site's favicon when it is
-    ## available.  A site without a favicon remains a valid bundle; explicit
-    ## --icon failures are still fatal below.
-    try:
-      let page = parseUri(packaged.url)
-      if page.scheme.toLowerAscii() in ["http", "https"] and page.hostname.len > 0:
-        let authority = page.hostname & (if page.port.len > 0: ":" & page.port else: "")
-        let faviconUrl = page.scheme & "://" & authority & "/favicon.ico"
-        if fetchRemoteIcon(faviconUrl, directory / "favicon.ico"):
-          packaged.icon = "favicon.ico"
-          localIconName = "favicon.ico"
-    except CatchableError:
-      discard
+    localIconName = fetchAutomaticIcon(packaged.url, packaged.name, directory)
+    if localIconName.len > 0:
+      packaged.icon = localIconName
   let iconIsRemote = packaged.icon.toLowerAscii().startsWith("http://") or
     packaged.icon.toLowerAscii().startsWith("https://") or
     packaged.icon.toLowerAscii().startsWith("data:")

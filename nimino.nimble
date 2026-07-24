@@ -46,6 +46,7 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
   ## NIMINO_TEST_REFERENCE_LINUX=1
   ## NIMINO_TEST_REFERENCE_WINDOWS=1
   exec "nimble testPackReferenceFoundation"
+  exec "nimble testPackIconSource"
   exec "nimble testPackManifest"
   exec "nimble testPackCli"
   if getEnv("NIMINO_TEST_REFERENCE_MACOS") == "1":
@@ -110,6 +111,9 @@ task testPackManifest, "Run nimino-pack manifest tests":
 
 task testPackReferenceFoundation, "Run common Pake error and artifact-discovery parity tests":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-reference-foundation-nimcache --out:/tmp/nimino-test-pack-reference-foundation --path:packages/pack packages/pack/tests/test_reference_foundation.nim"
+
+task testPackIconSource, "Run Pake-compatible automatic icon-source tests":
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-icon-source-nimcache --out:/tmp/nimino-test-pack-icon-source --path:packages/pack packages/pack/tests/test_icon_source.nim"
 
 task buildPackCli, "Build the nimino-pack validation CLI":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"
