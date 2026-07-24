@@ -18,7 +18,7 @@ Linux/Windows を実行したことにしない。
 | [x] | `error` | `packages/pack/tests/test_reference_foundation.nim` が成功・失敗branch、全`PackErrorKind`とdetail契約を確認 |
 | [~] | `event-clipboard-shortcuts` | `test_macos_find_smoke` が実WKWebViewで無効化対象のCmd+Rと、Niminoが介入しないCmd+Cを同時に確認。PakeのWindows/Linux editable・paste fallback ケースは未移植 |
 | [~] | `event-fullscreen-shortcuts` | `test_macos_find_smoke` が実WKWebViewでF11を抑止しないことを確認。PakeのLinux F11 native-fullscreen とWindows/Linux shortcut registration ケースは未移植 |
-| [~] | `event-link-guard` | auth/popup/navigation は `test_app` と macOS smoke。Badge/Notification DOM 契約は未移植 |
+| [~] | `event-link-guard` | `test_policy` と実 WKWebView の `test_macos_web_compat_smoke` が `javascript:`/hash bypass、内部 `target=_blank` の `_self` 再ターゲット、Badge/Notification DOM 契約を確認。Pake の named Apple popup・`about:blank` popup の opener 戻り値と popup-blocked 時の同一ウィンドウ fallback は未移植 |
 | [x] | `file-finding` | `test_reference_foundation.nim` がglob、`.app`、directory除外、primary/fallback discoveryを確認 |
 | [x] | `find-shortcuts` | `packages/core/tests/test_macos_find_smoke.nim` |
 | [x] | `ico` | `test_ico.nim` がPNG-in-ICOのheader/layout、preferred frame、全Windows標準サイズ、既存exact PNG保持、異常入力を確認。`NIMINO_TEST_REFERENCE_WINDOWS=1`（このmacOSでは未実行） |

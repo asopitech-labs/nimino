@@ -3,7 +3,12 @@
 ## Keep these scripts separate from host startup so a real WKWebView smoke can
 ## exercise the exact source delivered to a packaged application.
 
-proc macosWebCompatibilityScripts*(): seq[string] =
+import std/json
+
+proc macosWebCompatibilityScripts*(newWindow = false;
+                                  forceInternalNavigation = false;
+                                  internalUrlRegex = "";
+                                  appUrl = ""): seq[string] =
   ## Pake's macOS bridge exposes Web Badging and Notification while delivery
   ## remains native.  The RPC names intentionally stay in Nimino's explicit
   ## allow-list; web content cannot reach arbitrary host operations.
@@ -48,3 +53,18 @@ proc macosWebCompatibilityScripts*(): seq[string] =
     "globalThis.addEventListener('nimino-notification-activated', (event) => { " &
     "const n = active.get(event.detail && event.detail.id); if (!n) return; active.delete(n.id); syncBadge(); " &
     "if (typeof n.onclick === 'function') n.onclick.call(n, new Event('click')); }); })();")
+  ## Pake guards links before site handlers run.  WebKit has no Tauri event
+  ## bridge, so keep the decisions in document-start JavaScript.  The native
+  ## navigation policy remains authoritative for every resulting navigation.
+  let linkConfig = "{newWindow:" & (if newWindow: "true" else: "false") &
+    ",forceInternalNavigation:" &
+    (if forceInternalNavigation: "true" else: "false") &
+    ",internalUrlRegex:" & $(%internalUrlRegex) & ",appUrl:" & $(%appUrl) & "}"
+  result.add("(() => { const config=" & linkConfig & "; " &
+    "const bypass = value => { const href=String(value||'').trim().toLowerCase(); return href.startsWith('javascript:') || href.startsWith('#'); }; " &
+    "const documentBase = () => document.baseURI || location.href; " &
+    "const absolute = value => new URL(String(value||''), documentBase()).href; " &
+    "const isAuth = value => { try { const parsed=new URL(value,documentBase()); const host=parsed.hostname.toLowerCase(); const path=parsed.pathname.toLowerCase(); return host==='accounts.google.com'||host.endsWith('.accounts.google.com')||host==='googleusercontent.com'||host.endsWith('.googleusercontent.com')||host==='login.microsoftonline.com'||host.endsWith('.microsoftonline.com')||host==='login.live.com'||host.endsWith('.okta.com')||host.endsWith('.auth0.com')||host.endsWith('.onelogin.com')||host==='appleid.apple.com'||((host==='www.linkedin.com'||host==='linkedin.com')&&(path==='/login'||path.startsWith('/login/')))||(host==='github.com'&&(path==='/login'||path.startsWith('/login/')))||((host==='facebook.com'||host.endsWith('.facebook.com'))&&path.includes('/dialog'))||((host==='twitter.com'||host.endsWith('.twitter.com')||host==='x.com'||host.endsWith('.x.com'))&&path.startsWith('/oauth'))||path==='/adfs/ls'||path.startsWith('/adfs/ls/'); } catch (_) { return false; } }; " &
+    "const isInternal = value => { if (config.forceInternalNavigation) return true; try { if (config.internalUrlRegex && new RegExp(config.internalUrlRegex).test(value)) return true; const base=config.appUrl || documentBase(); return new URL(value).origin===new URL(base).origin; } catch (_) { return false; } }; " &
+    "document.addEventListener('click', event => { const anchor=event.target && typeof event.target.closest==='function' ? event.target.closest('a') : null; if (!anchor || !anchor.href) return; const raw=anchor.getAttribute('href')||''; if (bypass(raw)) return; let url; try { url=absolute(anchor.href); } catch (_) { return; } if (isAuth(url) && !config.newWindow) { event.preventDefault(); event.stopImmediatePropagation(); location.href=url; return; } if (anchor.target==='_blank') { if (config.forceInternalNavigation) { event.preventDefault(); event.stopImmediatePropagation(); location.href=url; return; } if (isInternal(url) && !config.newWindow) anchor.target='_self'; } }, true); " &
+    "const originalOpen=window.open; window.open=function(url,name,specs) { if (bypass(url)) return originalOpen.call(window,url,name,specs); let target; try { target=absolute(url); } catch (_) { return originalOpen.call(window,url,name,specs); } const applePopup=name==='AppleAuthentication'||(()=>{ try { return new URL(target).hostname.toLowerCase()==='appleid.apple.com'; } catch (_) { return false; } })(); if (isAuth(target) && !applePopup && target.toLowerCase()!=='about:blank') { location.href=target; return window; } return originalOpen.call(window,target,name,specs); }; })();")

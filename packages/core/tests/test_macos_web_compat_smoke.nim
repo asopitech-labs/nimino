@@ -55,6 +55,24 @@ doAssert window.loadHtml("""
     await navigator.setAppBadge();
     await navigator.setAppBadge(0);
     const notice = new Notification('Hello', {body: 'World', icon: '/icon.png'});
+    const internal = document.createElement('a');
+    internal.href = '/callback';
+    internal.target = '_blank';
+    internal.addEventListener('click', (event) => event.preventDefault());
+    document.body.appendChild(internal);
+    internal.click();
+    const javascriptLink = document.createElement('a');
+    javascriptLink.href = 'javascript:void(0)';
+    javascriptLink.target = '_blank';
+    javascriptLink.addEventListener('click', (event) => event.preventDefault());
+    document.body.appendChild(javascriptLink);
+    javascriptLink.click();
+    const fragmentLink = document.createElement('a');
+    fragmentLink.href = '#captcha-confirm';
+    fragmentLink.target = '_blank';
+    fragmentLink.addEventListener('click', (event) => event.preventDefault());
+    document.body.appendChild(fragmentLink);
+    fragmentLink.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     notice.close();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -63,6 +81,9 @@ doAssert window.loadHtml("""
         typeof navigator.clearAppBadge === 'function',
       notificationApi: typeof Notification === 'function' &&
         Notification.permission === 'granted',
+      internalBlankRetargeted: internal.target === '_self',
+      javascriptBypassed: javascriptLink.target === '_blank',
+      fragmentBypassed: fragmentLink.target === '_blank',
       title: notice.title,
       body: notice.body
     });
@@ -77,6 +98,9 @@ doAssert app.run().isOk
 doAssert completed
 doAssert completionPayload.contains("\"badgeApi\":true")
 doAssert completionPayload.contains("\"notificationApi\":true")
+doAssert completionPayload.contains("\"internalBlankRetargeted\":true")
+doAssert completionPayload.contains("\"javascriptBypassed\":true")
+doAssert completionPayload.contains("\"fragmentBypassed\":true")
 doAssert completionPayload.contains("\"title\":\"Hello\"")
 doAssert completionPayload.contains("\"body\":\"World\"")
 doAssert badgeCalls == @[

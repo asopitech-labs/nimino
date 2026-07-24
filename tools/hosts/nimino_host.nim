@@ -149,9 +149,6 @@ proc main() =
       manifest["injection"] else: newJObject()
   let deepLinkNode = if manifest.hasKey("deepLink") and manifest["deepLink"].kind == JObject:
       manifest["deepLink"] else: newJObject()
-  var injectionJavaScript = root.readInjection(injection.stringArray("javascript"))
-  when defined(macosx):
-    injectionJavaScript.add(macosWebCompatibilityScripts())
   let allowedDeepLinkSchemes = deepLinkNode.stringArray("schemes")
   proc deepLinkAllowed(value: string): bool =
     try:
@@ -179,6 +176,13 @@ proc main() =
   let enableFind = webview.boolean("enableFind", false)
   let forceInternalNavigation = webview.boolean("forceInternalNavigation", false)
   let internalUrlRegex = optionalString(webview, "internalUrlRegex", "")
+  var injectionJavaScript = root.readInjection(injection.stringArray("javascript"))
+  when defined(macosx):
+    injectionJavaScript.add(macosWebCompatibilityScripts(
+      newWindow = newWindow,
+      forceInternalNavigation = forceInternalNavigation,
+      internalUrlRegex = internalUrlRegex,
+      appUrl = appUrl))
   let minWidth = if windowNode.hasKey("minWidth") and windowNode["minWidth"].kind == JInt:
       windowNode["minWidth"].getInt() else: 0
   let minHeight = if windowNode.hasKey("minHeight") and windowNode["minHeight"].kind == JInt:
