@@ -112,6 +112,11 @@ test -f "$app/Contents/Resources/GenericApplicationIcon.icns"
 grep -F '"systemTrayIcon": "GenericApplicationIcon.icns"' "$app/Contents/Resources/nimino-manifest.json"
 test -f "$app/Contents/Resources/assets/fixtures/nested/marker.txt"
 grep -Fx 'nested macOS package resource' "$app/Contents/Resources/assets/fixtures/nested/marker.txt"
+## Pake's MacBuilder produces a DMG when no target is supplied. Keep this
+## command-level default independently covered from explicit `--format dmg`.
+default_dmg=$($cli package-macos "$root/bundle" --out "$root/out")
+test -s "$default_dmg"
+case "$default_dmg" in *.dmg) ;; *) exit 1 ;; esac
 if [ "${NIMINO_TEST_MACOS_ADHOC:-0}" = 1 ] || [ "${NIMINO_TEST_MACOS_NOTIFICATION:-0}" = 1 ]; then
   codesign --deep --force --options runtime --sign - "$app"
   codesign --verify --deep --strict --verbose=2 "$app"
