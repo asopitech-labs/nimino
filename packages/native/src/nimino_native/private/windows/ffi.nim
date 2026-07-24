@@ -204,6 +204,7 @@ const
   OfnOverwritePrompt* = 0x00000002'u32
 
   WmSize* = 0x0005'u32
+  WmSetIcon* = 0x0080'u32
   WmCommand* = 0x0111'u32
   WmDestroy* = 0x0002'u32
   WmClose* = 0x0010'u32
@@ -238,6 +239,11 @@ const
   TpmRightButton* = 0x0002'u32
   TpmReturnCmd* = 0x0100'u32
   IdiApplication* = 32512'u16
+  IconSmall* = 0'u
+  IconBig* = 1'u
+  ImageIcon* = 1'u32
+  LrLoadFromFile* = 0x0010'u32
+  LrDefaultSize* = 0x0040'u32
 
   IidIUnknown* = WinGuid(
     data1: 0x00000000'u32, data2: 0x0000'u16, data3: 0x0000'u16,
@@ -526,6 +532,12 @@ proc setForegroundWindow*(window: HWND): WinBool
   {.stdcall, importc: "SetForegroundWindow", dynlib: "user32.dll".}
 proc loadIconW*(instance: HInstance; iconName: WideCString): HIcon
   {.stdcall, importc: "LoadIconW", dynlib: "user32.dll".}
+proc loadImageW*(instance: HInstance; name: WideCString; imageType: uint32;
+                 desiredWidth, desiredHeight: cint; flags: uint32): pointer
+  {.stdcall, importc: "LoadImageW", dynlib: "user32.dll".}
+proc sendMessageW*(window: HWND; message: uint32; wParam: WParam;
+                   lParam: LParam): LResult
+  {.stdcall, importc: "SendMessageW", dynlib: "user32.dll".}
 proc createPopupMenu*(): HMenu
   {.stdcall, importc: "CreatePopupMenu", dynlib: "user32.dll".}
 proc createMenu*(): HMenu

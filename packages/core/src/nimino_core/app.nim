@@ -1534,6 +1534,18 @@ proc setDockBadge*(app: App; label: string): CoreResult =
     else:
       coreFailure(coreError(platformUnavailable, "app.setDockBadge"))
 
+proc setWindowIcon*(app: App; path: string): CoreResult =
+  ## Set a Windows `.ico` taskbar/window icon before creating the first
+  ## window. Other backends report the capability as unavailable.
+  if app.isNil or app.state == coreFinished:
+    return coreFailure(coreError(invalidState, "app.setWindowIcon"))
+  case app.backend
+  of nativeBackend:
+    let configured = native.setWindowIcon(app.nativeApp, path)
+    if configured.isOk: coreSuccess() else: coreFailure(configured.failure.mapNativeError())
+  of wslBackend:
+    coreFailure(coreError(platformUnavailable, "app.setWindowIcon"))
+
 proc clearDockBadge*(app: App): CoreResult =
   app.setDockBadge("")
 

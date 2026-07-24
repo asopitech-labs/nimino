@@ -2393,6 +2393,9 @@ proc windowsStartWebView(view: NativeWebView): NativeResult =
 proc windowsShowWindow(window: NativeWindow) =
   if window.platformWindow != nil:
     discard showWindow(window.platformWindow, SwShow)
+    ## Explorer may replace a taskbar icon after an explicit show. Reapply
+    ## both sizes so the large taskbar representation is never left stale.
+    discard window.windowsApplyWindowIcon()
     discard updateWindow(window.platformWindow)
 
 proc windowsHideWindow(window: NativeWindow) =
@@ -2511,6 +2514,10 @@ proc windowsCreateWindow(window: NativeWindow): NativeResult =
 
   window.platformWindow = hwnd
   window.state = ready
+  let iconApplied = window.windowsApplyWindowIcon()
+  if not iconApplied.isOk:
+    discard destroyWindow(hwnd)
+    return iconApplied
   if not window.fileDropHandler.isNil:
     let dropConfigured = window.windowsInstallFileDrop()
     if not dropConfigured.isOk:
@@ -2526,6 +2533,39 @@ proc windowsCreateWindow(window: NativeWindow): NativeResult =
     if not started.isOk:
       discard destroyWindow(hwnd)
       return started
+  success()
+
+proc windowsApplyWindowIcon(window: NativeWindow): NativeResult =
+  if window.isNil or window.platformWindow.isNil:
+    return failure(nativeError(invalidState, "window.setIcon"))
+  let app = window.app
+  if app.isNil or app.windowIconPath.len == 0:
+    return success()
+  if app.windowIconHandle.isNil:
+    let iconPath = newWideCString(app.windowIconPath)
+    let loaded = cast[HIcon](loadImageW(nil, iconPath, ImageIcon, 0, 0,
+      LrLoadFromFile or LrDefaultSize))
+    if loaded.isNil:
+      return failure(windowsError("window.setIcon", getLastError()))
+    app.windowIconHandle = loaded
+  discard sendMessageW(window.platformWindow, WmSetIcon, IconBig,
+    cast[LParam](app.windowIconHandle))
+  discard sendMessageW(window.platformWindow, WmSetIcon, IconSmall,
+    cast[LParam](app.windowIconHandle))
+  success()
+
+proc windowsSetWindowIcon*(app: NativeApp; path: string): NativeResult =
+  if app.isNil:
+    return failure(nativeError(invalidState, "app.setWindowIcon"))
+  app.windowIconPath = path
+  ## The normal host configures this before its first window. Reapplying live
+  ## windows also keeps the operation deterministic for application callers.
+  app.windowIconHandle = nil
+  for window in app.windows:
+    if not window.isNil and window.platformWindow != nil:
+      let applied = window.windowsApplyWindowIcon()
+      if not applied.isOk:
+        return applied
   success()
 
 proc windowsWindowProc(hwnd: HWND; message: uint32; wParam: WParam;

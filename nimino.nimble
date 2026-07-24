@@ -15,6 +15,7 @@ task test, "Run Nimino unit tests in ARC mode":
   ## non-Windows development machines; the normal Core tests below remain
   ## platform-neutral.
   if getEnv("NIMINO_TEST_REFERENCE_WINDOWS") == "1":
+    exec "nimble testWindowsIconReapplyContract"
     exec "nimble testWebView2ProfileFfi"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-nimcache --out:/tmp/nimino-test-core-rpc --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_rpc.nim"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-app-nimcache --out:/tmp/nimino-test-core-app --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_app.nim"
@@ -187,6 +188,9 @@ task testCoreLinuxRpcUrlSmoke, "Run the Linux URL document-start RPC smoke test 
 task testCoreLinuxRpcAsyncSmoke, "Run the Linux async and timeout core RPC smoke test under Xvfb":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-linux-rpc-async-smoke-nimcache --out:/tmp/nimino-core-linux-rpc-async-smoke --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_linux_rpc_async_smoke.nim"
   exec "xvfb-run -a /tmp/nimino-core-linux-rpc-async-smoke"
+
+task testWindowsIconReapplyContract, "Run Pake Windows icon-reapply source contract":
+  exec "nim c -r --mm:arc --nimcache:/tmp/nimino-windows-icon-contract-nimcache --out:/tmp/nimino-test-windows-icon-contract packages/native/tests/test_windows_icon_reapply_contract.nim"
 
 task testWindowsCross, "Cross-compile the Windows native M1 smoke target":
   exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-windows-cross-nimcache --out:/tmp/nimino-windows-cross.exe --path:packages/native packages/native/tests/test_windows_cross.nim"

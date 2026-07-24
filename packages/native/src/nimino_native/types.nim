@@ -1,4 +1,4 @@
-import std/[asyncfutures, locks, strutils]
+import std/[asyncfutures, locks, os, strutils]
 
 import ./[capabilities, errors]
 
@@ -201,6 +201,11 @@ type
     trayMenuItems: seq[NativeMenuItem]
     trayMenuHandler: NativeMenuHandler
     trayIconPath: string
+    ## Windows .ico source applied to every native top-level window. The
+    ## backend retains one HICON and reapplies it after ShowWindow so taskbar
+    ## grouping cannot replace it with the default application icon.
+    windowIconPath: string
+    windowIconHandle: pointer
     activationShortcut: string
     activationShortcutHandler: NativeMenuHandler
     activationShortcutConfigured: bool
@@ -935,6 +940,22 @@ proc setSystemTrayIcon*(app: NativeApp; path: string): NativeResult =
       detail = "a non-empty icon path is required"))
   app.trayIconPath = path
   success()
+
+proc setWindowIcon*(app: NativeApp; path: string): NativeResult =
+  ## Configure a file-backed top-level window icon. Windows requires `.ico`
+  ## because WM_SETICON consumes an HICON rather than an arbitrary bitmap.
+  if app.isNil or app.state == finished:
+    return failure(nativeError(invalidState, "app.setWindowIcon"))
+  if path.len == 0 or '\0' in path or not fileExists(path):
+    return failure(nativeError(invalidArgument, "app.setWindowIcon",
+      detail = "an existing .ico icon path is required"))
+  when defined(windows):
+    if splitFile(path).ext.toLowerAscii() != ".ico":
+      return failure(nativeError(invalidArgument, "app.setWindowIcon",
+        detail = "Windows window icons must use .ico"))
+    app.windowsSetWindowIcon(path)
+  else:
+    failure(nativeError(unsupported, "app.setWindowIcon"))
 
 proc setDockBadge*(app: NativeApp; label: string): NativeResult =
   ## Set the macOS Dock tile badge. An empty label clears the badge.

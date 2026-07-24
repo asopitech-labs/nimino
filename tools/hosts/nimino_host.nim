@@ -114,6 +114,7 @@ proc main() =
     nil
   let appId = requiredString(manifest, "id")
   let appName = requiredString(manifest, "name")
+  let packageIcon = optionalString(manifest, "icon", "")
   let url = optionalString(manifest, "url", "")
   let localEntry = optionalString(manifest, "localEntry", "")
   if url.len == 0 and localEntry.len == 0:
@@ -229,6 +230,15 @@ proc main() =
         quit(QuitSuccess)
     fail(created.failure.detail)
   let app = created.value
+  when defined(windows):
+    if packageIcon.len > 0:
+      if packageIcon.contains('/') or packageIcon.contains('\\') or
+          packageIcon in [".", ".."]:
+        fail("manifest icon escapes the package root")
+      let iconPath = root / packageIcon
+      let configured = app.setWindowIcon(iconPath)
+      if not configured.isOk:
+        fail(configured.failure.detail)
   when defined(macosx):
     if systemTrayIcon.len > 0:
       let iconPath = if fileExists(systemTrayIcon): systemTrayIcon
