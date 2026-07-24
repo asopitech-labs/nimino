@@ -11,7 +11,7 @@ Linux/Windows を実行したことにしない。
 |---|---|---|
 | [x] | `auth-sso-patterns` | `packages/core/tests/test_app.nim` |
 | [x] | `base-builder` | `test_pack_macos.sh` がhost欠落・不正output・不正arch拒否と実DMG toolchain生成を確認。Pake固有のnpm/Cargo環境選択はNiminoには存在しない |
-| [ ] | `builders` | Linux target parser。`NIMINO_TEST_REFERENCE_LINUX=1` |
+| [x] | `builders` | `test_pack_linux.sh` がexplicit format選択・deb/RPM/Flatpakのtarget生成を確認。Niminoはambient distro推測をしない。`NIMINO_TEST_REFERENCE_LINUX=1` |
 | [x] | `cli-options` | `tools/ci/test_pack_macos.sh`, `tools/ci/test_pack_cli.sh` |
 | [x] | `combine` | `packages/core/tests/test_macos_find_smoke.nim`, `test_pack_cli.sh` |
 | [x] | `config-file` | `packages/pack/tests/test_manifest.nim`, `packages/pack/schema/nimino-pack.schema.json` |
@@ -26,9 +26,9 @@ Linux/Windows を実行したことにしない。
 | [~] | `icon` | MIME 型受理/拒否は `test_pack_cli.sh`。source priority は未移植 |
 | [x] | `identifier` | `packages/pack/tests/test_manifest.nim` |
 | [x] | `json-output` | `tools/ci/test_pack_cli.sh` |
-| [ ] | `linux-desktop` | `NIMINO_TEST_REFERENCE_LINUX=1` |
-| [ ] | `linux-distro` | `NIMINO_TEST_REFERENCE_LINUX=1` |
-| [ ] | `linux-icon` | `NIMINO_TEST_REFERENCE_LINUX=1` |
+| [x] | `linux-desktop` | `test_pack_linux.sh` がExec/Icon/categories/deep-linkとUTF-8表示名を確認。`NIMINO_TEST_REFERENCE_LINUX=1` |
+| [x] | `linux-distro` | `test_pack_linux.sh` がformat省略を拒否し、明示deb/RPM/Flatpak選択を確認。`NIMINO_TEST_REFERENCE_LINUX=1` |
+| [x] | `linux-icon` | `test_pack_linux.sh` がSVG iconのbundle stagingとdesktop icon pathを確認。`NIMINO_TEST_REFERENCE_LINUX=1` |
 | [x] | `local-input` | `test_manifest.nim`, `test_pack_cli.sh` |
 | [x] | `local-staging` | `test_pack_cli.sh` がdirectory/symlink入力、元入力の非変更、破損symlink失敗時のbundle非生成、自己包含output拒否を確認 |
 | [x] | `mac-builder-targets` | `tools/ci/test_pack_macos.sh`; `NIMINO_TEST_REFERENCE_MACOS=1` |

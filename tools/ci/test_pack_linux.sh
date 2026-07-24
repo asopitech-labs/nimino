@@ -30,6 +30,13 @@ printf '#!/bin/sh\nexit 0\n' > "$root/nimino-host"
 chmod +x "$root/nimino-host"
 
 "$nimino" pack "$root/input.toml" --out "$root/bundle" --host "$root/nimino-host"
+## Pake chooses a package family from os-release. Nimino deliberately avoids
+## ambient distro inference: callers must select the desired distribution
+## artifact explicitly, so an omitted --format is always rejected.
+if "$nimino" package-linux "$root/bundle" --out "$root/no-format-out" 2>/dev/null; then
+  echo 'nimino package-linux unexpectedly inferred a distribution format' >&2
+  exit 1
+fi
 "$nimino" package-linux "$root/bundle" --format deb --out "$root/out" \
   --arch amd64 --maintainer 'Nimino Tests <tests@nimino.invalid>'
 test -s "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb"
@@ -39,6 +46,18 @@ dpkg-deb -f "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" Depends | grep -Fx
 dpkg-deb -c "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" | grep -q './opt/nimino/app.nimino.linux-demo/run-nimino.sh'
 dpkg-deb -c "$root/out/app.nimino.linux-demo_1.2.3_amd64.deb" | grep -q './usr/share/applications/app.nimino.linux-demo.desktop'
 grep -Fq 'MimeType=x-scheme-handler/nimino;x-scheme-handler/foo+bar;' "$root/bundle/app.nimino.linux-demo.desktop"
+grep -Fx 'Icon=/opt/nimino/app.nimino.linux-demo/icon.svg' "$root/bundle/app.nimino.linux-demo.desktop"
+
+## Pake retains a localized Chinese desktop name. Nimino has one canonical
+## UTF-8 display-name field, so preserve that value directly in the generated
+## desktop entry rather than emitting a divergent fallback label.
+printf '%s\n' \
+  'name = "妙言"' \
+  'id = "app.nimino.localized"' \
+  'url = "https://example.com"' \
+  > "$root/localized.toml"
+"$nimino" pack "$root/localized.toml" --out "$root/localized-bundle" --host "$root/nimino-host"
+grep -Fx 'Name=妙言' "$root/localized-bundle/app.nimino.localized.desktop"
 
 "$nimino" package-linux "$root/bundle" --format rpm --out "$root/out" \
   --arch amd64 --license MIT
