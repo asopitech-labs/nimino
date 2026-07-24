@@ -673,6 +673,25 @@ proc parseCliBool(value: string): bool =
   of "false", "0", "no": result = false
   else: usage()
 
+proc parseCliInteger(value: string): int =
+  ## Nim's parseInt accepts a numeric prefix (for example `80abc` as 80).
+  ## CLI input must consume the complete argument so malformed dimensions and
+  ## zoom values cannot silently produce a different bundle configuration.
+  if value.len == 0:
+    usage()
+  var first = 0
+  if value[0] in {'+', '-'}:
+    first = 1
+  if first == value.len:
+    usage()
+  for index in first ..< value.len:
+    if value[index] notin {'0'..'9'}:
+      usage()
+  try:
+    result = parseInt(value)
+  except ValueError:
+    usage()
+
 proc packBooleanFlag(flag: string): bool =
   flag in ["--resizable", "--fullscreen", "--maximize", "--always-on-top",
            "--hide-window-decorations", "--hide-title-bar", "--incognito", "--show-system-tray",
@@ -689,17 +708,13 @@ proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
   of "--id": manifest.id = value
   of "--profile": manifest.profile = value
   of "--width":
-    try: manifest.window.width = parseInt(value)
-    except ValueError: usage()
+    manifest.window.width = parseCliInteger(value)
   of "--height":
-    try: manifest.window.height = parseInt(value)
-    except ValueError: usage()
+    manifest.window.height = parseCliInteger(value)
   of "--min-width":
-    try: manifest.window.minWidth = parseInt(value)
-    except ValueError: usage()
+    manifest.window.minWidth = parseCliInteger(value)
   of "--min-height":
-    try: manifest.window.minHeight = parseInt(value)
-    except ValueError: usage()
+    manifest.window.minHeight = parseCliInteger(value)
   of "--resizable": manifest.window.resizable = parseCliBool(value)
   of "--fullscreen": manifest.window.fullscreen = parseCliBool(value)
   of "--maximize": manifest.window.maximized = parseCliBool(value)
@@ -711,8 +726,7 @@ proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
   of "--proxy-url": manifest.webview.proxyUrl = value
   of "--incognito": manifest.webview.incognito = parseCliBool(value)
   of "--zoom":
-    try: manifest.webview.zoomFactor = parseInt(value).float / 100.0
-    except ValueError: usage()
+    manifest.webview.zoomFactor = parseCliInteger(value).float / 100.0
   of "--ignore-certificate-errors":
     manifest.webview.ignoreCertificateErrors = parseCliBool(value)
   of "--dark-mode": manifest.webview.darkMode = parseCliBool(value)
@@ -833,17 +847,13 @@ if sourceIsUrl or sourceIsLocal:
     of "--id": id = value
     of "--profile": profile = value
     of "--width":
-      try: width = parseInt(value)
-      except ValueError: usage()
+      width = parseCliInteger(value)
     of "--height":
-      try: height = parseInt(value)
-      except ValueError: usage()
+      height = parseCliInteger(value)
     of "--min-width":
-      try: minWidth = parseInt(value)
-      except ValueError: usage()
+      minWidth = parseCliInteger(value)
     of "--min-height":
-      try: minHeight = parseInt(value)
-      except ValueError: usage()
+      minHeight = parseCliInteger(value)
     of "--resizable": resizable = parseCliBool(value)
     of "--fullscreen": fullscreen = parseCliBool(value)
     of "--maximize": maximized = parseCliBool(value)
@@ -855,8 +865,7 @@ if sourceIsUrl or sourceIsLocal:
     of "--proxy-url": proxyUrl = value
     of "--incognito": incognito = parseCliBool(value)
     of "--zoom":
-      try: zoom = parseInt(value)
-      except ValueError: usage()
+      zoom = parseCliInteger(value)
       if zoom < 25 or zoom > 500: usage()
     of "--ignore-certificate-errors": ignoreCertificateErrors = parseCliBool(value)
     of "--dark-mode": darkMode = parseCliBool(value)

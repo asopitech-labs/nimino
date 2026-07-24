@@ -9,6 +9,21 @@ mkdir -p "$root/site" "$root/out"
 mkdir -p "$root/site/fixtures/nested"
 tray_icon=/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns
 test -f "$tray_icon"
+## Pake's CLI-options suite: the portable advanced controls must remain
+## discoverable, and malformed numeric input must fail before any bundle is
+## created.  These checks exercise only the macOS-built CLI binary.
+help=$($cli --help 2>&1 || true)
+printf '%s\n' "$help" | grep -Fq -- '--enable-find'
+printf '%s\n' "$help" | grep -Fq -- '--internal-url-regex <pattern>'
+printf '%s\n' "$help" | grep -Fq -- '--safe-domain <domain>'
+printf '%s\n' "$help" | grep -Fq -- '--force-internal-navigation'
+printf '%s\n' "$help" | grep -Fq -- '--new-window'
+if "$cli" pack https://example.com --name 'Invalid zoom' --id com.nimino.invalid-zoom \
+  --zoom 80abc --out "$root/invalid-zoom" --host "$host" >/dev/null 2>&1; then
+  echo 'nimino pack unexpectedly accepted a malformed zoom value' >&2
+  exit 1
+fi
+test ! -e "$root/invalid-zoom"
 wait_for_gui_windows() {
   expected=$1
   attempts=0
