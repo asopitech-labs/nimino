@@ -98,6 +98,14 @@ grep -q '"zoom": 125' "$root/json-config-out/nimino-manifest.json"
   --out "$root/json-config-override-out" --host "$root/host"
 grep -q 'CLI Window' "$root/json-config-override-out/nimino-manifest.json"
 grep -q '"zoom": 150' "$root/json-config-override-out/nimino-manifest.json"
+
+## Pake's --no-bundle contract maps to Nimino's metadata-only mode. A config
+## may describe an unbundled wrapper, but `--out` must not silently assemble a
+## partial installer directory.
+printf '%s\n' '{"name":"MetadataOnly","id":"app.nimino.metadata-only","url":"https://example.com","bundle":false}' > "$root/no-bundle.json"
+"$nimino" pack --config "$root/no-bundle.json" --json | grep -q 'MetadataOnly'
+! "$nimino" pack --config "$root/no-bundle.json" --out "$root/no-bundle-out" --host "$root/host"
+test ! -e "$root/no-bundle-out/nimino-manifest.json"
 if [ "$test_windows" = 1 ]; then
   grep -q '"installScope": "perUser"' "$root/out/nimino-windows-installer.json"
   grep -Eq '"toastActivatorClsid": "[0-9A-Fa-f-]{36}"' "$root/out/nimino-windows-installer.json"
