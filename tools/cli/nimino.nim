@@ -626,6 +626,15 @@ proc safeIconName(candidate, extension: string): string =
     result = "icon"
   result &= extension
 
+proc supportedIconContentType(value: string): bool =
+  ## A URL ending in `.svg` is not evidence that its response is an icon:
+  ## HTML error documents can contain inline SVG. Accept only image media
+  ## types, including the structured SVG and ICO types used by Pake.
+  case value.toLowerAscii().split(';')[0].strip()
+  of "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+     "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon": true
+  else: false
+
 proc fetchRemoteIcon(url, destination: string): bool =
   ## Fetch only bounded image payloads.  The pack command is synchronous, so
   ## a bounded timeout prevents a dead icon host from hanging packaging.
@@ -637,6 +646,10 @@ proc fetchRemoteIcon(url, destination: string): bool =
       return false
     let header = url[5 ..< comma]
     let body = url[comma + 1 .. ^1]
+    let mediaType = header.split(';')[0]
+    if not supportedIconContentType(mediaType):
+      stderr.writeLine("nimino pack: icon data URL must use an image media type")
+      return false
     try:
       let bytes = if header.toLowerAscii().contains(";base64"):
           decode(body)
@@ -660,6 +673,9 @@ proc fetchRemoteIcon(url, destination: string): bool =
       return false
     if response.body.len == 0 or response.body.len > 8 * 1024 * 1024:
       stderr.writeLine("nimino pack: remote icon payload is empty or too large")
+      return false
+    if not supportedIconContentType(response.headers.getOrDefault("Content-Type")):
+      stderr.writeLine("nimino pack: remote icon response is not an image")
       return false
     writeFile(destination, response.body)
     true
