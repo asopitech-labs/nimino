@@ -140,6 +140,27 @@ doAssert dottedName.value.name == "Vectorizer.AI"
 doAssert not generateManifest("https://example.com", name = ".hidden").isOk
 doAssert not generateManifest("https://example.com", name = "-hidden").isOk
 doAssert not generateManifest("https://example.com", name = " Hidden").isOk
+## Pake's name suite mixes display labels with filesystem-safe names. Nimino
+## intentionally separates those concerns: display names retain user-facing
+## Unicode/punctuation while the generated application ID is validated by the
+## stricter identifier path above. Exercise every input class from that suite.
+for displayName in [
+  "MyApp", "My App", "my-app", "私のアプリ", "私の App", "App@2024",
+  "My/App", "My\\App", "App:Name", "App*Name", "App?Name", "App\"Name",
+  "App<Name>", "App|Name", "APP", "a", "123", "App...",
+  repeat("A", 300)
+]:
+  doAssert validApplicationName(displayName), "display name was unexpectedly rejected: " & displayName
+  let displayed = generateManifest("https://example.com", name = displayName)
+  doAssert displayed.isOk
+  doAssert displayed.value.name == displayName
+doAssert not validApplicationName("")
+## Empty CLI/config names select the generated URL display name rather than an
+## invalid explicit name.
+doAssert generateManifest("https://example.com", name = "").isOk
+for rejectedName in [" ", ".hidden", "-hidden", " Hidden", "  App  ", "line\nbreak", "nul\0name"]:
+  doAssert not validApplicationName(rejectedName)
+  doAssert not generateManifest("https://example.com", name = rejectedName).isOk
 let localNamesRoot = getTempDir() / "nimino-pack-local-names"
 createDir(localNamesRoot)
 let dottedLocal = localNamesRoot / "Vectorizer.AI.html"
@@ -180,6 +201,27 @@ let loadedStartWithoutTray = loadManifest(jsonStartWithoutTray)
 doAssert loadedStartWithoutTray.isOk
 doAssert not loadedStartWithoutTray.value.runtime.startToTray
 removeFile(jsonStartWithoutTray)
+
+## Pake's merge-window-options suite guards both defaulting and propagation.
+## Nimino stores platform-neutral options in one checked manifest; individual
+## native backends consume their applicable values without dropping the others.
+let mergedOptions = generateManifest("https://example.com", name = "Window Options",
+  id = "app.window-options", title = "Options title", width = 1400, height = 900,
+  resizable = false, fullscreen = true, maximized = true, alwaysOnTop = true,
+  hideWindowDecorations = true, hideTitleBar = true, enableDragDrop = true,
+  zoom = 120, ignoreCertificateErrors = true, showSystemTray = true,
+  startToTray = true, hideOnClose = false, multiWindow = true,
+  multiInstance = true)
+doAssert mergedOptions.isOk
+let merged = mergedOptions.value
+doAssert merged.window.title == "Options title"
+doAssert merged.window.width == 1400 and merged.window.height == 900
+doAssert not merged.window.resizable and merged.window.fullscreen and merged.window.maximized
+doAssert merged.window.alwaysOnTop and merged.window.hideWindowDecorations
+doAssert merged.window.hideTitleBar and merged.window.enableDragDrop
+doAssert merged.webview.zoomFactor == 1.2 and merged.webview.ignoreCertificateErrors
+doAssert merged.runtime.showSystemTray and merged.runtime.startToTray
+doAssert not merged.runtime.hideOnClose and merged.runtime.multiWindow and merged.runtime.multiInstance
 
 let local = parse("name = \"Local\"\nid = \"app.local\"\nlocal-entry = \"assets/index.html\"")
 doAssert local.isOk

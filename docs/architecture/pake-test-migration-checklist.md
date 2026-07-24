@@ -32,8 +32,8 @@ Linux/Windows を実行したことにしない。
 | [x] | `local-input` | `test_manifest.nim`, `test_pack_cli.sh` |
 | [x] | `local-staging` | `test_pack_cli.sh` がdirectory/symlink入力、元入力の非変更、破損symlink失敗時のbundle非生成、自己包含output拒否を確認 |
 | [x] | `mac-builder-targets` | `tools/ci/test_pack_macos.sh`; `NIMINO_TEST_REFERENCE_MACOS=1` |
-| [~] | `merge-window-options` | macOS defaults/options は manifest + package smoke。Windows/Linux platform mapping は未移植 |
-| [~] | `name` | registrable URL名・local display name は移植済み。Pakeの全 sanitizer utility ケースは未移植 |
+| [x] | `merge-window-options` | `test_manifest.nim` が全window/webview/runtime optionのdefault・explicit値・startToTray条件を確認。platform固有backendは該当値だけを消費 |
+| [x] | `name` | `test_manifest.nim` がPake suiteの表示名入力群（Unicode/記号/長文を含む）と拒否境界を確認。Niminoはdisplay nameと安全なIDを分離 |
 | [x] | `new-window-macos` | `packages/native/tests/test_macos_smoke.nim` が実WKWebViewの`window.open`を別NSWindow/WKWebViewとして生成することを確認。`NIMINO_TEST_REFERENCE_MACOS=1` |
 | [x] | `no-bundle` | `tools/ci/test_pack_cli.sh` |
 | [x] | `options-name` | `packages/pack/tests/test_manifest.nim` |
