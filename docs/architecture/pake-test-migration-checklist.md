@@ -21,7 +21,7 @@ Linux/Windows を実行したことにしない。
 | [~] | `event-link-guard` | auth/popup/navigation は `test_app` と macOS smoke。Badge/Notification DOM 契約は未移植 |
 | [x] | `file-finding` | `test_reference_foundation.nim` がglob、`.app`、directory除外、primary/fallback discoveryを確認 |
 | [x] | `find-shortcuts` | `packages/core/tests/test_macos_find_smoke.nim` |
-| [ ] | `ico` | Windows ICO multi-resolution。`NIMINO_TEST_REFERENCE_WINDOWS=1` |
+| [x] | `ico` | `test_ico.nim` がPNG-in-ICOのheader/layout、preferred frame、全Windows標準サイズ、既存exact PNG保持、異常入力を確認。`NIMINO_TEST_REFERENCE_WINDOWS=1`（このmacOSでは未実行） |
 | [x] | `icon-source` | `packages/pack/tests/test_icon_source.nim` と自動icon解決がdashboard-icons/domain faviconの優先順位・local host判定を確認 |
 | [x] | `icon` | `test_icon_source.nim` と`test_pack_cli.sh`がsource priority、dashboard icon取得、MIME型受理/拒否を確認 |
 | [x] | `identifier` | `packages/pack/tests/test_manifest.nim` |
