@@ -143,6 +143,10 @@ type
     id*: string
     title*: string
     body*: string
+    ## Optional absolute icon URL supplied by browser-facing Notification.
+    ## Native backends may use the application icon when the OS does not
+    ## support per-notification images, but the host preserves this input.
+    icon*: string
 
   FileDialogOptions* = object
     title*: string
@@ -1493,13 +1497,15 @@ proc sendNotification*(app: App; notification: DesktopNotification): CoreResult 
   if app.isNil or app.state != coreRunning:
     return coreFailure(coreError(invalidState, "app.sendNotification"))
   if notification.id.len == 0 or notification.title.len == 0 or
-      '\0' in notification.id or '\0' in notification.title or '\0' in notification.body:
+      '\0' in notification.id or '\0' in notification.title or '\0' in notification.body or
+      '\0' in notification.icon:
     return coreFailure(coreError(invalidArgument, "app.sendNotification",
       detail = "notification ID and title are required and text must not contain NUL"))
   case app.backend
   of nativeBackend:
     let sent = native.sendNativeNotification(app.nativeApp, native.NativeNotification(
-      id: notification.id, title: notification.title, body: notification.body))
+      id: notification.id, title: notification.title, body: notification.body,
+      icon: notification.icon))
     if sent.isOk: coreSuccess() else: coreFailure(sent.failure.mapNativeError())
   of wslBackend:
     when defined(linux):

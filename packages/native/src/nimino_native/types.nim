@@ -100,6 +100,9 @@ type
     id*: string
     title*: string
     body*: string
+    ## Browser-facing hosts may preserve a resolved icon URL even on
+    ## platforms whose notification center selects the application icon.
+    icon*: string
 
   NativeFileDialogOptions* = object
     ## Common open/save dialog options.  An empty result means the user

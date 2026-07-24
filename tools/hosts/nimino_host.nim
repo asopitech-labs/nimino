@@ -61,7 +61,7 @@ proc readInjection(root: string; names: seq[string]): seq[string] =
 
 proc emitInAppNotification(window: Window; notification: DesktopNotification) =
   let detail = $(%*{"id": notification.id, "title": notification.title,
-    "body": notification.body})
+    "body": notification.body, "icon": notification.icon})
   discard window.evalJavaScript(
     "window.dispatchEvent(new CustomEvent('nimino-notification',{detail:" & detail & "}));")
 
@@ -462,14 +462,19 @@ proc main() =
           params["id"].kind != JString or params["title"].kind != JString or
           params["body"].kind != JString:
         return rpcFailure(rpcError(invalidRequest, "id, title, and body are required"))
+      let icon = if params.hasKey("icon"):
+          if params["icon"].kind != JString:
+            return rpcFailure(rpcError(invalidRequest, "icon must be a string"))
+          params["icon"].getStr()
+        else: ""
       let sent = app.sendNotification(DesktopNotification(
         id: params["id"].getStr(), title: params["title"].getStr(),
-        body: params["body"].getStr()))
+        body: params["body"].getStr(), icon: icon))
       if sent.isOk: rpcSuccess(%*{"ok": true})
       else:
         emitInAppNotification(window, DesktopNotification(
           id: params["id"].getStr(), title: params["title"].getStr(),
-          body: params["body"].getStr()))
+          body: params["body"].getStr(), icon: icon))
         rpcSuccess(%*{"ok": false, "fallback": true}))
   if not notificationRpc:
     fail("unable to register app.sendNotification RPC")

@@ -36,10 +36,11 @@ proc macosWebCompatibilityScripts*(): seq[string] =
     "function NiminoNotification(title, options = {}) { if (!(this instanceof NiminoNotification)) " &
     "return new NiminoNotification(title, options); this.title = String(title || ''); " &
     "this.body = options && options.body != null ? String(options.body) : ''; " &
+    "this.icon = ''; if (options && options.icon != null) { try { this.icon = new URL(String(options.icon),document.baseURI||location.href).href; } catch (_) {} } " &
     "this.tag = options && options.tag != null ? String(options.tag) : ''; this.onclick = null; " &
     "this.id = this.tag || ('nimino-notification-' + Date.now().toString(36) + '-' + (++sequence)); " &
     "active.set(this.id, this); syncBadge(); const invoke = globalThis.nimino && globalThis.nimino.invoke; " &
-    "if (invoke) invoke('app.sendNotification', {id:this.id,title:this.title,body:this.body}).catch(() => {}); " &
+    "if (invoke) invoke('app.sendNotification', {id:this.id,title:this.title,body:this.body,icon:this.icon}).catch(() => {}); " &
     "} NiminoNotification.permission = 'granted'; " &
     "NiminoNotification.requestPermission = () => Promise.resolve('granted'); " &
     "NiminoNotification.prototype.close = function() { active.delete(this.id); syncBadge(); }; " &

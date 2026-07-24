@@ -46,6 +46,7 @@ doAssert window.rpc.registerNotification("reference.webCompatComplete", proc(par
 
 doAssert window.loadHtml("""
 <!doctype html><title>Nimino Web Compatibility Smoke</title>
+<base href="https://example.com/app">
 <main>Web compatibility smoke</main>
 <script>
 (async () => {
@@ -88,4 +89,5 @@ doAssert badgeCalls == @[
 doAssert notificationCalls.len == 1
 doAssert notificationCalls[0].contains("\"title\":\"Hello\"")
 doAssert notificationCalls[0].contains("\"body\":\"World\"")
+doAssert notificationCalls[0].contains("\"icon\":\"https://example.com/icon.png\"")
 echo "macOS web compatibility smoke passed"
