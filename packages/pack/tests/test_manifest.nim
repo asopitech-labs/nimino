@@ -86,6 +86,34 @@ doAssert numericHost.isOk
 for segment in numericHost.value.id.split('.'):
   doAssert segment[0] in {'a'..'z', 'A'..'Z', '_'}
 
+## Port Pake's options-name suite. Dots are meaningful desktop-name text on
+## macOS while leading dot/dash/space input must never become a bundle name.
+doAssert validApplicationName("Vectorizer.AI")
+doAssert not validApplicationName(".hidden")
+doAssert not validApplicationName("-hidden")
+doAssert not validApplicationName(" Hidden")
+let dottedName = generateManifest("https://example.com", name = "Vectorizer.AI")
+doAssert dottedName.isOk
+doAssert dottedName.value.name == "Vectorizer.AI"
+doAssert not generateManifest("https://example.com", name = ".hidden").isOk
+doAssert not generateManifest("https://example.com", name = "-hidden").isOk
+doAssert not generateManifest("https://example.com", name = " Hidden").isOk
+let localNamesRoot = getTempDir() / "nimino-pack-local-names"
+createDir(localNamesRoot)
+let dottedLocal = localNamesRoot / "Vectorizer.AI.html"
+let hiddenLocal = localNamesRoot / ".hidden.html"
+writeFile(dottedLocal, "<!doctype html>")
+writeFile(hiddenLocal, "<!doctype html>")
+let dottedLocalManifest = generateLocalManifest(dottedLocal)
+let hiddenLocalManifest = generateLocalManifest(hiddenLocal)
+doAssert dottedLocalManifest.isOk
+doAssert dottedLocalManifest.value.name == "Vectorizer.AI"
+doAssert hiddenLocalManifest.isOk
+doAssert hiddenLocalManifest.value.name == "Hidden"
+removeFile(dottedLocal)
+removeFile(hiddenLocal)
+removeDir(localNamesRoot)
+
 ## Pake only emits start_to_tray when a system tray is enabled. Keep a
 ## portable Nimino manifest launchable instead of deferring this conflict to
 ## the platform host.

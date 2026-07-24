@@ -231,6 +231,18 @@ proc validApplicationId(value: string): bool =
       return false
   true
 
+proc validApplicationName*(value: string): bool =
+  ## Desktop display names may contain spaces and dots (for example
+  ## `Vectorizer.AI`), but must not begin with a hidden-file/path-like prefix.
+  ## This mirrors Pake's macOS/Windows name boundary while keeping the name
+  ## independent from the stricter package identifier.
+  if value.len == 0 or value.strip().len == 0 or value[0] in {'.', '-', ' '}:
+    return false
+  for character in value:
+    if ord(character) < 0x20 or ord(character) == 0x7f:
+      return false
+  true
+
 proc safeDomainPatterns*(domain: string): seq[string] =
   ## Pake safe domains match the registered host itself and its subdomains on
   ## either HTTP(S) scheme. Represent that policy as explicit Nimino
@@ -346,8 +358,7 @@ proc validate*(manifest: PackManifest): PackResult[PackManifest] =
   for character in normalized.name:
     if ord(character) < 32:
       invalidName = true
-  if normalized.name.len == 0 or normalized.id.len == 0 or
-      normalized.name.strip().len == 0 or invalidName:
+  if normalized.id.len == 0 or invalidName or not validApplicationName(normalized.name):
     return failure[PackManifest](invalidManifest, "name and id are required")
   if not validApplicationId(normalized.id) or not validPathComponent(normalized.profile):
     return failure[PackManifest](invalidManifest,

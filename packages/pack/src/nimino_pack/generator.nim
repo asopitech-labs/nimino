@@ -45,6 +45,16 @@ proc generatedName(host: string): string =
   let label = if labels.len > 0 and labels[0].len > 0: labels[0] else: "site"
   titleWord(label.replace('-', ' ').replace('_', ' '))
 
+proc localApplicationName*(source: string): string =
+  ## A local `.hidden.html` entry is a normal desktop app, not a dotfile.
+  ## Preserve meaningful dots such as `Vectorizer.AI.html`, as Pake does for
+  ## macOS and Windows display names.
+  var base = if dirExists(source): extractFilename(source) else: splitFile(source).name
+  base = base.strip(chars = {'.', '-', ' '})
+  if base.len == 0:
+    return "Local App"
+  titleWord(base.replace('-', ' ').replace('_', ' '))
+
 proc generatedId(host: string; name = ""): string =
   result = "com.nimino." & identifierSegment(host)
   if name.strip().len > 0:
@@ -80,7 +90,9 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
     if scheme notin ["http", "https"] or parsed.hostname.len == 0:
       return failure[PackManifest](invalidManifest,
         "URL-only generation requires an http or https URL")
-    let requestedName = name.strip()
+    if name.len > 0 and not validApplicationName(name):
+      return failure[PackManifest](invalidManifest, "application name must not start with a dot, dash, or space")
+    let requestedName = name
     let appName = if requestedName.len > 0: requestedName else: generatedName(parsed.hostname)
     let appId = if id.strip().len > 0: id.strip() else: generatedId(parsed.hostname, requestedName)
     let metadata = PackPackageMetadata(
@@ -144,12 +156,14 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
   if isDirectory and not fileExists(absolute / entry):
     return failure[PackManifest](invalidManifest,
       "local directory must contain an index.html entry")
-  let base = if isDirectory: extractFilename(absolute) else: splitFile(absolute).name
-  let requestedName = name.strip()
+  let localBase = if isDirectory: extractFilename(absolute) else: splitFile(absolute).name
+  if name.len > 0 and not validApplicationName(name):
+    return failure[PackManifest](invalidManifest, "application name must not start with a dot, dash, or space")
+  let requestedName = name
   let appName = if requestedName.len > 0: requestedName else:
-    titleWord(base.replace('-', ' ').replace('_', ' '))
+    localApplicationName(absolute)
   let appId = if id.strip().len > 0: id.strip() else:
-    generatedId(base, requestedName)
+    generatedId(localBase, requestedName)
   let metadata = PackPackageMetadata(
     version: "0.1.0",
     description: appName & " local web application",
