@@ -34,6 +34,9 @@ printf 'console.log(1)' > "$root/custom.js"
 "$nimino" pack example.com --name BareHost --id app.nimino.bare-host \
   --out "$root/bare-host-out" --host "$root/host"
 grep -q '"url": "https://example.com"' "$root/bare-host-out/nimino-manifest.json"
+"$nimino" pack example.com --name IdentifierAlias --identifier app.nimino.identifier-alias \
+  --out "$root/identifier-alias-out" --host "$root/host"
+grep -q '"id": "app.nimino.identifier-alias"' "$root/identifier-alias-out/nimino-manifest.json"
 ! "$nimino" pack ./missing-local-source --name MissingRelative --id app.nimino.missing-relative \
   --out "$root/missing-relative-out" --host "$root/host"
 ! "$nimino" pack /tmp/nimino-missing-local-source --name MissingAbsolute --id app.nimino.missing-absolute \

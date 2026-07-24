@@ -5,7 +5,7 @@ import nimino_pack
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino pack --config <manifest.toml|config.json> [--out <directory>] [--host <executable>] [--targets <deb,rpm,appimage,flatpak,zst,nsis,msi>[,-arm64]...]")
-  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--min-width <px>] [--min-height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--hide-title-bar] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--ignore-certificate-errors] [--dark-mode] [--disabled-web-shortcuts] [--enable-wasm] [--enable-find] [--new-window] [--force-internal-navigation] [--internal-url-regex <pattern>] [--show-system-tray] [--system-tray-icon <path>] [--activation-shortcut <shortcut>] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id|--identifier <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--min-width <px>] [--min-height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--hide-title-bar] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--ignore-certificate-errors] [--dark-mode] [--disabled-web-shortcuts] [--enable-wasm] [--enable-find] [--new-window] [--force-internal-navigation] [--internal-url-regex <pattern>] [--show-system-tray] [--system-tray-icon <path>] [--activation-shortcut <shortcut>] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak|zst> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory> [--arch <x64|arm64>]")
   stderr.writeLine("       nimino package-macos <bundle> [--format <app|dmg>] --out <directory> [--arch <arm64|x86_64>] [--sign-identity <identity>] [--notary-profile <keychain-profile>]")
@@ -722,7 +722,7 @@ proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
   case flag
   of "--name": manifest.name = value
   of "--title": manifest.window.title = value
-  of "--id": manifest.id = value
+  of "--id", "--identifier": manifest.id = value
   of "--profile": manifest.profile = value
   of "--width":
     manifest.window.width = parseCliInteger(value)
@@ -861,7 +861,7 @@ if sourceIsUrl or sourceIsLocal:
     case flag
     of "--name": name = value
     of "--title": title = value
-    of "--id": id = value
+    of "--id", "--identifier": id = value
     of "--profile": profile = value
     of "--width":
       width = parseCliInteger(value)
@@ -983,7 +983,7 @@ while index <= paramCount():
     if not hasValue: usage()
     for target in paramStr(index + 1).split(','):
       if target.strip().len > 0: targets.add(target.strip().toLowerAscii())
-  of "--config", "--name", "--id", "--profile", "--title", "--width", "--height", "--resizable",
+  of "--config", "--name", "--id", "--identifier", "--profile", "--title", "--width", "--height", "--resizable",
      "--fullscreen", "--maximize", "--always-on-top", "--hide-window-decorations", "--hide-title-bar",
      "--min-width", "--min-height",
      "--enable-drag-drop",
