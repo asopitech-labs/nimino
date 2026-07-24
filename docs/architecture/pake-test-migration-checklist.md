@@ -16,8 +16,8 @@ Linux/Windows を実行したことにしない。
 | [x] | `combine` | `packages/core/tests/test_macos_find_smoke.nim`, `test_pack_cli.sh` |
 | [x] | `config-file` | `packages/pack/tests/test_manifest.nim`, `packages/pack/schema/nimino-pack.schema.json` |
 | [x] | `error` | `packages/pack/tests/test_reference_foundation.nim` が成功・失敗branch、全`PackErrorKind`とdetail契約を確認 |
-| [x] | `event-clipboard-shortcuts` | `test_macos_find_smoke` が実WKWebViewで無効化対象のCmd+Rと、Niminoが介入しないCmd+Cを同時に確認。clipboard操作はWebView/OSに委譲する設計 |
-| [x] | `event-fullscreen-shortcuts` | `test_macos_find_smoke` が実WKWebViewでF11を抑止しないことを確認。全画面化は`Window.setFullscreen`の明示APIに委譲し、JSでOSショートカットを再実装しない |
+| [~] | `event-clipboard-shortcuts` | `test_macos_find_smoke` が実WKWebViewで無効化対象のCmd+Rと、Niminoが介入しないCmd+Cを同時に確認。PakeのWindows/Linux editable・paste fallback ケースは未移植 |
+| [~] | `event-fullscreen-shortcuts` | `test_macos_find_smoke` が実WKWebViewでF11を抑止しないことを確認。PakeのLinux F11 native-fullscreen とWindows/Linux shortcut registration ケースは未移植 |
 | [~] | `event-link-guard` | auth/popup/navigation は `test_app` と macOS smoke。Badge/Notification DOM 契約は未移植 |
 | [x] | `file-finding` | `test_reference_foundation.nim` がglob、`.app`、directory除外、primary/fallback discoveryを確認 |
 | [x] | `find-shortcuts` | `packages/core/tests/test_macos_find_smoke.nim` |
