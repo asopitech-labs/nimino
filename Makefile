@@ -1,18 +1,40 @@
 .DEFAULT_GOAL := help
 
-COMPOSE ?= docker compose
+DETECTED_CONTAINER_RUNTIME := $(shell \
+	if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then \
+		printf docker; \
+	elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then \
+		printf podman; \
+	elif command -v docker >/dev/null 2>&1; then \
+		printf docker; \
+	elif command -v podman >/dev/null 2>&1; then \
+		printf podman; \
+	fi)
+CONTAINER_RUNTIME ?= $(DETECTED_CONTAINER_RUNTIME)
+COMPOSE ?= $(if $(strip $(CONTAINER_RUNTIME)),$(CONTAINER_RUNTIME) compose)
 SERVICE ?= nimino-dev
 WSL_SMOKE_TIMEOUT ?= 120
 WSL_INTERACTIVE_TIMEOUT ?= 300
 WSL_SITE_TIMEOUT ?= 180
 
-.PHONY: help setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-sites-test pack-site-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-popular-catalog-generation-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-macos-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke linux-tray-smoke macos-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help container-runtime-check setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-sites-test pack-site-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-popular-catalog-generation-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-macos-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke linux-tray-smoke macos-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
 	@awk 'BEGIN {FS = ":.*##"}; /^[a-zA-Z][a-zA-Z0-9_-]*:.*##/ {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-setup: verify-env ## DockerのNim/GTK/WebKitGTKとWindows WebView2 Runtimeを自動準備する
+container-runtime-check: ## Docker ComposeまたはPodman Composeの利用可否を検証する
+	@if [ -z "$(strip $(COMPOSE))" ]; then \
+		echo "ERROR: neither Docker nor Podman was found; install one with Compose support or set COMPOSE explicitly." >&2; \
+		exit 1; \
+	fi
+	@$(COMPOSE) version >/dev/null 2>&1 || { \
+		echo "ERROR: '$(COMPOSE)' is not usable; install or enable its Compose provider, or set COMPOSE explicitly." >&2; \
+		exit 1; \
+	}
+	@echo "Using $(COMPOSE)"
+
+setup: verify-env ## コンテナ内のNim/GTK/WebKitGTKとWindows WebView2 Runtimeを自動準備する
 	@command -v powershell.exe >/dev/null 2>&1 || { \
 		echo "ERROR: Windows Interop (powershell.exe) is required; WebView2 Runtime cannot be installed automatically." >&2; \
 		exit 1; \
@@ -25,14 +47,15 @@ setup: verify-env ## DockerのNim/GTK/WebKitGTKとWindows WebView2 Runtimeを自
 
 setup-contract-test: ## GTK/WebKitGTK/WebView2自動準備の契約を検証する
 	bash tools/ci/test_setup_contract.sh
+	bash tools/ci/test_container_runtime_selection.sh
 
-host-linux: image ## Docker内で汎用Linux Nimino hostをビルドする
+host-linux: image ## コンテナ内で汎用Linux Nimino hostをビルドする
 	$(COMPOSE) run --rm $(SERVICE) nimble buildNiminoHost
 
-host-windows: image ## Docker内で汎用Windows Nimino hostをクロスビルドする
+host-windows: image ## コンテナ内で汎用Windows Nimino hostをクロスビルドする
 	$(COMPOSE) run --rm $(SERVICE) nimble buildNiminoHostWindows
 
-image: ## Nim/GTK/WebKitGTK開発イメージをビルドする
+image: container-runtime-check ## Nim/GTK/WebKitGTK開発イメージをビルドする
 
 	$(COMPOSE) build $(SERVICE)
 
@@ -52,7 +75,7 @@ webkit-version: image ## コンテナ内のWebKitGTK 6.0開発環境を確認す
 
 	$(COMPOSE) run --rm $(SERVICE) pkg-config --modversion webkitgtk-6.0
 
-verify-env: nim-version nimble-version gtk-version webkit-version ## M0のDocker開発環境を検証する
+verify-env: nim-version nimble-version gtk-version webkit-version ## M0のコンテナ開発環境を検証する
 
 verify-webview2-header: image ## WebView2 permission/download APIの公式ヘッダーを検証する
 
@@ -244,7 +267,7 @@ wsl-core-rpc-url-smoke: image ## WSL core URLのdocument-start RPCをWindows Web
 
 check: test ## testの別名
 
-clean: ## Compose資源とプロジェクト内の一時クロスビルド成果物を削除する
+clean: container-runtime-check ## Compose資源とプロジェクト内の一時クロスビルド成果物を削除する
 
 	taskkill.exe /IM nimino-wsl-host.exe /T /F >/dev/null 2>&1 || true
 	$(COMPOSE) down --remove-orphans

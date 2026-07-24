@@ -69,7 +69,7 @@ To rebuild a site bundle during development, pass its URL directly to `nimino pa
 
 The normal beginner path is the [online build workflow](.github/workflows/nimino-pack-online.yml). Download its artifact, then install the package for your operating system:
 
-When building locally, run these commands inside the Docker development environment (for example with `make shell`) and package a generated bundle first:
+When building locally, run these commands inside the container development environment (for example with `make shell`) and package a generated bundle first:
 
 ```bash
 nimino package-linux dist/youtube --format deb --out dist/packages \
@@ -109,9 +109,11 @@ chmod +x ./dist/packages/*.AppImage
 
 To remove an installation, use the platform package manager (`apt remove`/`dnf remove`), the Windows uninstaller shown in **Installed apps**, or delete the AppImage. Profile data is separate from the package and may remain under the platform's Nimino application-data directory.
 
-### For developers: run from Docker
+### For developers: run from Docker or Podman
 
-Nim, Nimble, C compilers, GTK/WebKitGTK headers, and packaging tools are provided by Docker. Do not install the development toolchain on the host.
+Nim, Nimble, C compilers, GTK/WebKitGTK headers, and packaging tools are provided by the development container. Do not install the development toolchain on the host.
+
+Install either Docker with Docker Compose or Podman with a working Compose provider. Make targets prefer a working `docker compose`, fall back to `podman compose`, and preserve the installed runtime in the error when its Compose provider is unavailable. Set `COMPOSE` explicitly to override the detected command. Container-backed targets fail before building when the selected Compose command is unavailable.
 
 ```bash
 make setup       # verify the container and prepare Windows WebView2 when WSL Interop is available
@@ -200,7 +202,7 @@ See [`docs/api/nimino-pack.md`](docs/api/nimino-pack.md) for manifests, navigati
 | Target | Native stack | Status |
 | --- | --- | --- |
 | Windows | Win32 + WebView2 Evergreen Runtime | Supported development target; GUI smoke requires a logged-in Windows desktop. |
-| Native Linux | GTK 4 + WebKitGTK 6.0 | Supported development target; tested in the Docker GUI harness. |
+| Native Linux | GTK 4 + WebKitGTK 6.0 | Supported development target; tested in the container GUI harness. |
 | WSL 2 | WSL Nim client + Windows host + WebView2 | Supported development target; requires functional Windows Interop. |
 | macOS | Cocoa + WKWebView | Native backend and `.app`/`.dmg` generation implemented; use `make macos-smoke` and `nimble testPackMacos`. Signing/notarization require explicit Apple credentials. Local unsigned/Ad-hoc builds can validate UI and Deep Link, but macOS notification testing requires an Apple-issued development identity; see [`docs/api/nimino-pack.md`](docs/api/nimino-pack.md). |
 
@@ -208,7 +210,7 @@ Nimino does not use `webview/webview`, Photino.Native, Tauri, Electron, WRY, TAO
 
 ## WSL and Windows setup
 
-WSL GUI tests require WSL 2, Windows Interop (`powershell.exe`, `cmd.exe`, and `$WSL_INTEROP`), Docker Compose, a logged-in Windows desktop, and WebView2 Evergreen Runtime. `make setup` performs the Docker checks and invokes the WebView2 installer through PowerShell with UAC elevation when required.
+WSL GUI tests require WSL 2, Windows Interop (`powershell.exe`, `cmd.exe`, and `$WSL_INTEROP`), Docker Compose or Podman Compose, a logged-in Windows desktop, and WebView2 Evergreen Runtime. `make setup` verifies the selected container environment and invokes the WebView2 installer through PowerShell with UAC elevation when required.
 
 ```bash
 make setup
