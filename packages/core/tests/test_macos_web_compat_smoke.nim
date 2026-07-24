@@ -12,6 +12,7 @@ var appPtr: pointer
 var completed: bool
 var badgeCalls: seq[string]
 var notificationCalls: seq[string]
+var popupUrls: seq[string]
 var completionPayload = ""
 
 proc finish() {.gcsafe.} =
@@ -43,6 +44,12 @@ doAssert window.rpc.registerNotification("reference.webCompatComplete", proc(par
   completed = true
   finish()
 )
+doAssert window.onNewWindow(proc(request: NewWindowRequest): bool =
+  popupUrls.add(request.url)
+  ## The smoke owns no popup UI; consuming the request is sufficient to prove
+  ## that named Apple and blank authentication popups stay on the native path.
+  true
+).isOk
 
 doAssert window.loadHtml("""
 <!doctype html><title>Nimino Web Compatibility Smoke</title>
@@ -73,6 +80,9 @@ doAssert window.loadHtml("""
     fragmentLink.addEventListener('click', (event) => event.preventDefault());
     document.body.appendChild(fragmentLink);
     fragmentLink.click();
+    window.open('about:blank', 'login', 'width=320,height=180');
+    window.open('https://appleid.apple.com/auth/authorize', 'AppleAuthentication',
+      'width=320,height=180');
     await new Promise((resolve) => setTimeout(resolve, 0));
     notice.close();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -114,4 +124,6 @@ doAssert notificationCalls.len == 1
 doAssert notificationCalls[0].contains("\"title\":\"Hello\"")
 doAssert notificationCalls[0].contains("\"body\":\"World\"")
 doAssert notificationCalls[0].contains("\"icon\":\"https://example.com/icon.png\"")
+doAssert "about:blank" in popupUrls
+doAssert "https://appleid.apple.com/auth/authorize" in popupUrls
 echo "macOS web compatibility smoke passed"
