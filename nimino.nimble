@@ -18,6 +18,9 @@ task test, "Run Nimino unit tests in ARC mode":
     exec "nimble testPackIco"
     exec "nimble testWindowsIconReapplyContract"
     exec "nimble testWebView2ProfileFfi"
+    exec "nimble testWebShortcutContract"
+  if getEnv("NIMINO_TEST_REFERENCE_LINUX") == "1":
+    exec "nimble testWebShortcutContract"
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-core-nimcache --out:/tmp/nimino-test-core-rpc --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_rpc.nim"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-app-nimcache --out:/tmp/nimino-test-core-app --path:packages/core --path:packages/native --path:packages/wsl packages/core/tests/test_app.nim"
   exec "NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1 /tmp/nimino-test-core-app"
@@ -58,6 +61,7 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
     exec "nimble testPackMacos"
     exec "nimble testPackMacosRelease"
   if getEnv("NIMINO_TEST_REFERENCE_LINUX") == "1":
+    exec "nimble testWebShortcutContract"
     exec "nimble testLinuxSmoke"
     exec "nimble testLinuxCustomProtocolSmoke"
     exec "nimble testLinuxTraySmoke"
@@ -66,6 +70,7 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
     exec "nimble testCoreLinuxRpcAsyncSmoke"
     exec "nimble testPackLinux"
   if getEnv("NIMINO_TEST_REFERENCE_WINDOWS") == "1":
+    exec "nimble testWebShortcutContract"
     exec "nimble testWebView2ProfileFfi"
     exec "nimble testWindowsCross"
     exec "nimble testWindowsProfileFfiCross"
@@ -90,6 +95,11 @@ task testCoreMacosFindSmoke, "Run the macOS WKWebView find-in-page injection smo
 task testCoreMacosWebCompatibilitySmoke, "Run the macOS Pake Web API compatibility smoke test":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-macos-web-compat-nimcache --out:/tmp/nimino-core-macos-web-compat --path:packages/core --path:packages/native --path:packages/wsl --path:tools/hosts packages/core/tests/test_macos_web_compat_smoke.nim"
   exec "perl -e 'alarm 45; exec @ARGV' /tmp/nimino-core-macos-web-compat"
+
+task testWebShortcutContract, "Run Pake clipboard and F11 document-start unit tests":
+  ## The test is intentionally opt-in: its browser model represents Windows
+  ## and Linux only, and must not be reported as a macOS runtime test.
+  exec "node tools/hosts/tests/test_web_shortcuts.js"
 
 task testPackMacos, "Build and inspect a macOS app bundle and DMG":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-macos-cli-nimcache --out:/tmp/nimino-pack-macos-cli --path:packages/pack tools/cli/nimino.nim"

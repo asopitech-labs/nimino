@@ -183,6 +183,9 @@ proc main() =
       forceInternalNavigation = forceInternalNavigation,
       internalUrlRegex = internalUrlRegex,
       appUrl = appUrl))
+  when defined(windows) or defined(linux):
+    injectionJavaScript.add(nonMacWebShortcutScripts(
+      disabledWebShortcuts = disabledWebShortcuts))
   let minWidth = if windowNode.hasKey("minWidth") and windowNode["minWidth"].kind == JInt:
       windowNode["minWidth"].getInt() else: 0
   let minHeight = if windowNode.hasKey("minHeight") and windowNode["minHeight"].kind == JInt:
@@ -513,6 +516,21 @@ proc main() =
       else: rpcFailure(rpcError(handlerFailed, updated.failure.detail)))
   if not badgeRpc:
     fail("unable to register app.setDockBadge RPC")
+  when defined(windows) or defined(linux):
+    let fullscreenRpc = window.rpc.registerSync("app.toggleFullscreen",
+      proc(params: JsonNode): RpcResult =
+        if params.kind != JObject:
+          return rpcFailure(rpcError(invalidRequest,
+            "fullscreen parameters must be an object"))
+        currentFullscreen = not currentFullscreen
+        let updated = window.setFullscreen(currentFullscreen)
+        if updated.isOk:
+          rpcSuccess(%*{"ok": true, "fullscreen": currentFullscreen})
+        else:
+          currentFullscreen = not currentFullscreen
+          rpcFailure(rpcError(handlerFailed, updated.failure.detail)))
+    if not fullscreenRpc:
+      fail("unable to register app.toggleFullscreen RPC")
   if windowNode.boolean("enableDragDrop", false):
     let fileDropConfigured = window.onFileDrop(proc(paths: seq[string]) =
       var encoded = newJArray()
