@@ -1,7 +1,7 @@
 ## Generic Nimino host used by packaged bundles and online builds.
 ## It intentionally depends on nimino-core only; packaging remains in nimino-pack.
 
-import std/[json, os, re, sequtils, strutils, uri]
+import std/[json, os, re, sequtils, strutils, tables, uri]
 
 import nimino_core
 import ./[policy, web_compat]
@@ -419,6 +419,60 @@ proc main() =
       true)
   if not popupConfigured.isOk:
     fail(popupConfigured.failure.detail)
+  when defined(macosx):
+    ## WKWebView does not return a child `WKWebView` to JavaScript when the
+    ## host creates an application-owned NSWindow. Keep a narrowly scoped
+    ## WindowProxy bridge for Pake-compatible Apple/blank authentication
+    ## popups; every eventual redirect still goes through `Window.loadUrl`.
+    var popupSequence = 0
+    var managedPopups = initTable[string, Window]()
+    let openPopupRpc = window.rpc.registerSync("app.openPopup",
+      proc(params: JsonNode): RpcResult =
+        if params.kind != JObject or not params.hasKey("url") or
+            params["url"].kind != JString:
+          return rpcFailure(rpcError(invalidRequest, "popup url is required"))
+        let target = params["url"].getStr()
+        if target.toLowerAscii() != "about:blank" and not isAuthenticationNavigation(target):
+          return rpcFailure(rpcError(invalidRequest, "popup URL is not an authentication target"))
+        let popup = window.openPopup(NewWindowRequest(url: target, focused: true),
+          title = appName, profile = profile)
+        if not popup.isOk:
+          return rpcFailure(rpcError(handlerFailed, popup.failure.detail))
+        inc popupSequence
+        let popupId = "nimino-popup-" & $popupSequence
+        managedPopups[popupId] = popup.value
+        rpcSuccess(%*{"id": popupId})
+    )
+    if not openPopupRpc:
+      fail("unable to register app.openPopup RPC")
+    let navigatePopupRpc = window.rpc.registerSync("app.navigatePopup",
+      proc(params: JsonNode): RpcResult =
+        if params.kind != JObject or not params.hasKey("id") or not params.hasKey("url") or
+            params["id"].kind != JString or params["url"].kind != JString:
+          return rpcFailure(rpcError(invalidRequest, "popup id and url are required"))
+        let popupId = params["id"].getStr()
+        if not managedPopups.hasKey(popupId):
+          return rpcFailure(rpcError(invalidRequest, "popup is no longer available"))
+        let loaded = managedPopups[popupId].loadUrl(params["url"].getStr())
+        if loaded.isOk: rpcSuccess(%*{"ok": true})
+        else: rpcFailure(rpcError(handlerFailed, loaded.failure.detail))
+    )
+    if not navigatePopupRpc:
+      fail("unable to register app.navigatePopup RPC")
+    let closePopupRpc = window.rpc.registerSync("app.closePopup",
+      proc(params: JsonNode): RpcResult =
+        if params.kind != JObject or not params.hasKey("id") or params["id"].kind != JString:
+          return rpcFailure(rpcError(invalidRequest, "popup id is required"))
+        let popupId = params["id"].getStr()
+        if not managedPopups.hasKey(popupId):
+          return rpcSuccess(%*{"ok": true})
+        let closed = managedPopups[popupId].close()
+        managedPopups.del(popupId)
+        if closed.isOk: rpcSuccess(%*{"ok": true})
+        else: rpcFailure(rpcError(handlerFailed, closed.failure.detail))
+    )
+    if not closePopupRpc:
+      fail("unable to register app.closePopup RPC")
   ## Pake accepts browser downloads by default.  Core deliberately denies an
   ## unhandled request, so the generated host must install an explicit policy
   ## instead of relying on a native backend default.

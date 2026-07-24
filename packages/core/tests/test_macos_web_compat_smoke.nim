@@ -3,7 +3,7 @@
 ## observes their explicit window-scoped RPC requests instead of assuming a
 ## notification was displayed by the operating system.
 
-import std/[json, strutils]
+import std/[json, strutils, tables]
 
 import nimino_core
 import web_compat
@@ -13,6 +13,8 @@ var completed: bool
 var badgeCalls: seq[string]
 var notificationCalls: seq[string]
 var popupUrls: seq[string]
+var popupSequence: int
+var managedPopups = initTable[string, Window]()
 var completionPayload = ""
 
 proc finish() {.gcsafe.} =
@@ -27,6 +29,7 @@ let app = created.value
 appPtr = cast[pointer](app)
 let windowCreated = app.newWindow(CoreWindowOptions(
   title: "Nimino macOS Web Compatibility Smoke", width: 480, height: 280,
+  multiWindow: true,
   injectionJavaScript: macosWebCompatibilityScripts()))
 doAssert windowCreated.isOk, windowCreated.failure.detail
 let window = windowCreated.value
@@ -44,12 +47,39 @@ doAssert window.rpc.registerNotification("reference.webCompatComplete", proc(par
   completed = true
   finish()
 )
-doAssert window.onNewWindow(proc(request: NewWindowRequest): bool =
-  popupUrls.add(request.url)
-  ## The smoke owns no popup UI; consuming the request is sufficient to prove
-  ## that named Apple and blank authentication popups stay on the native path.
-  true
-).isOk
+doAssert window.rpc.registerSync("app.openPopup", proc(params: JsonNode): RpcResult =
+  if params.kind != JObject or not params.hasKey("url") or params["url"].kind != JString:
+    return rpcFailure(rpcError(invalidRequest, "popup url is required"))
+  let target = params["url"].getStr()
+  popupUrls.add(target)
+  let popup = window.openPopup(NewWindowRequest(url: target, focused: true), profile = "popup")
+  if not popup.isOk:
+    return rpcFailure(rpcError(handlerFailed, popup.failure.detail))
+  inc popupSequence
+  let popupId = "popup-" & $popupSequence
+  managedPopups[popupId] = popup.value
+  rpcSuccess(%*{"id": popupId})
+)
+doAssert window.rpc.registerSync("app.navigatePopup", proc(params: JsonNode): RpcResult =
+  if params.kind != JObject or not params.hasKey("id") or not params.hasKey("url") or
+      params["id"].kind != JString or params["url"].kind != JString or
+      not managedPopups.hasKey(params["id"].getStr()):
+    return rpcFailure(rpcError(invalidRequest, "popup id and url are required"))
+  let target = params["url"].getStr()
+  popupUrls.add(target)
+  let loaded = managedPopups[params["id"].getStr()].loadUrl(target)
+  if loaded.isOk: rpcSuccess(%*{"ok": true})
+  else: rpcFailure(rpcError(handlerFailed, loaded.failure.detail))
+)
+doAssert window.rpc.registerSync("app.closePopup", proc(params: JsonNode): RpcResult =
+  if params.kind != JObject or not params.hasKey("id") or params["id"].kind != JString:
+    return rpcFailure(rpcError(invalidRequest, "popup id is required"))
+  let popupId = params["id"].getStr()
+  if managedPopups.hasKey(popupId):
+    discard managedPopups[popupId].close()
+    managedPopups.del(popupId)
+  rpcSuccess(%*{"ok": true})
+)
 
 doAssert window.loadHtml("""
 <!doctype html><title>Nimino Web Compatibility Smoke</title>
@@ -80,10 +110,11 @@ doAssert window.loadHtml("""
     fragmentLink.addEventListener('click', (event) => event.preventDefault());
     document.body.appendChild(fragmentLink);
     fragmentLink.click();
-    window.open('about:blank', 'login', 'width=320,height=180');
-    window.open('https://appleid.apple.com/auth/authorize', 'AppleAuthentication',
+    const blankPopup = window.open('about:blank', 'login', 'width=320,height=180');
+    blankPopup.location.href = 'https://appleid.apple.com/auth/authorize';
+    const applePopup = window.open('https://appleid.apple.com/auth/authorize', 'AppleAuthentication',
       'width=320,height=180');
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 30));
     notice.close();
     await new Promise((resolve) => setTimeout(resolve, 0));
     window.nimino.notify('reference.webCompatComplete', {
@@ -94,6 +125,7 @@ doAssert window.loadHtml("""
       internalBlankRetargeted: internal.target === '_self',
       javascriptBypassed: javascriptLink.target === '_blank',
       fragmentBypassed: fragmentLink.target === '_blank',
+      popupProxy: blankPopup && applePopup && blankPopup.closed === false && applePopup.closed === false,
       title: notice.title,
       body: notice.body
     });
@@ -111,6 +143,7 @@ doAssert completionPayload.contains("\"notificationApi\":true")
 doAssert completionPayload.contains("\"internalBlankRetargeted\":true")
 doAssert completionPayload.contains("\"javascriptBypassed\":true")
 doAssert completionPayload.contains("\"fragmentBypassed\":true")
+doAssert completionPayload.contains("\"popupProxy\":true")
 doAssert completionPayload.contains("\"title\":\"Hello\"")
 doAssert completionPayload.contains("\"body\":\"World\"")
 doAssert badgeCalls == @[
@@ -124,6 +157,9 @@ doAssert notificationCalls.len == 1
 doAssert notificationCalls[0].contains("\"title\":\"Hello\"")
 doAssert notificationCalls[0].contains("\"body\":\"World\"")
 doAssert notificationCalls[0].contains("\"icon\":\"https://example.com/icon.png\"")
-doAssert "about:blank" in popupUrls
-doAssert "https://appleid.apple.com/auth/authorize" in popupUrls
+doAssert popupUrls == @[
+  "about:blank",
+  "https://appleid.apple.com/auth/authorize",
+  "https://appleid.apple.com/auth/authorize"
+]
 echo "macOS web compatibility smoke passed"

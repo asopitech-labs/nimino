@@ -55,6 +55,7 @@ task testReferenceParity, "Run common reference-parity tests and selected OS sui
   exec "nimble testPackManifest"
   exec "nimble testPackCli"
   if getEnv("NIMINO_TEST_REFERENCE_MACOS") == "1":
+    exec "nimble testMacosLinkGuardContract"
     exec "nimble testMacosSmoke"
     exec "nimble testCoreMacosFindSmoke"
     exec "nimble testCoreMacosWebCompatibilitySmoke"
@@ -95,6 +96,9 @@ task testCoreMacosFindSmoke, "Run the macOS WKWebView find-in-page injection smo
 task testCoreMacosWebCompatibilitySmoke, "Run the macOS Pake Web API compatibility smoke test":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-core-macos-web-compat-nimcache --out:/tmp/nimino-core-macos-web-compat --path:packages/core --path:packages/native --path:packages/wsl --path:tools/hosts packages/core/tests/test_macos_web_compat_smoke.nim"
   exec "perl -e 'alarm 45; exec @ARGV' /tmp/nimino-core-macos-web-compat"
+
+task testMacosLinkGuardContract, "Run macOS Pake link-guard WindowProxy unit tests":
+  exec "node tools/hosts/tests/test_macos_link_guard.js"
 
 task testWebShortcutContract, "Run Pake clipboard and F11 document-start unit tests":
   ## The test is intentionally opt-in: its browser model represents Windows
