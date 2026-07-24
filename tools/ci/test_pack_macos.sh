@@ -3,6 +3,7 @@ set -eu
 
 cli=${1:?usage: test_pack_macos.sh <nimino-cli> <nimino-host>}
 host=${2:?usage: test_pack_macos.sh <nimino-cli> <nimino-host>}
+host_name=$(basename "$host")
 root=$(mktemp -d /tmp/nimino-macos-pack.XXXXXX)
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/site" "$root/out"
@@ -92,6 +93,31 @@ if "$cli" pack "$root/site" --name 'Nimino missing tray icon' --id com.nimino.mi
   echo 'nimino pack unexpectedly accepted a missing system tray icon' >&2
   exit 1
 fi
+mkdir "$root/tray-icon-directory"
+if "$cli" pack "$root/site" --name 'Nimino tray icon directory' --id com.nimino.tray-icon-directory \
+  --system-tray-icon "$root/tray-icon-directory" --out "$root/tray-icon-directory-out" --host "$host" >/dev/null 2>&1; then
+  echo 'nimino pack unexpectedly accepted a directory as a system tray icon' >&2
+  exit 1
+fi
+test ! -e "$root/tray-icon-directory-out"
+## A tray without an explicit custom icon uses the native standard status-item
+## presentation. This must remain packageable; there is no hidden asset path.
+"$cli" pack "$root/site" --name 'Nimino default tray' --id com.nimino.default-tray \
+  --show-system-tray --out "$root/default-tray-bundle" --host "$host" >/dev/null
+grep -F '"showSystemTray": true' "$root/default-tray-bundle/nimino-manifest.json"
+default_tray_app=$($cli package-macos "$root/default-tray-bundle" --format app --out "$root/out")
+test -x "$default_tray_app/Contents/MacOS/com.nimino.default-tray"
+## Fail unsupported custom resources before distribution. Pake falls back to a
+## default at build time; Nimino's stricter contract rejects a bundle that
+## could not install the requested icon on macOS.
+printf '<svg xmlns="http://www.w3.org/2000/svg"/>' > "$root/tray.svg"
+"$cli" pack "$root/site" --name 'Nimino SVG tray icon' --id com.nimino.svg-tray-icon \
+  --show-system-tray --system-tray-icon "$root/tray.svg" \
+  --out "$root/svg-tray-bundle" --host "$host" >/dev/null
+if "$cli" package-macos "$root/svg-tray-bundle" --format app --out "$root/out" >/dev/null 2>&1; then
+  echo 'nimino package-macos unexpectedly accepted an SVG system tray icon' >&2
+  exit 1
+fi
 ## Pake's macOS default must not override an explicit opt-out.
 "$cli" pack "$root/site" --name 'Nimino macOS Explicit Close' --id com.nimino.macos.explicit-close \
   --hide-on-close false --out "$root/explicit-close" --host "$host" --json >/dev/null
@@ -117,6 +143,24 @@ grep -Fx 'nested macOS package resource' "$app/Contents/Resources/assets/fixture
 default_dmg=$($cli package-macos "$root/bundle" --out "$root/out")
 test -s "$default_dmg"
 case "$default_dmg" in *.dmg) ;; *) exit 1 ;; esac
+## Pake's BaseBuilder tests protect the builder/toolchain boundary. Nimino has
+## no npm/Cargo wrapper: its corresponding contract is a complete staged host,
+## an admissible architecture and a writable artifact destination.
+cp -R "$root/bundle" "$root/missing-host-bundle"
+rm "$root/missing-host-bundle/$host_name"
+if "$cli" package-macos "$root/missing-host-bundle" --out "$root/missing-host-out" >/dev/null 2>&1; then
+  echo 'nimino package-macos unexpectedly accepted a bundle without its host' >&2
+  exit 1
+fi
+printf 'not a directory' > "$root/not-a-directory"
+if "$cli" package-macos "$root/bundle" --out "$root/not-a-directory" >/dev/null 2>&1; then
+  echo 'nimino package-macos unexpectedly accepted a file as its output directory' >&2
+  exit 1
+fi
+if "$cli" package-macos "$root/bundle" --arch unsupported --out "$root/unsupported-arch-out" >/dev/null 2>&1; then
+  echo 'nimino package-macos unexpectedly accepted an unsupported architecture' >&2
+  exit 1
+fi
 if [ "${NIMINO_TEST_MACOS_ADHOC:-0}" = 1 ] || [ "${NIMINO_TEST_MACOS_NOTIFICATION:-0}" = 1 ]; then
   codesign --deep --force --options runtime --sign - "$app"
   codesign --verify --deep --strict --verbose=2 "$app"

@@ -10,7 +10,7 @@ Linux/Windows を実行したことにしない。
 | 状態 | Pake suite | Nimino の対応先・実行条件 |
 |---|---|---|
 | [x] | `auth-sso-patterns` | `packages/core/tests/test_app.nim` |
-| [~] | `base-builder` | host/toolchain artifact 契約の失敗境界は package smoke で確認済み。環境選択の独立ケースを追加中 |
+| [x] | `base-builder` | `test_pack_macos.sh` がhost欠落・不正output・不正arch拒否と実DMG toolchain生成を確認。Pake固有のnpm/Cargo環境選択はNiminoには存在しない |
 | [ ] | `builders` | Linux target parser。`NIMINO_TEST_REFERENCE_LINUX=1` |
 | [x] | `cli-options` | `tools/ci/test_pack_macos.sh`, `tools/ci/test_pack_cli.sh` |
 | [x] | `combine` | `packages/core/tests/test_macos_find_smoke.nim`, `test_pack_cli.sh` |
@@ -38,7 +38,7 @@ Linux/Windows を実行したことにしない。
 | [x] | `no-bundle` | `tools/ci/test_pack_cli.sh` |
 | [x] | `options-name` | `packages/pack/tests/test_manifest.nim` |
 | [x] | `safe-domains` | `test_manifest.nim`, `test_app.nim`, `test_pack_cli.sh` |
-| [~] | `system-tray-icon` | macOS icon copy/missing path は `test_pack_macos.sh`。fallback/copy-failure ケースは未移植 |
+| [x] | `system-tray-icon` | `test_pack_macos.sh` がdefault tray、ICNS copy、欠落/dir copy失敗、SVG拒否を確認。NiminoはPakeのwarn+fallbackより厳格に配布前失敗とする |
 | [x] | `url` | `packages/pack/tests/test_manifest.nim`, `test_pack_cli.sh` |
 | [x] | `validate-url-input` | `tools/ci/test_pack_cli.sh` |
 | [ ] | `window-icon-reapply` | Windows taskbar icon lifecycle。`NIMINO_TEST_REFERENCE_WINDOWS=1` |

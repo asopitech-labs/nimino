@@ -196,6 +196,13 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
       if traySource.len == 0:
         return failure[string](ioFailure, "macOS system tray icon is missing from the package bundle")
       let trayName = extractFilename(traySource)
+      let trayExtension = splitFile(trayName).ext.toLowerAscii()
+      ## NSStatusItem accepts native PNG/ICNS resources reliably. Reject other
+      ## staged files here instead of producing an application that fails only
+      ## after its tray has been installed at runtime.
+      if trayExtension notin [".icns", ".png"]:
+        return failure[string](unsupportedFeature,
+          "macOS system tray icons must use .icns or .png")
       copyFile(traySource, resources / trayName)
       if packagedManifest.hasKey("runtime") and packagedManifest["runtime"].kind == JObject:
         packagedManifest["runtime"]["systemTrayIcon"] = %trayName

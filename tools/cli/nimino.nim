@@ -1037,6 +1037,12 @@ else:
     if not fileExists(injected):
       stderr.writeLine("nimino pack: injected file does not exist: " & injected)
       quit(1)
+  ## Validate the tray source before creating the output directory. This keeps
+  ## a rejected directory/missing-path input from leaving a partial bundle.
+  if sourceManifest.runtime.systemTrayIcon.len > 0 and
+      not fileExists(sourceManifest.runtime.systemTrayIcon):
+    stderr.writeLine("nimino pack: system tray icon does not exist")
+    quit(1)
   if localSourcePath.len > 0:
     let sourceAbsolute = absolutePath(localSourcePath).normalizedPath()
     let stageRoot = if dirExists(sourceAbsolute): sourceAbsolute
