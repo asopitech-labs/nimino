@@ -24,6 +24,24 @@ if "$cli" pack https://example.com --name 'Invalid zoom' --id com.nimino.invalid
   exit 1
 fi
 test ! -e "$root/invalid-zoom"
+if "$cli" pack https://example.com --name 'Infinite zoom' --id com.nimino.infinite-zoom \
+  --zoom Infinity --out "$root/infinite-zoom" --host "$host" >/dev/null 2>&1; then
+  echo 'nimino pack unexpectedly accepted an infinite zoom value' >&2
+  exit 1
+fi
+test ! -e "$root/infinite-zoom"
+if "$cli" pack https://example.com --name 'Fractional zoom' --id com.nimino.fractional-zoom \
+  --zoom 99.5 --out "$root/fractional-zoom" --host "$host" >/dev/null 2>&1; then
+  echo 'nimino pack unexpectedly accepted a fractional zoom value' >&2
+  exit 1
+fi
+test ! -e "$root/fractional-zoom"
+if "$cli" pack https://example.com --name 'Negative width' --id com.nimino.negative-width \
+  --width -5 --out "$root/negative-width" --host "$host" >/dev/null 2>&1; then
+  echo 'nimino pack unexpectedly accepted a negative width' >&2
+  exit 1
+fi
+test ! -e "$root/negative-width"
 wait_for_gui_windows() {
   expected=$1
   attempts=0
