@@ -225,6 +225,8 @@ ln -s "$root/local-app" "$root/local-app-link"
   --id app.nimino.demo-local-symlink --out "$root/local-symlink-out" --host "$root/host"
 test -s "$root/local-symlink-out/assets/index.html"
 test -s "$root/local-app/index.html"
+test ! -e "$root/local-app/host"
+test ! -e "$root/local-app/run-nimino.sh"
 ## A symlink inside the asset tree could escape the selected source root.
 ## Fail closed and leave no successfully assembled bundle behind.
 ln -s "$root/no-such-local-asset" "$root/local-app/dangling-asset"

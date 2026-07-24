@@ -30,7 +30,7 @@ Linux/Windows を実行したことにしない。
 | [ ] | `linux-distro` | `NIMINO_TEST_REFERENCE_LINUX=1` |
 | [ ] | `linux-icon` | `NIMINO_TEST_REFERENCE_LINUX=1` |
 | [x] | `local-input` | `test_manifest.nim`, `test_pack_cli.sh` |
-| [~] | `local-staging` | input symlink/dangling asset は `test_pack_cli.sh`。rollback/self-package guard は未移植 |
+| [x] | `local-staging` | `test_pack_cli.sh` がdirectory/symlink入力、元入力の非変更、破損symlink失敗時のbundle非生成、自己包含output拒否を確認 |
 | [x] | `mac-builder-targets` | `tools/ci/test_pack_macos.sh`; `NIMINO_TEST_REFERENCE_MACOS=1` |
 | [~] | `merge-window-options` | macOS defaults/options は manifest + package smoke。Windows/Linux platform mapping は未移植 |
 | [~] | `name` | registrable URL名・local display name は移植済み。Pakeの全 sanitizer utility ケースは未移植 |
