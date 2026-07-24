@@ -176,6 +176,7 @@ proc main() =
   let enableFind = webview.boolean("enableFind", false)
   let forceInternalNavigation = webview.boolean("forceInternalNavigation", false)
   let internalUrlRegex = optionalString(webview, "internalUrlRegex", "")
+  let hideWindowDecorations = windowNode.boolean("hideWindowDecorations", false)
   var injectionJavaScript = root.readInjection(injection.stringArray("javascript"))
   when defined(macosx):
     injectionJavaScript.add(macosWebCompatibilityScripts(
@@ -185,7 +186,8 @@ proc main() =
       appUrl = appUrl))
   when defined(windows) or defined(linux):
     injectionJavaScript.add(nonMacWebShortcutScripts(
-      disabledWebShortcuts = disabledWebShortcuts))
+      disabledWebShortcuts = disabledWebShortcuts,
+      hideWindowDecorations = hideWindowDecorations))
   let minWidth = if windowNode.hasKey("minWidth") and windowNode["minWidth"].kind == JInt:
       windowNode["minWidth"].getInt() else: 0
   let minHeight = if windowNode.hasKey("minHeight") and windowNode["minHeight"].kind == JInt:
@@ -276,7 +278,7 @@ proc main() =
     fullscreen: currentFullscreen,
     maximized: windowNode.boolean("maximized", false),
     alwaysOnTop: initialAlwaysOnTop,
-    hideWindowDecorations: windowNode.boolean("hideWindowDecorations", false),
+    hideWindowDecorations: hideWindowDecorations,
     hideTitleBar: hideTitleBar,
     enableDragDrop: windowNode.boolean("enableDragDrop", false),
     userAgent: userAgent,
@@ -586,6 +588,28 @@ proc main() =
           rpcFailure(rpcError(handlerFailed, updated.failure.detail)))
     if not fullscreenRpc:
       fail("unable to register app.toggleFullscreen RPC")
+    let startDraggingRpc = window.rpc.registerSync("app.startDragging",
+      proc(params: JsonNode): RpcResult =
+        if params.kind != JObject:
+          return rpcFailure(rpcError(invalidRequest,
+            "drag parameters must be an object"))
+        for name in ["x", "y", "timestamp"]:
+          if not params.hasKey(name) or params[name].kind != JInt:
+            return rpcFailure(rpcError(invalidRequest,
+              "drag parameters must include integer " & name))
+        let x = params["x"].getInt()
+        let y = params["y"].getInt()
+        let timestamp = params["timestamp"].getInt()
+        if x < 0 or y < 0 or timestamp < 0:
+          return rpcFailure(rpcError(invalidRequest,
+            "drag parameters must not be negative"))
+        let dragOutcome = window.startDragging(x, y, timestamp)
+        if dragOutcome.isOk:
+          rpcSuccess(%*{"ok": true})
+        else:
+          rpcFailure(rpcError(handlerFailed, dragOutcome.failure.detail)))
+    if not startDraggingRpc:
+      fail("unable to register app.startDragging RPC")
   if windowNode.boolean("enableDragDrop", false):
     let fileDropConfigured = window.onFileDrop(proc(paths: seq[string]) =
       var encoded = newJArray()

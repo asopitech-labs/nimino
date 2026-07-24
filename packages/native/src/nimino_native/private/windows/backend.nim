@@ -1385,6 +1385,18 @@ proc windowsSetPosition(window: NativeWindow; x, y: int): NativeResult =
     return failure(windowsError("window.setPosition", getLastError()))
   success()
 
+proc windowsStartDragging(window: NativeWindow; x, y, timestamp: int): NativeResult =
+  ## WebView2 still owns pointer capture after a page mousedown.  Forwarding a
+  ## caption press hands the gesture back to the standard Win32 window move.
+  discard x
+  discard y
+  discard timestamp
+  if window.isNil or window.platformWindow.isNil:
+    return failure(nativeError(invalidState, "window.startDragging"))
+  discard releaseCapture()
+  discard sendMessageW(window.platformWindow, WmNcLButtonDown, HtCaption, 0)
+  success()
+
 proc windowsInstallFileDrop(window: NativeWindow): NativeResult =
   if window.isNil or window.platformWindow.isNil or window.state != ready:
     return failure(nativeError(invalidState, "window.onFileDrop"))

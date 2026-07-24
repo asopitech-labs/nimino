@@ -396,6 +396,7 @@ proc restoreWindowState*(window: Window): CoreResult
 proc show*(window: Window): CoreResult
 proc hide*(window: Window): CoreResult
 proc setPosition*(window: Window; x, y: int): CoreResult
+proc startDragging*(window: Window; x, y, timestamp: int): CoreResult
 proc setSize*(window: Window; width, height: int): CoreResult
 
 proc mapNativeError(error: native.NativeError): CoreError =
@@ -3108,6 +3109,18 @@ proc setPosition*(window: Window; x, y: int): CoreResult =
     let saved = window.saveWindowState()
     if not saved.isOk: return saved
   positioned
+
+proc startDragging*(window: Window; x, y, timestamp: int): CoreResult =
+  ## The desktop window manager owns the eventual position, so this does not
+  ## modify persisted window coordinates.
+  if window.isNil or window.closed or window.app.isNil:
+    return coreFailure(coreError(invalidState, "window.startDragging"))
+  case window.app.backend
+  of nativeBackend:
+    native.startDragging(window.nativeWindow, x, y, timestamp).fromNative()
+  of wslBackend:
+    coreFailure(coreError(platformUnavailable, "window.startDragging",
+      detail = "WSL has no native drag-region backend"))
 
 proc setTitle*(window: Window; title: string): CoreResult =
   if window.isNil or window.closed or window.app.isNil:

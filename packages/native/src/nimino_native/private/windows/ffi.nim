@@ -205,12 +205,14 @@ const
 
   WmSize* = 0x0005'u32
   WmSetIcon* = 0x0080'u32
+  WmNcLButtonDown* = 0x00A1'u32
   WmCommand* = 0x0111'u32
   WmDestroy* = 0x0002'u32
   WmClose* = 0x0010'u32
   WmNcCreate* = 0x0081'u32
   WmDropFiles* = 0x0233'u32
   WmNcDestroy* = 0x0082'u32
+  HtCaption* = 2'u
   WmTimer* = 0x0113'u32
   WmContextMenu* = 0x007B'u32
   WmUser* = 0x0400'u32
@@ -538,6 +540,8 @@ proc loadImageW*(instance: HInstance; name: WideCString; imageType: uint32;
 proc sendMessageW*(window: HWND; message: uint32; wParam: WParam;
                    lParam: LParam): LResult
   {.stdcall, importc: "SendMessageW", dynlib: "user32.dll".}
+proc releaseCapture*(): WinBool
+  {.stdcall, importc: "ReleaseCapture", dynlib: "user32.dll".}
 proc createPopupMenu*(): HMenu
   {.stdcall, importc: "CreatePopupMenu", dynlib: "user32.dll".}
 proc createMenu*(): HMenu

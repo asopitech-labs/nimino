@@ -1615,6 +1615,19 @@ proc setPosition*(window: NativeWindow; x, y: int): NativeResult =
     failure(nativeError(unsupported, "window.setPosition",
       detail = "the current Linux backend cannot move GTK4 windows"))
 
+proc startDragging*(window: NativeWindow; x, y, timestamp: int): NativeResult =
+  if window.isNil or window.state in {closing, closed}:
+    return failure(nativeError(invalidState, "window.startDragging"))
+  if x < 0 or y < 0 or timestamp < 0:
+    return failure(nativeError(invalidArgument, "window.startDragging",
+      detail = "drag coordinates and timestamp must not be negative"))
+  when defined(linux) and not defined(niminoWsl):
+    window.linuxStartDragging(x, y, timestamp)
+  elif defined(windows):
+    window.windowsStartDragging(x, y, timestamp)
+  else:
+    failure(nativeError(unsupported, "window.startDragging"))
+
 proc setMinimumSize*(window: NativeWindow; width, height: int): NativeResult =
   if window.isNil or window.state in {closing, closed}:
     return failure(nativeError(invalidState, "window.setMinimumSize"))

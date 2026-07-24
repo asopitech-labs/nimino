@@ -23,6 +23,11 @@ type
   GtkWindow* {.incompleteStruct.} = object
   GtkApplicationWindow* {.incompleteStruct.} = object
   GtkFileDialog* {.incompleteStruct.} = object
+  GdkDisplay* {.incompleteStruct.} = object
+  GdkSeat* {.incompleteStruct.} = object
+  GdkDevice* {.incompleteStruct.} = object
+  GdkSurface* {.incompleteStruct.} = object
+  GdkToplevel* {.incompleteStruct.} = object
   GMenu* {.incompleteStruct.} = object
   GMenuModel* {.incompleteStruct.} = object
   GSimpleAction* {.incompleteStruct.} = object
@@ -129,6 +134,17 @@ proc gtk_window_set_decorated*(window: ptr GtkWindow; setting: cint)
 proc gtk_window_set_resizable*(window: ptr GtkWindow; resizable: cint)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_window_set_child*(window: ptr GtkWindow; child: pointer)
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gtk_native_get_surface*(native: pointer): ptr GdkSurface
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gdk_display_get_default*(): ptr GdkDisplay
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gdk_display_get_default_seat*(display: ptr GdkDisplay): ptr GdkSeat
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gdk_seat_get_pointer*(seat: ptr GdkSeat): ptr GdkDevice
+  {.cdecl, importc, dynlib: LibGtk.}
+proc gdk_toplevel_begin_move*(toplevel: ptr GdkToplevel; device: ptr GdkDevice;
+                              button: cint; x, y: cdouble; timestamp: uint32)
   {.cdecl, importc, dynlib: LibGtk.}
 proc gtk_drop_target_new*(typeName: GType; actions: uint32): pointer
   {.cdecl, importc, dynlib: LibGtk.}

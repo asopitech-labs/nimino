@@ -9,10 +9,13 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '..', 'web_shortcuts.js'), 'utf8');
 
 function element(tagName = 'div', values = {}) {
+  const listeners = {};
   return {
     tagName: tagName.toUpperCase(), style: {}, children: [], isContentEditable: false,
     disabled: false, readOnly: false, type: 'text', value: '',
-    addEventListener() {}, dispatchEvent() {}, appendChild(child) { this.children.push(child); return child; },
+    addEventListener(type, handler) { (listeners[type] ||= []).push(handler); },
+    dispatchEvent(event) { for (const handler of listeners[event.type] || []) handler(event); return true; },
+    appendChild(child) { this.children.push(child); return child; },
     ...values,
   };
 }
@@ -28,12 +31,19 @@ function key(key, values = {}) {
 }
 
 function load({ active = element('body'), selection = '', clipboard = 'clipboard text',
-  rejectClipboard = false, disabledWebShortcuts = false } = {}) {
-  const listeners = { keydown: [], keyup: [], paste: [] };
+  rejectClipboard = false, disabledWebShortcuts = false,
+  hideWindowDecorations = false } = {}) {
+  const listeners = { keydown: [], keyup: [], paste: [], DOMContentLoaded: [] };
   const calls = [];
   const invokes = [];
   const reads = [];
   const body = element('body');
+  const elementsById = new Map();
+  body.appendChild = (child) => {
+    body.children.push(child);
+    if (child.id) elementsById.set(child.id, child);
+    return child;
+  };
   const selectionState = { removeAllRanges() {}, addRange() {} };
   const context = {
     console, Date, Promise, setTimeout, clearTimeout,
@@ -47,12 +57,19 @@ function load({ active = element('body'), selection = '', clipboard = 'clipboard
       addEventListener(type, handler) { listeners[type].push(handler); },
       execCommand(command, showUI, value) { calls.push([command, showUI, value]); return true; },
       createRange: () => ({ selectNodeContents() {} }),
+      createElement: (tagName) => element(tagName),
+      getElementById: (id) => elementsById.get(id) || null,
     },
   };
+  // A browser's window and globalThis are the same object. Keep the VM model
+  // equivalent so the document-start source exercises the actual RPC bridge.
+  context.nimino = context.window.nimino;
   context.globalThis = context;
-  vm.runInNewContext(`globalThis.__niminoDisabledWebShortcuts=${disabledWebShortcuts};\n${source}`, context);
+  vm.runInNewContext(`globalThis.__niminoDisabledWebShortcuts=${disabledWebShortcuts};\n` +
+    `globalThis.__niminoHideWindowDecorations=${hideWindowDecorations};\n${source}`, context);
   const fire = (type, event) => listeners[type].forEach((handler) => handler(event));
-  return { context, calls, invokes, reads, fire };
+  fire('DOMContentLoaded', { type: 'DOMContentLoaded' });
+  return { context, calls, invokes, reads, fire, elementsById };
 }
 
 async function flush() { await Promise.resolve(); await Promise.resolve(); }
@@ -152,6 +169,25 @@ test('does not claim synthetic, repeated, Alt+Enter, or disabled F11', async () 
   const disabled = load({ disabledWebShortcuts: true });
   disabled.fire('keydown', key('F11', { ctrlKey: false })); await flush();
   assert.deepEqual(page.invokes, []); assert.deepEqual(disabled.invokes, []);
+});
+
+test('creates the non-macOS drag region only for hidden decorations', async () => {
+  const normal = load();
+  const immersive = load({ hideWindowDecorations: true });
+  assert.equal(normal.elementsById.get('nimino-top-dom'), undefined);
+  const top = immersive.elementsById.get('nimino-top-dom');
+  assert.ok(top);
+
+  let prevented = false;
+  top.dispatchEvent({ type: 'mousedown', buttons: 1, detail: 1, clientX: 12,
+    clientY: 8, timeStamp: 42, preventDefault() { prevented = true; } });
+  top.dispatchEvent({ type: 'dblclick' });
+  await flush();
+  assert.equal(prevented, true);
+  assert.deepEqual(immersive.invokes, [
+    ['app.startDragging', { x: 12, y: 8, timestamp: 42 }],
+    ['app.toggleFullscreen', {}],
+  ]);
 });
 
 (async () => {

@@ -58,6 +58,48 @@
     setTimeout(() => { pasteAsPlainTextPending = false; }, 100);
   };
 
+  const invoke = (method, params) => {
+    if (typeof globalThis.nimino?.invoke !== 'function') return;
+    Promise.resolve(globalThis.nimino.invoke(method, params)).catch(() => {});
+  };
+
+  const dragParameters = (event) => {
+    const touch = event.touches?.[0] || event.changedTouches?.[0];
+    const x = Number(touch?.clientX ?? event.clientX ?? 0);
+    const y = Number(touch?.clientY ?? event.clientY ?? 0);
+    const timestamp = Number(event.timeStamp ?? 0);
+    return {
+      x: Number.isFinite(x) && x >= 0 ? Math.round(x) : 0,
+      y: Number.isFinite(y) && y >= 0 ? Math.round(y) : 0,
+      timestamp: Number.isFinite(timestamp) && timestamp >= 0 ? Math.round(timestamp) : 0,
+    };
+  };
+
+  const installDragRegion = () => {
+    if (!globalThis.__niminoHideWindowDecorations ||
+        document.getElementById?.('nimino-top-dom') || !document.body) return;
+    const top = document.createElement('div');
+    top.id = 'nimino-top-dom';
+    Object.assign(top.style, {
+      position: 'fixed', background: 'transparent', top: '0', left: '0',
+      width: '100%', height: '20px', cursor: 'grab', userSelect: 'none',
+      zIndex: '2147483647',
+    });
+    top.addEventListener('touchstart', (event) => {
+      invoke('app.startDragging', dragParameters(event));
+    });
+    top.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      if (event.buttons === 1 && event.detail !== 2) {
+        invoke('app.startDragging', dragParameters(event));
+      }
+    });
+    top.addEventListener('dblclick', () => invoke('app.toggleFullscreen', {}));
+    document.body.appendChild(top);
+  };
+
+  document.addEventListener('DOMContentLoaded', installDragRegion, { once: true });
+
   document.addEventListener('keydown', (event) => {
     if (event.isTrusted !== true || !event.ctrlKey || event.metaKey ||
         event.altKey || event.shiftKey) return;

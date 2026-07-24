@@ -66,10 +66,13 @@ proc macosWebCompatibilityScripts*(newWindow = false;
   result.add("globalThis.__niminoLinkGuardConfig=" & linkConfig & ";" &
     MacosLinkGuardScript)
 
-proc nonMacWebShortcutScripts*(disabledWebShortcuts = false): seq[string] =
+proc nonMacWebShortcutScripts*(disabledWebShortcuts = false;
+                                hideWindowDecorations = false): seq[string] =
   ## Pake handles Ctrl+C/X/A/V and F11 in the page only on Windows/Linux.
   ## Clipboard fallback deliberately lets a native paste arrive first so rich
   ## formats, images, and files are never replaced by text-only clipboard data.
   result.add("globalThis.__niminoDisabledWebShortcuts=" &
     (if disabledWebShortcuts: "true;" else: "false;") &
+    "globalThis.__niminoHideWindowDecorations=" &
+    (if hideWindowDecorations: "true;" else: "false;") &
     NonMacWebShortcutScript)

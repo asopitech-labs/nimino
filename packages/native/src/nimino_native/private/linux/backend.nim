@@ -977,6 +977,26 @@ proc linuxSetDecorated(window: NativeWindow; enabled: bool): NativeResult =
     if enabled: 1 else: 0)
   success()
 
+proc linuxStartDragging(window: NativeWindow; x, y, timestamp: int): NativeResult =
+  ## GTK4 delegates the move itself to the compositor.  begin_move is its
+  ## titlebar-drag primitive; the WebKit mouse press belongs to the default
+  ## seat pointer for this toplevel.
+  if window.isNil or window.platformWindow.isNil:
+    return failure(nativeError(invalidState, "window.startDragging"))
+  let surface = gtk_native_get_surface(window.platformWindow)
+  let display = gdk_display_get_default()
+  if surface.isNil or display.isNil:
+    return failure(nativeError(invalidState, "window.startDragging",
+      detail = "GTK surface is not realized"))
+  let seat = gdk_display_get_default_seat(display)
+  let pointer = if seat.isNil: nil else: gdk_seat_get_pointer(seat)
+  if pointer.isNil:
+    return failure(nativeError(invalidState, "window.startDragging",
+      detail = "GTK default pointer is unavailable"))
+  gdk_toplevel_begin_move(cast[ptr GdkToplevel](surface), pointer, 1,
+    cdouble(x), cdouble(y), uint32(min(timestamp, int(high(uint32)))))
+  success()
+
 proc linuxLoadUrl(view: NativeWebView) =
   if view.platformView != nil and view.pendingUrl.len > 0:
     let url = view.pendingUrl
