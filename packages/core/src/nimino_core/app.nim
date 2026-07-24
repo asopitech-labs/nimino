@@ -812,8 +812,17 @@ proc injectionDocumentStartSource(window: Window): string =
       "event.stopPropagation(); } }, true); })();")
   if window.enableFind:
     source.add("(() => { if (globalThis.nimino && globalThis.nimino.findPanel) return; " &
-      "const state = { query:'', panel:null, input:null }; " &
-      "const search = (backwards=false) => { if (!state.query || typeof globalThis.find !== 'function') return false; " &
+      "const state = { query:'', panel:null, input:null, matches:[] }; " &
+      "const snapshot = () => ({query:state.query,matchCount:state.matches.length,isOpen:!!(state.panel&&!state.panel.hidden)}); " &
+      "const countMatches = () => { state.matches=[]; if(!state.query||!document.body||!document.createTreeWalker)return; " &
+      "const filter=globalThis.NodeFilter||{SHOW_TEXT:4,FILTER_ACCEPT:1,FILTER_REJECT:2};const query=state.query.toLocaleLowerCase(); " &
+      "const skipped=new Set(['script','style','noscript','input','textarea','select','option']); " &
+      "const walker=document.createTreeWalker(document.body,filter.SHOW_TEXT,{acceptNode:(node)=>{if(!node.nodeValue)return filter.FILTER_REJECT; " &
+      "for(let element=node.parentElement;element;element=element.parentElement){const tag=String(element.tagName||'').toLowerCase(); " &
+      "if(element===state.panel||skipped.has(tag)||element.isContentEditable||element.hidden||element.getAttribute?.('aria-hidden')==='true')return filter.FILTER_REJECT;}return filter.FILTER_ACCEPT;}}); " &
+      "for(let node=walker.nextNode();node&&state.matches.length<1000;node=walker.nextNode()){const text=node.nodeValue.toLocaleLowerCase();let from=0; " &
+      "while(from<=text.length&&state.matches.length<1000){const index=text.indexOf(query,from);if(index<0)break;state.matches.push({node,index});from=index+Math.max(query.length,1);}}}; " &
+      "const search = (backwards=false) => { countMatches(); if (!state.query || typeof globalThis.find !== 'function') return false; " &
       "return globalThis.find(state.query, backwards, false, true, false, false, false); }; " &
       "const ensure = () => { if (state.panel) return; const panel=document.createElement('form'); " &
       "panel.setAttribute('role','search'); panel.setAttribute('aria-label','Find in page'); " &
@@ -824,11 +833,11 @@ proc injectionDocumentStartSource(window: Window): string =
       "const button=(label,backwards) => { const b=document.createElement('button'); b.type='button'; b.textContent=label; " &
       "b.addEventListener('click',()=>search(backwards)); return b; }; const close=document.createElement('button'); " &
       "close.type='button'; close.textContent='×'; close.setAttribute('aria-label','Close find'); " &
-      "close.addEventListener('click',()=>{panel.hidden=true;}); input.addEventListener('input',()=>{state.query=input.value;search(false);}); " &
-      "input.addEventListener('keydown',(event)=>{if(event.key==='Enter'){event.preventDefault();search(event.shiftKey);}else if(event.key==='Escape'){panel.hidden=true;}}); " &
+      "close.addEventListener('click',()=>api.close()); input.addEventListener('input',()=>{state.query=input.value;search(false);}); " &
+      "input.addEventListener('keydown',(event)=>{if(event.key==='Enter'){event.preventDefault();search(event.shiftKey);}else if(event.key==='Escape'){api.close();}}); " &
       "panel.addEventListener('submit',(event)=>{event.preventDefault();search(false);}); panel.append(input,button('‹',true),button('›',false),close); " &
       "(document.body||document.documentElement).appendChild(panel); state.panel=panel;state.input=input; }; " &
-      "const api={open:()=>{ensure();state.panel.hidden=false;state.input.focus();state.input.select();},next:()=>search(false),previous:()=>search(true),close:()=>{if(state.panel)state.panel.hidden=true;}}; " &
+      "const api={open:()=>{ensure();state.panel.hidden=false;state.input.focus();state.input.select();return snapshot();},next:()=>{search(false);return snapshot();},previous:()=>{search(true);return snapshot();},search:(text)=>{state.query=String(text||'');if(state.input)state.input.value=state.query;search(false);return snapshot();},getState:snapshot,close:()=>{state.query='';state.matches=[];if(state.input)state.input.value='';if(state.panel)state.panel.hidden=true;return snapshot();}}; " &
       "globalThis.nimino=globalThis.nimino||{}; globalThis.nimino.find=(text,backwards=false)=>{state.query=String(text||'');if(state.input)state.input.value=state.query;return search(backwards);}; " &
       "globalThis.nimino.findPanel=api; const isMac=/mac/i.test(navigator.platform||navigator.userAgent||''); " &
       "document.addEventListener('keydown',(event)=>{const modifier=isMac?event.metaKey:event.ctrlKey; " &

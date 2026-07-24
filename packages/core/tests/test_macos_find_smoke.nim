@@ -31,6 +31,8 @@ proc onEvaluation(completed: Future[CoreResultOf[string]]) {.gcsafe.} =
   doAssert evaluated.value.contains("\\\"findPanel\\\":true")
   doAssert evaluated.value.contains("\\\"shortcutHandled\\\":true")
   doAssert evaluated.value.contains("\\\"searchWorked\\\":true")
+  doAssert evaluated.value.contains("\\\"matchCount\\\":2")
+  doAssert evaluated.value.contains("\\\"closed\\\":true")
   doAssert evaluated.value.contains("\\\"trailingCommentInjected\\\":true")
   evaluationFinished = true
   finish()
@@ -61,12 +63,17 @@ proc onNavigation(url: string; succeeded: bool) {.gcsafe.} =
   });
   document.dispatchEvent(event);
   const panel = document.querySelector('[role="search"][aria-label="Find in page"]');
+  const findPanel = panel !== null && panel.hidden === false;
   const searchWorked = window.nimino.find('Nimino Find Needle') === true;
+  const state = window.nimino.findPanel.search('Nimino Find Needle');
+  const closed = window.nimino.findPanel.close();
   return JSON.stringify({
     findApi: typeof window.nimino?.find === 'function',
-    findPanel: panel !== null && panel.hidden === false,
+    findPanel,
     shortcutHandled: event.defaultPrevented,
     searchWorked,
+    matchCount: state.matchCount,
+    closed: closed.matchCount === 0 && closed.isOpen === false,
     trailingCommentInjected: window.niminoTrailingCommentInjected === true,
   });
 })()
@@ -112,7 +119,8 @@ windowPtr = cast[pointer](appWindow)
 doAssert appWindow.onNavigationCompleted(onNavigation).isOk
 doAssert appWindow.loadHtml("""
 <!doctype html><title>Nimino Find Smoke</title>
-<main><p>Nimino Find Needle</p><p>Nimino Find Needle</p></main>
+<main><p>Nimino Find Needle</p><p>Nimino Find Needle</p>
+<input value="Nimino Find Needle"><script>const ignoredFindText='Nimino Find Needle';</script></main>
 """).isOk
 let disabledWindow = app.newWindow(CoreWindowOptions(
   title: "Nimino macOS Find Disabled", width: 360, height: 220,
