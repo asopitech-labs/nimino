@@ -30,9 +30,12 @@ proc onEvaluation(completed: Future[CoreResultOf[string]]) {.gcsafe.} =
   doAssert evaluated.value.contains("\\\"findApi\\\":true")
   doAssert evaluated.value.contains("\\\"findPanel\\\":true")
   doAssert evaluated.value.contains("\\\"shortcutHandled\\\":true")
+  doAssert evaluated.value.contains("\\\"findNavigationHandled\\\":true")
   doAssert evaluated.value.contains("\\\"searchWorked\\\":true")
   doAssert evaluated.value.contains("\\\"matchCount\\\":2")
   doAssert evaluated.value.contains("\\\"closed\\\":true")
+  doAssert evaluated.value.contains("\\\"f11Untouched\\\":true")
+  doAssert evaluated.value.contains("\\\"clipboardUntouched\\\":true")
   doAssert evaluated.value.contains("\\\"trailingCommentInjected\\\":true")
   evaluationFinished = true
   finish()
@@ -64,16 +67,39 @@ proc onNavigation(url: string; succeeded: bool) {.gcsafe.} =
   document.dispatchEvent(event);
   const panel = document.querySelector('[role="search"][aria-label="Find in page"]');
   const findPanel = panel !== null && panel.hidden === false;
+  const nextEvent = new KeyboardEvent('keydown', {
+    key: 'g', metaKey: true, bubbles: true, cancelable: true
+  });
+  const previousEvent = new KeyboardEvent('keydown', {
+    key: 'g', metaKey: true, shiftKey: true, bubbles: true, cancelable: true
+  });
+  document.dispatchEvent(nextEvent);
+  document.dispatchEvent(previousEvent);
   const searchWorked = window.nimino.find('Nimino Find Needle') === true;
   const state = window.nimino.findPanel.search('Nimino Find Needle');
-  const closed = window.nimino.findPanel.close();
+  const input = panel.querySelector('input[aria-label="Find"]');
+  input.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true, cancelable: true
+  }));
+  const closed = window.nimino.findPanel.getState();
+  const f11Event = new KeyboardEvent('keydown', {
+    key: 'F11', bubbles: true, cancelable: true
+  });
+  const clipboardEvent = new KeyboardEvent('keydown', {
+    key: 'c', metaKey: true, bubbles: true, cancelable: true
+  });
+  document.dispatchEvent(f11Event);
+  document.dispatchEvent(clipboardEvent);
   return JSON.stringify({
     findApi: typeof window.nimino?.find === 'function',
     findPanel,
     shortcutHandled: event.defaultPrevented,
+    findNavigationHandled: nextEvent.defaultPrevented && previousEvent.defaultPrevented,
     searchWorked,
     matchCount: state.matchCount,
     closed: closed.matchCount === 0 && closed.isOpen === false,
+    f11Untouched: f11Event.defaultPrevented === false,
+    clipboardUntouched: clipboardEvent.defaultPrevented === false,
     trailingCommentInjected: window.niminoTrailingCommentInjected === true,
   });
 })()
