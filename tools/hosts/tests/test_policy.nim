@@ -16,6 +16,8 @@ doAssert popupLinkDisposition(allowed = false, external = false,
   newWindow = true, authentication = true) == popupLinkDeny
 doAssert popupLinkDisposition(allowed = false, external = true,
   newWindow = false, authentication = false) == popupLinkExternal
+doAssert popupLinkDisposition(allowed = false, external = false,
+  newWindow = false, authentication = false, blankPopup = true) == popupLinkAllow
 
 doAssert safeDownloadLabel("report.pdf") == "report.pdf"
 doAssert safeDownloadLabel("blob:https://example.test/123") ==

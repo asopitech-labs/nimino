@@ -18,12 +18,18 @@ proc bypassLinkGuard*(href: string): bool =
   let normalized = href.strip().toLowerAscii()
   normalized.startsWith("javascript:") or normalized.startsWith("#")
 
-proc popupLinkDisposition*(allowed, external, newWindow, authentication: bool):
+proc popupLinkDisposition*(allowed, external, newWindow, authentication: bool;
+                           blankPopup = false):
     PopupLinkDisposition =
   ## Pake's generated-host contract: an allowed popup stays in-app only when
   ## the user enabled new windows or the target is an authentication flow.
   ## All other allowed `_blank` links use the system browser; explicit deny
   ## always wins over the WebView's native popup fallback.
+  ## `about:blank` is an inert browser-created child document. It becomes an
+  ## authentication popup only after a policy-checked redirect, so it must not
+  ## be sent to the system browser merely because it has no hostname.
+  if blankPopup:
+    return popupLinkAllow
   if external:
     return popupLinkExternal
   if not allowed:

@@ -401,7 +401,8 @@ proc main() =
       allowed = decision == navigationAllow,
       external = decision == navigationExternal,
       newWindow = newWindow,
-      authentication = isAuthenticationNavigation(request.url))
+      authentication = isAuthenticationNavigation(request.url),
+      blankPopup = request.url.toLowerAscii() == "about:blank")
     case popupDecision
     of popupLinkAllow:
       ## The request came from the WebView's user gesture.  Consume it by

@@ -242,6 +242,12 @@ block windowsOwnIndependentRpcAllowLists:
     title = "Popup", profile = "popup")
   doAssert popup.isOk
   doAssert popup.value.profilePath.endsWith("/popup") or popup.value.profilePath.endsWith("\\popup")
+  ## Pake's macOS OAuth flow first opens an `about:blank` child. It must be
+  ## constructible before an identity provider URL is known, while the child
+  ## still receives the opener's policy before a later loadUrl redirect.
+  let blankPopup = first.value.openPopup(NewWindowRequest(url: "about:blank"),
+    title = "Blank popup", profile = "popup-blank")
+  doAssert blankPopup.isOk
   first.value.navigationPolicy = proc(request: NavigationRequest): NavigationDecision =
     if request.url == "https://popup.example/allowed": navigationAllow
     else: navigationDeny
@@ -252,8 +258,8 @@ block windowsOwnIndependentRpcAllowLists:
     url: "https://popup.example/allowed"))
   doAssert not policyPopup.value.applyNavigationDecision(NavigationRequest(
     url: "https://evil.example/login"))
-  doAssert app.windowCount() == 4
-  doAssert app.windows().len == 4
+  doAssert app.windowCount() == 5
+  doAssert app.windows().len == 5
   doAssert first.value.setTitle("Updated first").isOk
   doAssert first.value.setSize(640, 480).isOk
   let persistedWindowState = first.value.readSetting("window-state")
@@ -278,7 +284,7 @@ block windowsOwnIndependentRpcAllowLists:
   doAssert first.value.close().isOk
   doAssert not first.value.close().isOk
   doAssert first.value.isClosed()
-  doAssert app.windowCount() == 3
+  doAssert app.windowCount() == 4
   doAssert not first.value.rpc.registerSync("only.first", proc(params: JsonNode): RpcResult =
     rpcSuccess(newJNull())
   )

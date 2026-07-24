@@ -3287,7 +3287,13 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
   if not window.multiWindow:
     return coreFailureOf[Window](coreError(permissionDenied, "window.openPopup",
       detail = "multi-window support is disabled for this window"))
-  if not window.applyNavigationDecision(NavigationRequest(url: request.url)):
+  ## `about:blank` is the browser-created initial document for OAuth popups.
+  ## It is not a network destination and has no host to evaluate against an
+  ## allow-list. The child inherits the opener's navigation policy before any
+  ## subsequent URL is loaded, so later redirects still take the normal policy
+  ## path.
+  let blankPopup = request.url.toLowerAscii() == "about:blank"
+  if not blankPopup and not window.applyNavigationDecision(NavigationRequest(url: request.url)):
     return coreFailureOf[Window](coreError(permissionDenied, "window.openPopup",
       detail = "popup URL was rejected by navigation policy"))
   let popup = window.app.newWindow(CoreWindowOptions(
@@ -3355,10 +3361,11 @@ proc openPopup*(window: Window; request: NewWindowRequest; title = "Popup";
     if not dropConfigured.isOk:
       discard popup.value.close()
       return coreFailureOf[Window](dropConfigured.failure)
-  let loaded = popup.value.loadUrl(request.url)
-  if not loaded.isOk:
-    discard popup.value.close()
-    return coreFailureOf[Window](loaded.failure)
+  if not blankPopup:
+    let loaded = popup.value.loadUrl(request.url)
+    if not loaded.isOk:
+      discard popup.value.close()
+      return coreFailureOf[Window](loaded.failure)
   coreSuccessOf(popup.value)
 
 proc onCloseRequested*(window: Window;
