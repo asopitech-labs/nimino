@@ -347,5 +347,16 @@ removeFile(jsonPath)
 writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"multiWindow\":\"true\"}")
 doAssert not loadManifest(jsonPath).isOk
 removeFile(jsonPath)
+## Pake config-file parity: the loader, not only the published schema, must
+## reject CLI-only fields and numeric values outside the declared ranges.
+writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"json\":true}")
+doAssert not loadManifest(jsonPath).isOk
+removeFile(jsonPath)
+writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"zoom\":1000}")
+doAssert not loadManifest(jsonPath).isOk
+removeFile(jsonPath)
+writeFile(jsonPath, "{\"name\":\"JSON app\",\"id\":\"app.json\",\"url\":\"https://example.com\",\"width\":-5}")
+doAssert not loadManifest(jsonPath).isOk
+removeFile(jsonPath)
 
 echo "nimino-pack manifest tests passed"
