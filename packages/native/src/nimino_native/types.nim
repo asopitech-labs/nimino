@@ -363,6 +363,7 @@ when defined(linux) and not defined(niminoWsl):
   proc linuxSetDecorated(window: NativeWindow; enabled: bool): NativeResult
   proc linuxInstallFileDrop(window: NativeWindow): NativeResult
   proc linuxDisposeFileDrop(window: NativeWindow)
+  proc linuxDisposeWindow(window: NativeWindow)
   proc linuxDisposeView(view: NativeWebView)
   proc linuxEvalJavaScript(view: NativeWebView; request: NativeScriptRequest): NativeResult
   proc linuxClearBrowsingData(view: NativeWebView;
@@ -1205,12 +1206,17 @@ proc newWebView*(window: NativeWindow; userAgent = ""; proxyUrl = "";
   window.views.add(view)
   if window.app.state == running:
     when defined(linux) and not defined(niminoWsl):
+      let createdNativeWindow = window.platformWindow.isNil
       let created =
-        if window.platformWindow.isNil:
+        if createdNativeWindow:
           window.linuxCreateWindow()
         else:
           view.linuxCreateView()
       if not created.isOk:
+        if createdNativeWindow:
+          window.linuxDisposeWindow()
+        else:
+          view.linuxDisposeView()
         window.views.setLen(window.views.len - 1)
         return failureOf[NativeWebView](created.failure)
     elif defined(windows):

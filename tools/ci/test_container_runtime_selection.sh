@@ -15,6 +15,22 @@ make_runtime_stub() {
     '#!/bin/sh' \
     'printf "%s %s\n" "${0##*/}" "$*" >> "$RUNTIME_LOG"' \
     'case "$*" in' \
+    '  "compose version"|"version"|"info") exit 0 ;;' \
+    '  *) exit 64 ;;' \
+    'esac' \
+    > "$bin_dir/$name"
+  chmod +x "$bin_dir/$name"
+}
+
+make_compose_only_runtime_stub() {
+  local bin_dir=$1
+  local name=$2
+
+  mkdir -p "$bin_dir"
+  printf '%s\n' \
+    '#!/bin/sh' \
+    'printf "%s %s\n" "${0##*/}" "$*" >> "$RUNTIME_LOG"' \
+    'case "$*" in' \
     '  "compose version"|"version") exit 0 ;;' \
     '  *) exit 64 ;;' \
     'esac' \
@@ -51,6 +67,7 @@ make_runtime_stub "$both_bin" podman
 both_output=$(run_check "$both_bin" "$both_log")
 grep -Fq 'Using docker compose' <<<"$both_output"
 test "$(grep -Fxc 'docker compose version' "$both_log")" -eq 2
+grep -Fxq 'docker info' "$both_log"
 
 podman_bin="$test_root/podman"
 podman_log="$test_root/podman.log"
@@ -61,11 +78,11 @@ test "$(grep -Fxc 'podman compose version' "$podman_log")" -eq 2
 
 fallback_bin="$test_root/fallback"
 fallback_log="$test_root/fallback.log"
-make_failing_runtime_stub "$fallback_bin" docker
+make_compose_only_runtime_stub "$fallback_bin" docker
 make_runtime_stub "$fallback_bin" podman
 fallback_output=$(run_check "$fallback_bin" "$fallback_log")
 grep -Fq 'Using podman compose' <<<"$fallback_output"
-grep -Fxq 'docker compose version' "$fallback_log"
+grep -Fxq 'docker info' "$fallback_log"
 test "$(grep -Fxc 'podman compose version' "$fallback_log")" -eq 2
 
 override_bin="$test_root/override"

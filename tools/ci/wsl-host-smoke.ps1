@@ -2,6 +2,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$HostExecutable,
   [switch]$AbnormalClientEof,
+  [switch]$MalformedClientFrame,
+  [switch]$MalformedClientFrameAfterUi,
   [switch]$VerifyNewWindow,
   [string]$InitialUrl = "about:blank",
   [ValidateRange(1000, 180000)]
@@ -77,6 +79,27 @@ function Write-Frame([hashtable]$message) {
   $stream.Write($length, 0, $length.Length)
   $stream.Write($json, 0, $json.Length)
   $stream.Flush()
+}
+
+function Write-MalformedFrame {
+  $stream = $process.StandardInput.BaseStream
+  $invalidFrame = [byte[]](0, 0, 0, 1, 123)
+  $stream.Write($invalidFrame, 0, $invalidFrame.Length)
+  $stream.Flush()
+}
+
+function Assert-ProtocolFailure([string]$scenario) {
+  $process.StandardInput.Close()
+  if (-not $process.WaitForExit(5000)) {
+    throw "Host did not exit after $scenario"
+  }
+  $stderrText = $process.StandardError.ReadToEnd().Trim()
+  if ($process.ExitCode -eq 0) {
+    throw "Host incorrectly reported success after $scenario (stderr: $stderrText)"
+  }
+  if ($stderrText -notmatch 'input rejected') {
+    throw "Host did not report the rejected protocol input after $scenario (stderr: $stderrText)"
+  }
 }
 
 function Read-Exactly([int]$count) {
@@ -358,6 +381,14 @@ try {
     return
   }
 
+  if ($MalformedClientFrame) {
+    Set-SmokePhase "malformed frame before UI loop"
+    Write-MalformedFrame
+    Assert-ProtocolFailure "a malformed authenticated frame before the UI loop"
+    Write-Output "WSL host pre-UI protocol failure smoke passed"
+    return
+  }
+
   Set-SmokePhase "window creation"
   $windowRequest = @{
     version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
@@ -371,6 +402,14 @@ try {
     throw "Host did not create a window: $($windowResponse.error)"
   }
   $windowId = ($windowResponse.payload | ConvertFrom-Json).windowId
+
+  if ($MalformedClientFrameAfterUi) {
+    Set-SmokePhase "malformed frame during UI loop"
+    Write-MalformedFrame
+    Assert-ProtocolFailure "a malformed authenticated frame during the UI loop"
+    Write-Output "WSL host UI-loop protocol failure smoke passed"
+    return
+  }
 
   Set-SmokePhase "webview creation"
   Write-Frame @{

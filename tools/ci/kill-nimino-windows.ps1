@@ -14,8 +14,13 @@ $failed = $false
 foreach ($process in $processes | Sort-Object ProcessId -Unique) {
   Write-Output ("Killing {0} PID {1}" -f $process.Name, $process.ProcessId)
   & taskkill.exe /PID $process.ProcessId /T /F *> $null
-  if ($LASTEXITCODE -ne 0 -and
-      $null -ne (Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue)) {
+  for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    if ($null -eq (Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue)) {
+      break
+    }
+    Start-Sleep -Milliseconds 100
+  }
+  if ($null -ne (Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue)) {
     Write-Error ("Could not terminate {0} PID {1} without elevation" -f $process.Name, $process.ProcessId)
     $failed = $true
   }

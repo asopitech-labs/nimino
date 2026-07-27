@@ -1,13 +1,13 @@
 .DEFAULT_GOAL := help
 
 DETECTED_CONTAINER_RUNTIME := $(shell \
-	if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then \
+	if command -v docker >/dev/null 2>&1 && \
+			docker info >/dev/null 2>&1 && \
+			docker compose version >/dev/null 2>&1; then \
 		printf docker; \
-	elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then \
-		printf podman; \
-	elif command -v docker >/dev/null 2>&1; then \
-		printf docker; \
-	elif command -v podman >/dev/null 2>&1; then \
+	elif command -v podman >/dev/null 2>&1 && \
+			podman info >/dev/null 2>&1 && \
+			podman compose version >/dev/null 2>&1; then \
 		printf podman; \
 	fi)
 CONTAINER_RUNTIME ?= $(DETECTED_CONTAINER_RUNTIME)
@@ -53,7 +53,9 @@ setup-contract-test: ## GTK/WebKitGTK/WebView2自動準備の契約を検証す�
 	bash tools/ci/test_setup_contract.sh
 	bash tools/ci/test_container_runtime_selection.sh
 	bash tools/ci/test_run_nimble_task.sh
+	bash tools/ci/test_nimble_entrypoints.sh
 	bash tools/ci/test_make_reference_env.sh
+	bash tools/ci/test_make_clean.sh
 
 host-linux: image ## コンテナ内で汎用Linux Nimino hostをビルドする
 	$(COMPOSE) run --rm $(SERVICE) $(NIMBLE) buildNiminoHost
@@ -232,10 +234,12 @@ wsl-site-smoke: image ## YouTube/Gmail/Google Analyticsの実サイトWebView2�
 		(timeout --foreground $(WSL_SITE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -InitialUrl "$$url" -ReadTimeoutMs $(WSL_SITE_READ_TIMEOUT_MS)) || { status=$$?; $(WINDOWS_CLEANUP) >/dev/null 2>&1 || true; exit $$status; }; \
 	done
 
-wsl-host-abnormal-smoke: image ## WSL clientのstdin異常終了時にWindows hostが終了することを確認する
+wsl-host-abnormal-smoke: image ## WSL clientのEOF・protocol破損時にWindows hostが正しいstatusで終了することを確認する
 
 	$(COMPOSE) run --rm $(SERVICE) $(NIMBLE) buildWslHostArtifact
 	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -AbnormalClientEof) || { status=$$?; $(WINDOWS_CLEANUP) >/dev/null 2>&1 || true; exit $$status; }
+	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -MalformedClientFrame) || { status=$$?; $(WINDOWS_CLEANUP) >/dev/null 2>&1 || true; exit $$status; }
+	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -MalformedClientFrameAfterUi) || { status=$$?; $(WINDOWS_CLEANUP) >/dev/null 2>&1 || true; exit $$status; }
 
 wsl-host-interactive: image ## WebView2実Windowを開き、ユーザー操作を待つ
 
@@ -273,7 +277,21 @@ wsl-core-rpc-url-smoke: image ## WSL core URLのdocument-start RPCをWindows Web
 
 check: test ## testの別名
 
-clean: container-runtime-check kill-nimino-windows ## Compose資源とプロジェクト内の一時クロスビルド成果物を削除する
-
-	$(COMPOSE) run --rm --no-deps --entrypoint sh $(SERVICE) -c 'rm -rf /workspace/.tmp'
-	$(COMPOSE) down --remove-orphans
+clean: ## Compose資源とプロジェクト内の一時クロスビルド成果物を削除する
+	@if command -v powershell.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then \
+		$(WINDOWS_CLEANUP); \
+	else \
+		echo "Skipping Windows process cleanup: Windows Interop is unavailable"; \
+	fi
+	@if ! rm -rf -- "$(CURDIR)/.tmp"; then \
+		if [ -z "$(strip $(COMPOSE))" ] || ! $(COMPOSE) version >/dev/null 2>&1; then \
+			echo "ERROR: cannot remove $(CURDIR)/.tmp locally and no Compose runtime is usable" >&2; \
+			exit 1; \
+		fi; \
+		$(COMPOSE) run --rm --no-deps --entrypoint sh $(SERVICE) -c 'rm -rf /workspace/.tmp'; \
+	fi
+	@if [ -n "$(strip $(COMPOSE))" ] && $(COMPOSE) version >/dev/null 2>&1; then \
+		$(COMPOSE) down --remove-orphans; \
+	else \
+		echo "Skipping Compose cleanup: Docker/Podman Compose is unavailable"; \
+	fi

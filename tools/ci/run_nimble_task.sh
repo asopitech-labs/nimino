@@ -12,11 +12,18 @@ trap 'rm -f "$log_file"' EXIT
 
 set +e
 "$nimble_bin" "$@" 2>&1 | tee "$log_file"
-nimble_status=${PIPESTATUS[0]}
+pipeline_status=("${PIPESTATUS[@]}")
+nimble_status=${pipeline_status[0]}
+tee_status=${pipeline_status[1]}
 set -e
 
 if ((nimble_status != 0)); then
   exit "$nimble_status"
+fi
+
+if ((tee_status != 0)); then
+  echo "ERROR: unable to capture nimble task output" >&2
+  exit "$tee_status"
 fi
 
 if grep -Fq 'Exception raised during nimble script execution' "$log_file"; then

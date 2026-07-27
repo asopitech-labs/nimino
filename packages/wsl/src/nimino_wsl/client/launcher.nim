@@ -19,6 +19,11 @@ type
     events: seq[ProtocolMessage]
     responses: seq[ProtocolMessage]
 
+const
+  HostHandshakeTimeoutMs = 5_000
+  HostFrameTimeoutMs = 5_000
+  HostShutdownTimeoutMs = 5_000
+
 when defined(posix):
   proc readExactly(handle: FileHandle; size: int): ProtocolResultOf[string] =
     ## Read directly from the child stdout descriptor.  We deliberately avoid
@@ -28,6 +33,8 @@ when defined(posix):
     var offset = 0
     while offset < size:
       let readCount = posix.read(cint(handle), addr result.value[offset], size - offset)
+      if readCount < 0 and osLastError() == OSErrorCode(EINTR):
+        continue
       if readCount <= 0:
         return failureOf[string](protocolError(unexpectedEof,
           "host stdout ended before frame completed"))
@@ -48,6 +55,86 @@ when defined(posix):
       return failureOf[ProtocolMessage](payload.failure)
     payload.value.fromJson
 
+  proc waitUntilReadable(handle: FileHandle; timeoutMs: int):
+      ProtocolResultOf[bool] =
+    let deadline = getMonoTime() +
+      initDuration(milliseconds = int64(timeoutMs))
+    while true:
+      let remaining = max(0'i64,
+        (deadline - getMonoTime()).inMilliseconds)
+      var readable: TFdSet
+      FD_ZERO(readable)
+      FD_SET(cint(handle), readable)
+      var timeout = Timeval(
+        tv_sec: Time(remaining div 1_000),
+        tv_usec: Suseconds((remaining mod 1_000) * 1_000)
+      )
+      let selected = posix.select(cint(handle) + 1, addr readable, nil, nil,
+        addr timeout)
+      if selected >= 0:
+        return successOf(selected > 0)
+      if osLastError() != OSErrorCode(EINTR):
+        return failureOf[bool](
+          protocolError(invalidFrame, "unable to poll Windows host output"))
+      if getMonoTime() >= deadline:
+        return successOf(false)
+
+  proc readExactlyBefore(handle: FileHandle; size: int; deadline: MonoTime):
+      ProtocolResultOf[string] =
+    result = successOf(newString(size))
+    var offset = 0
+    while offset < size:
+      let remaining = (deadline - getMonoTime()).inMilliseconds
+      if remaining <= 0:
+        return failureOf[string](
+          protocolError(timedOut, "host frame timed out"))
+      let readable = handle.waitUntilReadable(
+        int(min(remaining, int64(high(int)))))
+      if not readable.isOk:
+        return failureOf[string](readable.failure)
+      if not readable.value:
+        return failureOf[string](
+          protocolError(timedOut, "host frame timed out"))
+      let readCount = posix.read(cint(handle), addr result.value[offset],
+        size - offset)
+      if readCount < 0 and osLastError() == OSErrorCode(EINTR):
+        continue
+      if readCount <= 0:
+        return failureOf[string](protocolError(unexpectedEof,
+          "host stdout ended before frame completed"))
+      offset += readCount
+
+  proc readMessageFromHandleWithin(handle: FileHandle;
+      availabilityTimeoutMs, frameTimeoutMs: int):
+      ProtocolResultOf[Option[ProtocolMessage]] =
+    let deadline = getMonoTime() +
+      initDuration(milliseconds = int64(frameTimeoutMs))
+    let firstByte = handle.waitUntilReadable(availabilityTimeoutMs)
+    if not firstByte.isOk:
+      return failureOf[Option[ProtocolMessage]](firstByte.failure)
+    if not firstByte.value:
+      return successOf(none(ProtocolMessage))
+
+    ## `availabilityTimeoutMs` is an event-loop poll interval. The separate
+    ## frame deadline is measured from this call's start, so a 10 ms idle poll
+    ## can accept a split frame without extending a 5 second handshake/request.
+    let header = handle.readExactlyBefore(4, deadline)
+    if not header.isOk:
+      return failureOf[Option[ProtocolMessage]](header.failure)
+    let size = (int(byte(header.value[0])) shl 24) or
+      (int(byte(header.value[1])) shl 16) or
+      (int(byte(header.value[2])) shl 8) or int(byte(header.value[3]))
+    if size > MaxFrameBytes:
+      return failureOf[Option[ProtocolMessage]](
+        protocolError(frameTooLarge, "frame exceeds maximum size"))
+    let payload = handle.readExactlyBefore(size, deadline)
+    if not payload.isOk:
+      return failureOf[Option[ProtocolMessage]](payload.failure)
+    let decoded = payload.value.fromJson()
+    if not decoded.isOk:
+      return failureOf[Option[ProtocolMessage]](decoded.failure)
+    successOf(some(decoded.value))
+
 proc readHostMessage(client: WslClient): ProtocolResultOf[ProtocolMessage] =
   if client.isNil or client.process.isNil:
     return failureOf[ProtocolMessage](protocolError(invalidMessage, "WSL client is closed"))
@@ -55,6 +142,55 @@ proc readHostMessage(client: WslClient): ProtocolResultOf[ProtocolMessage] =
     client.process.outputHandle.readMessageFromHandle()
   else:
     client.process.outputStream.readMessageFrom()
+
+proc readHostMessageWithin(client: WslClient;
+    availabilityTimeoutMs, frameTimeoutMs: int):
+    ProtocolResultOf[Option[ProtocolMessage]] =
+  if client.isNil or client.process.isNil:
+    return failureOf[Option[ProtocolMessage]](
+      protocolError(invalidMessage, "WSL client is closed"))
+  if availabilityTimeoutMs < 0 or frameTimeoutMs < 0:
+    return failureOf[Option[ProtocolMessage]](
+      protocolError(invalidMessage, "timeout must not be negative"))
+  when defined(posix):
+    client.process.outputHandle.readMessageFromHandleWithin(
+      availabilityTimeoutMs, frameTimeoutMs)
+  else:
+    if availabilityTimeoutMs == 0:
+      return successOf(none(ProtocolMessage))
+    let received = client.readHostMessage()
+    if not received.isOk:
+      return failureOf[Option[ProtocolMessage]](received.failure)
+    successOf(some(received.value))
+
+proc stopHostProcess(process: Process) =
+  if process.isNil:
+    return
+  try:
+    if process.peekExitCode() == -1:
+      process.terminate()
+      discard process.waitForExit(2_000)
+  except CatchableError:
+    discard
+  try:
+    osproc.close(process)
+  except CatchableError:
+    discard
+
+proc waitForHostExit(process: Process; timeoutMs: int): int =
+  let deadline = getMonoTime() + initDuration(milliseconds = int64(timeoutMs))
+  while getMonoTime() < deadline:
+    try:
+      let exitCode = process.peekExitCode()
+      if exitCode != -1:
+        osproc.close(process)
+        return exitCode
+    except CatchableError:
+      process.stopHostProcess()
+      return -1
+    sleep(10)
+  process.stopHostProcess()
+  -1
 
 proc newAuthenticationToken(): ProtocolResultOf[string] =
   let bytes = urandom(32)
@@ -161,39 +297,67 @@ proc launchHost*(hostExecutable: string; hostArgs: openArray[string] = []):
   if not token.isOk:
     return failureOf[WslClient](token.failure)
 
+  var process: Process
   try:
-    let process = startHostProcess(hostExecutable, hostArgs, token.value)
+    process = startHostProcess(hostExecutable, hostArgs, token.value)
     let client = WslClient(process: process, nextRequestId: 1)
     let hello = ProtocolMessage(
       version: ProtocolVersion,
       kind: hello,
       authenticationToken: token.value,
-      timeoutMs: 5_000
+      timeoutMs: HostHandshakeTimeoutMs
     )
     let written = process.inputStream.writeMessageTo(hello)
     if not written.isOk:
-      osproc.close(process)
+      process.stopHostProcess()
       return failureOf[WslClient](written.failure)
 
-    let readyMessage = client.readHostMessage()
-    if not readyMessage.isOk:
-      let detail = process.startupFailureDetail()
-      osproc.close(process)
-      return failureOf[WslClient](protocolError(readyMessage.failure.kind, detail))
-    let ready = readyMessage.value.validateReady()
+    let readyWithin = client.readHostMessageWithin(
+      HostHandshakeTimeoutMs, HostHandshakeTimeoutMs)
+    if not readyWithin.isOk:
+      let failure = readyWithin.failure
+      let detail =
+        if failure.kind == unexpectedEof:
+          process.startupFailureDetail()
+        else:
+          failure.detail
+      process.stopHostProcess()
+      return failureOf[WslClient](protocolError(failure.kind, detail))
+    if readyWithin.value.isNone:
+      process.stopHostProcess()
+      return failureOf[WslClient](
+        protocolError(timedOut, "Windows host ready handshake timed out"))
+    let readyMessage = readyWithin.value.get()
+    let ready = readyMessage.validateReady()
     if not ready.isOk:
-      osproc.close(process)
+      process.stopHostProcess()
       return failureOf[WslClient](ready.failure)
-    let capabilities = readyMessage.value.payload.parseNativeCapabilities()
+    let capabilities = readyMessage.payload.parseNativeCapabilities()
     if not capabilities.isOk:
-      osproc.close(process)
+      process.stopHostProcess()
       return failureOf[WslClient](capabilities.failure)
 
-    client.sessionId = readyMessage.value.sessionId
+    client.sessionId = readyMessage.sessionId
     client.capabilities = capabilities.value
     successOf(client)
   except CatchableError:
-    failureOf[WslClient](protocolError(invalidMessage, "unable to launch Windows host"))
+    process.stopHostProcess()
+    failureOf[WslClient](
+      protocolError(invalidMessage, "unable to launch Windows host"))
+
+proc validateHostMessage(client: WslClient; message: ProtocolMessage):
+    ProtocolResultOf[ProtocolMessage] =
+  if message.sessionId != client.sessionId:
+    return failureOf[ProtocolMessage](
+      protocolError(invalidMessage, "host response has an unknown session"))
+  if not message.version.validateVersion.isOk:
+    return failureOf[ProtocolMessage](
+      protocolError(unsupportedVersion, "host version mismatch"))
+  if message.authenticationToken.len != 0:
+    return failureOf[ProtocolMessage](
+      protocolError(authenticationFailed,
+        "host returned authentication material"))
+  successOf(message)
 
 proc sendRequest*(client: WslClient; methodName: string; payload: string;
                   timeoutMs: uint32 = 5_000): ProtocolResultOf[uint64] =
@@ -227,14 +391,7 @@ proc receiveNext*(client: WslClient): ProtocolResultOf[ProtocolMessage] =
   let received = client.readHostMessage()
   if not received.isOk:
     return failureOf[ProtocolMessage](received.failure)
-  let message = received.value
-  if message.sessionId != client.sessionId:
-    return failureOf[ProtocolMessage](protocolError(invalidMessage, "host response has an unknown session"))
-  if not message.version.validateVersion.isOk:
-    return failureOf[ProtocolMessage](protocolError(unsupportedVersion, "host version mismatch"))
-  if message.authenticationToken.len != 0:
-    return failureOf[ProtocolMessage](protocolError(authenticationFailed, "host returned authentication material"))
-  successOf(message)
+  client.validateHostMessage(received.value)
 
 proc sendResponse*(client: WslClient; requestId: uint64; payload: string;
                    error = ""): ProtocolResult =
@@ -263,45 +420,35 @@ proc sendCancel*(client: WslClient; requestId: uint64): ProtocolResult =
     requestId: requestId
   ))
 
-proc receiveNextWithin*(client: WslClient; timeoutMs: int):
+proc receiveNextWithin(client: WslClient;
+    availabilityTimeoutMs, frameTimeoutMs: int):
     ProtocolResultOf[Option[ProtocolMessage]] =
-  ## Wait for at most `timeoutMs` for one host frame.  The WSL core loop uses
-  ## this to advance RPC deadlines even while the Windows host has no events.
+  ## Separate the idle-poll budget from the completion budget for a frame that
+  ## has already started.
   if client.isNil or client.process.isNil:
     return failureOf[Option[ProtocolMessage]](
       protocolError(invalidMessage, "WSL client is closed"))
-  if timeoutMs < 0:
+  if availabilityTimeoutMs < 0 or frameTimeoutMs < 0:
     return failureOf[Option[ProtocolMessage]](
       protocolError(invalidMessage, "timeout must not be negative"))
 
-  when defined(posix):
-    let handle = cint(client.process.outputHandle)
-    var readable: TFdSet
-    FD_ZERO(readable)
-    FD_SET(handle, readable)
-    var timeout = Timeval(
-      tv_sec: Time(timeoutMs div 1_000),
-      tv_usec: Suseconds((timeoutMs mod 1_000) * 1_000)
-    )
-    let selected = posix.select(handle + 1, addr readable, nil, nil, addr timeout)
-    if selected < 0:
-      return failureOf[Option[ProtocolMessage]](
-        protocolError(invalidFrame, "unable to poll Windows host output"))
-    if selected == 0:
-      return successOf(none(ProtocolMessage))
-    let received = client.receiveNext()
-    if not received.isOk:
-      return failureOf[Option[ProtocolMessage]](received.failure)
-    successOf(some(received.value))
-  else:
-    ## The adapter is only selected on Linux/WSL.  Keep a conservative
-    ## fallback for callers that compile this module for another platform.
-    if timeoutMs == 0:
-      return successOf(none(ProtocolMessage))
-    let received = client.receiveNext()
-    if not received.isOk:
-      return failureOf[Option[ProtocolMessage]](received.failure)
-    successOf(some(received.value))
+  let received = client.readHostMessageWithin(
+    availabilityTimeoutMs, frameTimeoutMs)
+  if not received.isOk:
+    return failureOf[Option[ProtocolMessage]](received.failure)
+  if received.value.isNone:
+    return successOf(none(ProtocolMessage))
+  let validated = client.validateHostMessage(received.value.get())
+  if not validated.isOk:
+    return failureOf[Option[ProtocolMessage]](validated.failure)
+  successOf(some(validated.value))
+
+proc receiveNextWithin*(client: WslClient; timeoutMs: int):
+    ProtocolResultOf[Option[ProtocolMessage]] =
+  ## Poll for a new frame for at most `timeoutMs`. A frame that has begun gets
+  ## its own bounded completion interval, so a short UI/RPC poll does not
+  ## reject a valid frame merely because the pipe write was split.
+  client.receiveNextWithin(timeoutMs, HostFrameTimeoutMs)
 
 proc hostResponseFailure(response: ProtocolMessage): ProtocolError =
   let summary = if response.error.len > 0: response.error
@@ -334,7 +481,8 @@ proc receiveResponse*(client: WslClient; requestId: uint64;
       discard client.sendCancel(requestId)
       return failureOf[ProtocolMessage](protocolError(timedOut,
         "host response timed out"))
-    let received = client.receiveNextWithin(int(min(remaining, int64(high(int)))))
+    let remainingMs = int(min(remaining, int64(high(int))))
+    let received = client.receiveNextWithin(remainingMs, remainingMs)
     if not received.isOk:
       return failureOf[ProtocolMessage](received.failure)
     if received.value.isNone:
@@ -391,13 +539,22 @@ proc close*(client: WslClient): ProtocolResult =
   )
   let written = client.process.inputStream.writeMessageTo(shutdown)
   if not written.isOk:
-    osproc.close(client.process)
+    client.process.stopHostProcess()
     client.process = nil
     return written
 
-  let acknowledged = client.receiveResponse(0, 5_000)
-  osproc.close(client.process)
-  client.process = nil
+  let acknowledged = client.receiveResponse(0, HostShutdownTimeoutMs)
   if not acknowledged.isOk:
+    client.process.stopHostProcess()
+    client.process = nil
     return failure(acknowledged.failure)
+
+  let exitCode = client.process.waitForHostExit(HostShutdownTimeoutMs)
+  client.process = nil
+  if exitCode == -1:
+    return failure(protocolError(timedOut,
+      "Windows host did not exit after shutdown acknowledgement"))
+  if exitCode != 0:
+    return failure(protocolError(invalidMessage,
+      "Windows host exited with status " & $exitCode))
   success()

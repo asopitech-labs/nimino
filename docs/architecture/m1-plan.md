@@ -2,13 +2,13 @@
 
 **M1の完了条件:** Windows、Linux、WSL、macOSのすべてで、Window生成、WebView生成、URL読込、リサイズ、タイトル変更、正常終了を確認すること。任意の一ターゲットだけの成功は完了ではありません。
 
-## 実装・検証状況（2026-07-24）
+## 実装・検証状況（2026-07-27）
 
 | 対象 | 実装済み | 確認済み | 未確認・理由 |
 | --- | --- | --- | --- |
-| Linux | GTK 4/ WebKitGTK 6.0 Window、WebView、URL/HTML、title、終了 | `make test`、`make linux-smoke` | 実表示の拡張機能はM2以降 |
-| Windows | Win32 Window、STA、WebView2 Environment/Controller/Core、Bounds、URL/HTML、COM明示解放 | `make windows-cross`でx64 PEとFFI/COM callback ABIを検査。`make wsl-host-smoke`、`make wsl-host-abnormal-smoke`、`make wsl-host-popup-smoke`で導入済みRuntime上の実WebView生成、HTML/URL、navigation完了、title/resize、JavaScript評価、message、new-window、異常終了、resource解放を検査 | 実ユーザー操作と通常Windows GUI CIは未確認 |
-| WSL | CSPRNG token、`WSLENV`転送、constant-time認証、stdio frame、Windows host、object table、URL/HTML要求、shutdown、permission/download/navigation同期decision relay | Windows 11上のWSL2で`NIMINO_TEST_REFERENCE_WINDOWS=1 NIMINO_TEST_REFERENCE_WSL=1 make test`、`make wsl-host-cross`、host/abnormal/popup/client/core/RPC/site smokeを実行。通常core APIでWindows childを起動し、hello→Window→WebView→async RPC→timeout→shutdownまで確認 | redirectの実遷移、再接続契約、実ユーザー操作は未確認 |
+| Linux | GTK 4/ WebKitGTK 6.0 Window、WebView、URL/HTML、title、終了、永続profileとproxyの同時適用 | `make test`、`make linux-smoke`。実HTTP proxy fixture経由の読込とprofile directory生成を確認 | 実表示の拡張機能はM2以降 |
+| Windows | Win32 Window、STA、WebView2 Environment/Controller/Core、Bounds、URL/HTML、COM明示解放 | `make windows-cross`でx64 PEとFFI/COM callback ABIを検査。`make wsl-host-smoke`、`make wsl-host-abnormal-smoke`、`make wsl-host-popup-smoke`で実WebView、破損frameの非zero終了、new-window、resource解放を検査 | 実ユーザー操作と通常Windows GUI CIは未確認 |
+| WSL | CSPRNG token、`WSLENV`転送、constant-time認証、stdio frame、Windows host、object table、URL/HTML要求、shutdown、permission/download/navigation同期decision relay | Windows 11上のWSL2で参照suite、cross build、host/client/core、URL document-start RPC、async RPCを実行。部分frame deadline、短いpollをまたぐsplit frame、shutdown後のchild回収も確認 | redirectの実遷移、再接続契約、実ユーザー操作は未確認。2026-07-27の外部site smokeはYouTube/Gmail成功、Google Analyticsは180秒timeout |
 | macOS | Cocoa `NSApplication`/`NSWindow`、WKWebView、delegate、document-start script、JS/message/navigation、native menu/tray/notification、deep link、custom scheme、profile store、permission/download delegate、`.app`/`.dmg` packaging | `nimble testMacosSmoke`、`nimble testPackMacos`でnative/package smokeを確認 | Apple署名/notarization、通知クリック・deep linkの実ユーザー操作は資格情報/GUI環境依存のrelease確認 |
 
 M1の対象（Window/WebView生成、URL読込、resize、title、正常終了）は4ターゲットで確認済みである。architecture-matched `WebView2Loader.dll`を成果物へ同梱したWindows開発機で、Window→WebView→HTML/URL→resize→title→message→new-window→closeを確認し、WSL clientもWindows hostへのURL要求を確認済みである。macOSはAppKit main run loop上のWKWebViewをローカルGUI smokeで確認する。実ユーザー操作と通常Windows GUI CIはM2以降の未完了項目として管理する。WebView2 Evergreen RuntimeはWindowsの前提であり、開発WindowsではRegistry検出済みである。

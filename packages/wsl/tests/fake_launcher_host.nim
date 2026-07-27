@@ -24,6 +24,12 @@ if not hello.isOk or not hello.value.validateHello().isOk or
   quit(QuitFailure)
 
 let mode = if paramCount() == 1: paramStr(1) else: ""
+if mode == "partial-ready":
+  output.write("\0")
+  output.flush()
+  sleep(10_000)
+  quit(QuitFailure)
+
 let invalidCapability = mode == "invalid-capability"
 let version = case mode
   of "legacy-version": ProtocolVersion - 1'u16
@@ -40,8 +46,29 @@ doAssert output.writeMessageTo(ProtocolMessage(
   payload: payload
 )).isOk
 
-if mode.len > 0 and mode notin ["timeout-request", "structured-error"]:
+if mode.len > 0 and
+    mode notin ["split-event", "timeout-request", "structured-error",
+      "linger-after-shutdown"]:
   quit(QuitSuccess)
+
+if mode == "split-event":
+  let payload = ProtocolMessage(
+    version: ProtocolVersion,
+    kind: event,
+    sessionId: SessionId,
+    methodName: "test.split",
+    payload: "{}"
+  ).toJson()
+  var frame = newString(4 + payload.len)
+  for index in 0 ..< 4:
+    frame[index] = char((payload.len shr ((3 - index) * 8)) and 0xff)
+  for index, value in payload:
+    frame[4 + index] = value
+  output.write(frame[0 .. 0])
+  output.flush()
+  sleep(50)
+  output.write(frame[1 .. ^1])
+  output.flush()
 
 if mode == "timeout-request":
   let request = input.readMessageFrom()
@@ -82,3 +109,6 @@ doAssert output.writeMessageTo(ProtocolMessage(
   requestId: shutdown.value.requestId,
   payload: "{}"
 )).isOk
+
+if mode == "linger-after-shutdown":
+  sleep(8_000)

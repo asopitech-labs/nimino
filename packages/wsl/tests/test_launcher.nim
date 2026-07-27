@@ -1,5 +1,6 @@
 import nimino_wsl
-import std/[os, strutils]
+import std/[monotimes, options, os, strutils]
+from std/times import inMilliseconds
 
 block emptyHostPathIsRejectedBeforeProcessCreation:
   let launched = launchHost("")
@@ -33,6 +34,26 @@ if paramCount() == 1:
       doAssert not launched.isOk
       doAssert launched.failure.kind == unsupportedVersion
 
+  block partialReadyFramesHonorTheHandshakeDeadline:
+    let host = paramStr(1)
+    let started = getMonoTime()
+    let launched = launchHost(host, ["partial-ready"])
+    let elapsedMs = (getMonoTime() - started).inMilliseconds
+    doAssert not launched.isOk
+    doAssert launched.failure.kind == timedOut
+    doAssert elapsedMs < 7_000
+
+  block shortPollIntervalsDoNotBecomePartialFrameDeadlines:
+    let host = paramStr(1)
+    let launched = launchHost(host, ["split-event"])
+    doAssert launched.isOk
+    let received = launched.value.receiveNextWithin(10)
+    doAssert received.isOk
+    doAssert received.value.isSome
+    doAssert received.value.get().kind == event
+    doAssert received.value.get().methodName == "test.split"
+    doAssert launched.value.close().isOk
+
   block synchronousRequestsTimeOutAndCancelTheHostOperation:
     let host = paramStr(1)
     let launched = launchHost(host, ["timeout-request"])
@@ -53,3 +74,11 @@ if paramCount() == 1:
     doAssert response.failure.nativePlatformCode == 5
     doAssert response.failure.nativeDetail == "SetWindowTextW failed"
     doAssert launched.value.close().isOk
+
+  block shutdownAcknowledgementDoesNotHideALingeringHost:
+    let host = paramStr(1)
+    let launched = launchHost(host, ["linger-after-shutdown"])
+    doAssert launched.isOk
+    let closed = launched.value.close()
+    doAssert not closed.isOk
+    doAssert closed.failure.kind == timedOut

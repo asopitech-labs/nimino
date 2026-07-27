@@ -52,7 +52,11 @@ if (!window.nimino || typeof window.nimino.invoke !== "function") {
 let url = "data:text/html," & encodeUrl(document, false)
 doAssert window.loadUrl(url).isOk
 
-doAssert testApp.run().isOk
+let ran = testApp.run()
+if not ran.isOk:
+  quit("WSL core URL smoke failed: " & $ran.failure.kind & " " &
+    ran.failure.operation & " (code=" & $ran.failure.platformCode & "): " &
+    ran.failure.detail, QuitFailure)
 doAssert rpcResolved
 doAssert not bridgeMissing
 echo "WSL core URL document-start RPC smoke passed"

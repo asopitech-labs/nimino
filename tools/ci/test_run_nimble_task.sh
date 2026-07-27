@@ -39,4 +39,20 @@ fi
 grep -Fq 'reported task failure with exit status 0' \
   "$test_root/false-success.out"
 
+broken_tee_bin="$test_root/broken-tee-bin"
+mkdir -p "$broken_tee_bin"
+printf '%s\n' \
+  '#!/bin/sh' \
+  '/bin/cat >/dev/null' \
+  'exit 24' \
+  > "$broken_tee_bin/tee"
+chmod +x "$broken_tee_bin/tee"
+
+if PATH="$broken_tee_bin:$fake_bin:$PATH" FAKE_NIMBLE_MODE=success \
+    bash "$wrapper" example >"$test_root/tee-failure.out" 2>&1; then
+  echo "Nimble output capture failure was not rejected" >&2
+  exit 1
+fi
+grep -Fq 'unable to capture nimble task output' "$test_root/tee-failure.out"
+
 echo "Nimble task wrapper contract passed"

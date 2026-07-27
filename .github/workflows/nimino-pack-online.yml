@@ -57,14 +57,14 @@ jobs:
           set -eu
           docker compose run --rm nimino-dev bash -c '
             set -eu
-            nimble buildPackCli
+            bash tools/ci/run_nimble_task.sh buildPackCli
             case "$NIMINO_TARGET" in
               linux-deb|linux-rpm)
-                nimble buildNiminoHost
+                bash tools/ci/run_nimble_task.sh buildNiminoHost
                 host=/tmp/nimino-host
                 ;;
               windows-nsis|windows-msi)
-                nimble buildNiminoHostWindows
+                bash tools/ci/run_nimble_task.sh buildNiminoHostWindows
                 host=/tmp/nimino-host.exe
                 ;;
               *)

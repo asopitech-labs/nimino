@@ -1552,13 +1552,15 @@ proc linuxDisposeWindow(window: NativeWindow) =
     window.platformContainer = nil
   window.state = closed
 
-proc linuxCreateView(view: NativeWebView): NativeResult =
-  if view.isNil or view.window.isNil or view.window.platformContainer.isNil:
-    return failure(nativeError(invalidState, "webview.create"))
-  var webView: ptr WebKitWebView
+proc linuxCreateNetworkSession(
+    view: NativeWebView): NativeResultOf[ptr WebKitNetworkSession] =
   var session: ptr WebKitNetworkSession
   if view.incognito:
     session = webkit_network_session_new_ephemeral()
+    if session.isNil:
+      return failureOf[ptr WebKitNetworkSession](nativeError(webViewError,
+        "webview.profile",
+        detail = "ephemeral WebKitNetworkSession creation failed"))
   elif view.window.profilePath.len > 0:
     let dataDir = view.window.profilePath / "webkit-data"
     let cacheDir = view.window.profilePath / "cache"
@@ -1566,22 +1568,40 @@ proc linuxCreateView(view: NativeWebView): NativeResult =
       createDir(dataDir)
       createDir(cacheDir)
     except OSError:
-      return failure(nativeError(osError, "webview.profile",
+      return failureOf[ptr WebKitNetworkSession](nativeError(osError,
+        "webview.profile",
         detail = "unable to create WebKit profile directories"))
     session = webkit_network_session_new(cstring(dataDir), cstring(cacheDir))
     if session.isNil:
-      return failure(nativeError(webViewError, "webview.profile",
+      return failureOf[ptr WebKitNetworkSession](nativeError(webViewError,
+        "webview.profile",
         detail = "WebKitNetworkSession creation failed"))
-  if session != nil and view.proxyUrl.len > 0:
+  elif view.proxyUrl.len > 0:
+    session = webkit_network_session_new_ephemeral()
+    if session.isNil:
+      return failureOf[ptr WebKitNetworkSession](nativeError(webViewError,
+        "webview.profile",
+        detail = "ephemeral WebKitNetworkSession creation failed"))
+
+  if view.proxyUrl.len > 0:
     let settings = webkit_network_proxy_settings_new(cstring(view.proxyUrl), nil)
     if settings.isNil:
       g_object_unref(cast[pointer](session))
-      return failure(nativeError(invalidArgument, "webview.setProxy",
+      return failureOf[ptr WebKitNetworkSession](nativeError(invalidArgument,
+        "webview.setProxy",
         detail = "WebKit proxy settings could not be created"))
     webkit_network_session_set_proxy_settings(session, 2, settings)
     webkit_network_proxy_settings_free(settings)
-  elif view.proxyUrl.len > 0:
-    session = webkit_network_session_new_ephemeral()
+  successOf(session)
+
+proc linuxCreateView(view: NativeWebView): NativeResult =
+  if view.isNil or view.window.isNil or view.window.platformContainer.isNil:
+    return failure(nativeError(invalidState, "webview.create"))
+  var webView: ptr WebKitWebView
+  let createdSession = view.linuxCreateNetworkSession()
+  if not createdSession.isOk:
+    return failure(createdSession.failure)
+  let session = createdSession.value
   if session != nil:
     webView = cast[ptr WebKitWebView](g_object_new(webkit_web_view_get_type(),
       "network-session", cast[pointer](session), nil))
@@ -1664,32 +1684,10 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
 
   let view = window.views[0]
   var webView: ptr WebKitWebView
-  var session: ptr WebKitNetworkSession
-  if view.incognito:
-    session = webkit_network_session_new_ephemeral()
-  elif view.window.profilePath.len > 0:
-    let dataDir = view.window.profilePath / "webkit-data"
-    let cacheDir = view.window.profilePath / "cache"
-    try:
-      createDir(dataDir)
-      createDir(cacheDir)
-    except OSError:
-      return failure(nativeError(osError, "webview.profile",
-        detail = "unable to create WebKit profile directories"))
-    session = webkit_network_session_new(cstring(dataDir), cstring(cacheDir))
-    if session.isNil:
-      return failure(nativeError(webViewError, "webview.profile",
-        detail = "WebKitNetworkSession creation failed"))
-  if session != nil and view.proxyUrl.len > 0:
-    let settings = webkit_network_proxy_settings_new(cstring(view.proxyUrl), nil)
-    if settings.isNil:
-      g_object_unref(cast[pointer](session))
-      return failure(nativeError(invalidArgument, "webview.setProxy",
-        detail = "WebKit proxy settings could not be created"))
-    webkit_network_session_set_proxy_settings(session, 2, settings)
-    webkit_network_proxy_settings_free(settings)
-  elif view.proxyUrl.len > 0:
-    session = webkit_network_session_new_ephemeral()
+  let createdSession = view.linuxCreateNetworkSession()
+  if not createdSession.isOk:
+    return failure(createdSession.failure)
+  let session = createdSession.value
   if session != nil:
     webView = cast[ptr WebKitWebView](g_object_new(webkit_web_view_get_type(),
       "network-session", cast[pointer](session), nil))

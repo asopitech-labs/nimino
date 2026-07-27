@@ -1,4 +1,4 @@
-import std/asyncfutures
+import std/[asyncfutures, os, osproc, streams, strutils]
 
 import nimino_native
 
@@ -25,6 +25,8 @@ var resizeRequested: bool
 var fullscreenRequested: bool
 var fullscreenRestored: bool
 var runtimeWindowCreated: bool
+var proxyMessageReceived: bool
+var proxyFailed: bool
 
 const BaseUrl = "https://example.invalid/assets/"
 const BaseUrlMessage = "Nimino Linux base:https://example.invalid/assets/images/logo.svg"
@@ -36,7 +38,7 @@ proc quitWhenComplete() =
       cookieMutationFinished and
       notificationRequested and baseDocumentCompleted and baseUrlResolved and
       urlRequested and uiTaskExecuted and fullscreenRestored and
-      runtimeWindowCreated and
+      runtimeWindowCreated and proxyMessageReceived and
       (resizeReceived or idleTicks > 200):
     doAssert cast[NativeApp](callbackApp).quit().isOk
 
@@ -105,6 +107,14 @@ proc receiveMessage(message: string) =
   else:
     doAssert false
 
+proc receiveProxyMessage(message: string) =
+  doAssert message == "Nimino Linux proxy"
+  proxyMessageReceived = true
+
+proc receiveProxyError(error: NativeError) =
+  proxyFailed = true
+  doAssert cast[NativeApp](callbackApp).quit().isOk
+
 proc receiveIdle() =
   inc idleTicks
   if not fullscreenRequested:
@@ -164,6 +174,11 @@ proc receiveNavigationStarting(url: string): bool =
 
 let app = newNativeApp()
 callbackApp = cast[pointer](app)
+let proxyFixture = startProcess("python3",
+  args = ["tools/ci/linux_proxy_fixture.py"], options = {poUsePath})
+let proxyPort = proxyFixture.outputStream.readLine().strip()
+doAssert proxyPort.len > 0
+let proxyProfilePath = ".tmp/linux-proxy-profile-" & $getCurrentProcessId()
 doAssert app.supports(nativeMenu)
 doAssert app.supports(nativeNotification)
 doAssert app.configureNativeMenu("Nimino", [
@@ -200,6 +215,17 @@ window.webkit.messageHandlers.nimino.postMessage(
 </script>
 """, baseUrl = BaseUrl).isOk
 
+let proxyWindow = app.newWindow("Nimino Linux proxy smoke", 300, 180,
+  profilePath = proxyProfilePath)
+doAssert proxyWindow.isOk
+let proxyView = proxyWindow.value.newWebView(
+  proxyUrl = "http://127.0.0.1:" & proxyPort)
+doAssert proxyView.isOk
+doAssert proxyView.value.onMessage(receiveProxyMessage).isOk
+doAssert proxyView.value.onError(receiveProxyError).isOk
+doAssert proxyView.value.loadUrl(
+  "http://nimino-proxy-fixture.invalid/proxy-only").isOk
+
 let evaluated = view.value.evalJavaScript("'Nimino Linux eval'")
 evaluated.addCallback(completeEvaluation)
 
@@ -219,4 +245,11 @@ doAssert urlRequested
 doAssert resizeReceived
 doAssert fullscreenRequested
 doAssert fullscreenRestored
+doAssert proxyMessageReceived
+doAssert not proxyFailed
+doAssert dirExists(proxyProfilePath / "webkit-data")
+doAssert dirExists(proxyProfilePath / "cache")
+doAssert proxyFixture.waitForExit(2_000) == 0
+osproc.close(proxyFixture)
+removeDir(proxyProfilePath)
 echo "Linux native smoke passed"

@@ -46,6 +46,7 @@ type
     nextEventId: uint64
     nextPolicyRequestId: uint64
     startupDeepLinks: seq[string]
+    protocolFailed: bool
 
 proc sessionIdFromRandom(): string =
   let bytes = urandom(16)
@@ -145,6 +146,7 @@ proc readyCapabilities(state: HostState): string =
   nativeCapabilitiesPayload(capabilities)
 
 proc stopForProtocolError(state: HostState; message: ProtocolMessage; detail: string) =
+  state.protocolFailed = true
   discard state.writeMessage(state.responseFor(message, error = detail))
   discard state.adapter.app.close()
 
@@ -551,12 +553,15 @@ proc handleRunningMessage(state: HostState; message: ProtocolMessage) =
     state.stopForProtocolError(message, "message kind is not allowed after handshake")
 
 proc pollHost(state: HostState) =
+  if state.protocolFailed:
+    return
   let polled = state.input.poll()
   if not polled.isOk:
     ## Protocol diagnostics never include frame contents, session IDs, or
     ## authentication material.  Keeping the category visible avoids turning
     ## a malformed client frame into an unexplained UI shutdown.
     stderr.writeLine("nimino-wsl-host: input rejected: " & polled.failure.detail)
+    state.protocolFailed = true
     discard state.adapter.app.close()
     return
   if state.input.closed:
@@ -645,7 +650,11 @@ proc runHost(): int =
     let received = state.input.next(60_000)
     if not received.isOk:
       discard state.adapter.app.close()
-      return 0
+      if received.failure.kind in {unexpectedEof, timedOut}:
+        return 0
+      stderr.writeLine("nimino-wsl-host: input rejected: " &
+        received.failure.detail)
+      return 2
     let message = received.value
     let session = state.sessionId.validateSessionMessage(message)
     if not session.isOk:
@@ -727,6 +736,8 @@ proc runHost(): int =
       state.flushFileDrops()
       state.flushWindowClosed()
       state.flushDesktopActions()
+      if state.protocolFailed:
+        return 2
       if not finished.isOk:
         stderr.writeLine("nimino-wsl-host: native UI loop failed: " &
           finished.failure.operation & " (code=" & $finished.failure.platformCode & ")")

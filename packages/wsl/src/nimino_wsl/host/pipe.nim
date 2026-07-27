@@ -37,29 +37,34 @@ proc newHostInput*(): ProtocolResultOf[HostInput] =
     return failureOf[HostInput](protocolError(invalidFrame, "stdin handle is unavailable"))
   successOf(HostInput(handle: handle))
 
-proc drainAvailable(input: HostInput): ProtocolResult =
-  while true:
-    var available: uint32
-    if peekNamedPipe(input.handle, nil, 0, nil, addr available, nil) == 0:
-      if getLastError() == ErrorBrokenPipe:
-        input.closed = true
-        return success()
-      return failure(protocolError(invalidFrame, "cannot inspect host stdin"))
-    if available == 0:
-      return success()
+proc readAvailableChunk(input: HostInput): ProtocolResultOf[bool] =
+  ## Read one bounded chunk at a time. `poll` decodes between chunks so the
+  ## frame-size limit is enforced before a continuously-writing peer can grow
+  ## `buffer` without bound.
+  var available: uint32
+  if peekNamedPipe(input.handle, nil, 0, nil, addr available, nil) == 0:
+    if getLastError() == ErrorBrokenPipe:
+      input.closed = true
+      return successOf(false)
+    return failureOf[bool](
+      protocolError(invalidFrame, "cannot inspect host stdin"))
+  if available == 0:
+    return successOf(false)
 
-    let requested = min(int(available), 8_192)
-    var chunk = newString(requested)
-    var read: uint32
-    if readFile(input.handle, addr chunk[0], uint32(requested), addr read, nil) == 0:
-      if getLastError() == ErrorBrokenPipe:
-        input.closed = true
-        return success()
-      return failure(protocolError(invalidFrame, "cannot read host stdin"))
-    if read == 0:
-      return success()
-    chunk.setLen(int(read))
-    input.buffer.add(chunk)
+  let requested = min(int(available), 8_192)
+  var chunk = newString(requested)
+  var read: uint32
+  if readFile(input.handle, addr chunk[0], uint32(requested), addr read, nil) == 0:
+    if getLastError() == ErrorBrokenPipe:
+      input.closed = true
+      return successOf(false)
+    return failureOf[bool](
+      protocolError(invalidFrame, "cannot read host stdin"))
+  if read == 0:
+    return successOf(false)
+  chunk.setLen(int(read))
+  input.buffer.add(chunk)
+  successOf(true)
 
 proc decodeBuffered(input: HostInput): ProtocolResult =
   while input.buffer.len >= 4:
@@ -67,6 +72,7 @@ proc decodeBuffered(input: HostInput): ProtocolResult =
       (int(byte(input.buffer[1])) shl 16) or
       (int(byte(input.buffer[2])) shl 8) or int(byte(input.buffer[3]))
     if size > MaxFrameBytes:
+      input.buffer.setLen(0)
       return failure(protocolError(frameTooLarge, "frame exceeds maximum size"))
     let frameLength = 4 + size
     if input.buffer.len < frameLength:
@@ -87,10 +93,15 @@ proc decodeBuffered(input: HostInput): ProtocolResult =
   success()
 
 proc poll*(input: HostInput): ProtocolResult =
-  let drained = input.drainAvailable()
-  if not drained.isOk:
-    return drained
-  input.decodeBuffered()
+  while true:
+    let readChunk = input.readAvailableChunk()
+    if not readChunk.isOk:
+      return failure(readChunk.failure)
+    let decoded = input.decodeBuffered()
+    if not decoded.isOk:
+      return decoded
+    if not readChunk.value or input.pending.len > 0:
+      return success()
 
 proc next*(input: HostInput; timeoutMs: uint32): ProtocolResultOf[ProtocolMessage] =
   let started = getTickCount64()
