@@ -56,6 +56,7 @@ setup-contract-test: ## GTK/WebKitGTK/WebView2自動準備の契約を検証す�
 	bash tools/ci/test_nimble_entrypoints.sh
 	bash tools/ci/test_make_reference_env.sh
 	bash tools/ci/test_make_clean.sh
+	bash tools/ci/test_wsl_public_site_targets.sh
 
 host-linux: image ## コンテナ内で汎用Linux Nimino hostをビルドする
 	$(COMPOSE) run --rm $(SERVICE) $(NIMBLE) buildNiminoHost
@@ -224,15 +225,16 @@ wsl-host-smoke: image ## WSLからWindows hostのWebView2生成・HTML・JavaScr
 	$(COMPOSE) run --rm $(SERVICE) $(NIMBLE) buildWslHostArtifact
 	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)") || { status=$$?; $(WINDOWS_CLEANUP) >/dev/null 2>&1 || true; exit $$status; }
 
-wsl-site-smoke: image ## YouTube/Gmail/Google Analyticsの実サイトWebView2読込を確認する
+wsl-site-smoke: image ## ログイン不要の公開サイトをWebView2で読込・内容確認する
 
 	@command -v powershell.exe >/dev/null 2>&1 || { echo "ERROR: powershell.exe is unavailable; restore Windows Interop first." >&2; exit 1; }
 	@powershell.exe -NoProfile -Command "exit 0" >/dev/null 2>&1 || { echo "ERROR: Windows Interop is not responding. In elevated Windows PowerShell run: wsl --shutdown; Restart-Service LxssManager; then reopen WSL." >&2; exit 1; }
 	$(COMPOSE) run --rm $(SERVICE) $(NIMBLE) buildWslHostArtifact
-	@for url in "https://www.youtube.com/" "https://mail.google.com/mail/u/0/" "https://analytics.google.com/analytics/web/"; do \
+	@while IFS= read -r url <&3; do \
+		[ -n "$$url" ] || continue; \
 		echo "Nimino site URL smoke: $$url"; \
-		(timeout --foreground $(WSL_SITE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -InitialUrl "$$url" -ReadTimeoutMs $(WSL_SITE_READ_TIMEOUT_MS)) || { status=$$?; $(WINDOWS_CLEANUP) >/dev/null 2>&1 || true; exit $$status; }; \
-	done
+		(timeout --foreground $(WSL_SITE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/wsl-host-smoke.ps1)" -HostExecutable "$$(wslpath -w $(CURDIR)/.tmp/nimino-wsl-host.exe)" -InitialUrl "$$url" -VerifyPublicPage -ReadTimeoutMs $(WSL_SITE_READ_TIMEOUT_MS)) || { status=$$?; $(WINDOWS_CLEANUP) >/dev/null 2>&1 || true; exit $$status; }; \
+	done 3< tools/ci/wsl-public-sites.txt
 
 wsl-host-abnormal-smoke: image ## WSL clientのEOF・protocol破損時にWindows hostが正しいstatusで終了することを確認する
 

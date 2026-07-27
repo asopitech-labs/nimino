@@ -8,9 +8,10 @@ The macOS items below are verified by local AppKit/WKWebView and bundle smoke te
 All parity checklist items remain complete. A follow-up implementation audit
 closed runtime-selection, protocol-lifecycle, Linux proxy/profile, cleanup, and
 test false-success gaps. Deterministic Linux and Windows/WSL gates are green.
-The optional external-site matrix loaded YouTube and Gmail; Google Analytics
-did not complete within its 180-second external navigation limit, so that
-network-dependent matrix is not reported as fully green.
+The external-site matrix now uses only reviewed login-free targets: YouTube,
+the public Nim repository on GitHub, and OpenStreetMap. All three passed real
+Windows/WSL WebView2 navigation, non-empty title/body, JavaScript/message, and
+shutdown checks.
 
 ## macOS parity follow-up (2026-07-23)
 
@@ -71,6 +72,7 @@ network-dependent matrix is not reported as fully green.
 - [x] Return a nonzero Windows host status for malformed authenticated input before or during the UI loop, clear rejected buffers, and enforce frame limits between bounded input chunks.
 - [x] Preserve Linux persistent profiles when a proxy is configured, apply the proxy to the created WebKit network session, and dispose partially created native windows on setup failure.
 - [x] Verify that scoped Windows host/WebView2 PIDs actually disappear after cleanup rather than trusting `taskkill` status alone.
+- [x] Keep WSL external-site smoke targets in a reviewed login-free catalog and require usable page content instead of treating an authentication page or navigation event alone as success.
 
 ## Verification gates
 

@@ -219,7 +219,7 @@ make wsl-host-smoke
 make wsl-site-smoke
 ```
 
-`make wsl-site-smoke` opens YouTube, Gmail, and Google Analytics sequentially, validates WebView2 navigation/JavaScript/message handling, and closes the test host automatically. It does not perform account login.
+`make wsl-site-smoke` opens YouTube, the public Nim repository on GitHub, and OpenStreetMap sequentially without signing in. It requires each page to complete navigation and expose a ready document with a non-empty title and body before validating JavaScript/message handling and closing the test host automatically. The reviewed target list lives in `tools/ci/wsl-public-sites.txt`.
 
 If `powershell.exe` reports `UtilBindVsockAnyPort: socket failed`, repair Windows Interop from an elevated Windows PowerShell and reopen WSL:
 

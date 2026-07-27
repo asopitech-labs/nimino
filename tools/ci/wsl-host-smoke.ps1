@@ -5,6 +5,7 @@ param(
   [switch]$MalformedClientFrame,
   [switch]$MalformedClientFrameAfterUi,
   [switch]$VerifyNewWindow,
+  [switch]$VerifyPublicPage,
   [string]$InitialUrl = "about:blank",
   [ValidateRange(1000, 180000)]
   [int]$ReadTimeoutMs = 3000
@@ -540,6 +541,30 @@ try {
   }
   Set-SmokePhase "URL navigation completion"
   Wait-ForNavigationCompleted $webViewId
+
+  if ($VerifyPublicPage) {
+    Set-SmokePhase "public page content validation"
+    Write-Frame @{
+      version = 1; kind = "request"; sessionId = $ready.sessionId; authenticationToken = ""
+      requestId = "111"; eventId = "0"; method = "native.webview.evalJavaScript"
+      payload = (ConvertTo-Json -Compress @{
+        webViewId = $webViewId
+        script = "JSON.stringify({ readyState: document.readyState, title: document.title, bodyTextLength: document.body ? document.body.innerText.trim().length : 0 })"
+      })
+      error = ""; timeoutMs = 5000
+    }
+    $pageEvaluation = Read-Response "111"
+    if ($pageEvaluation.kind -ne "response" -or $pageEvaluation.requestId -ne "111" -or
+        -not [string]::IsNullOrEmpty($pageEvaluation.error)) {
+      throw "Host did not evaluate the public page state"
+    }
+    $pageState = (($pageEvaluation.payload | ConvertFrom-Json).result | ConvertFrom-Json) | ConvertFrom-Json
+    if ($pageState.readyState -eq "loading" -or
+        [string]::IsNullOrWhiteSpace($pageState.title) -or
+        $pageState.bodyTextLength -le 0) {
+      throw "Public page did not expose a ready document title and body content"
+    }
+  }
 
   Set-SmokePhase "WebView message"
   Write-Frame @{
