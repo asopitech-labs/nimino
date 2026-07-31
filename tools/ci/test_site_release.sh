@@ -29,9 +29,17 @@ require_artifact() {
 }
 
 for app in youtube gmail google-analytics; do
+  case "$app" in
+    youtube) expected_name="YouTube" ;;
+    gmail) expected_name="Gmail" ;;
+    google-analytics) expected_name="Google Analytics" ;;
+  esac
   for platform in linux windows; do
     test -s "$assets/${app}-${platform}-nimino-manifest.json"
     test -s "$assets/${app}-${platform}-nimino-sbom.cdx.json"
+    # Reviewed display names, not the URL-derived defaults (both Google
+    # properties would otherwise be called "Google").
+    grep -Fq "\"name\": \"$expected_name\"" "$assets/${app}-${platform}-nimino-manifest.json"
   done
   require_artifact "$assets/${app}-*.deb"
   require_artifact "$assets/${app}-*.rpm"

@@ -67,15 +67,23 @@ copy_assets() {
   shopt -u nullglob
 }
 
+# Display names and stable ids are pinned explicitly: URL derivation names
+# both Google properties "Google", and passing --name alone would change the
+# generated id and break upgrade continuity for installed apps.
 for site in \
-  "youtube|https://www.youtube.com/" \
-  "gmail|https://mail.google.com/mail/u/0/" \
-  "google-analytics|https://analytics.google.com/analytics/web/"; do
+  "youtube|https://www.youtube.com/|YouTube|com.nimino.youtube-com" \
+  "gmail|https://mail.google.com/mail/u/0/|Gmail|com.nimino.mail-google-com" \
+  "google-analytics|https://analytics.google.com/analytics/web/|Google Analytics|com.nimino.analytics-google-com"; do
   app=${site%%|*}
-  url=${site#*|}
+  rest=${site#*|}
+  url=${rest%%|*}
+  rest=${rest#*|}
+  display_name=${rest%%|*}
+  app_id=${rest##*|}
   linux_bundle="$root/$app-linux"
   linux_packages="$root/$app-linux-packages"
-  "$cli" pack "$url" --out "$linux_bundle" --host "$linux_host" --app-version "$app_version"
+  "$cli" pack "$url" --name "$display_name" --id "$app_id" \
+    --out "$linux_bundle" --host "$linux_host" --app-version "$app_version"
   mkdir -p "$linux_packages"
   "$cli" package-linux "$linux_bundle" --format deb --out "$linux_packages" \
     --arch amd64 --maintainer "Nimino Site Release <noreply@nimino.invalid>"
@@ -87,7 +95,8 @@ for site in \
 
   windows_bundle="$root/$app-windows"
   windows_packages="$root/$app-windows-packages"
-  "$cli" pack "$url" --out "$windows_bundle" --host "$windows_host" --app-version "$app_version"
+  "$cli" pack "$url" --name "$display_name" --id "$app_id" \
+    --out "$windows_bundle" --host "$windows_host" --app-version "$app_version"
   cp "$webview2_loader" "$windows_bundle/WebView2Loader.dll"
   cp "$pcre_dll" "$windows_bundle/pcre64.dll"
   mkdir -p "$windows_packages"

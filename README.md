@@ -31,7 +31,7 @@ The workflow is defined in [`nimino-pack-online.yml`](.github/workflows/nimino-p
 
 ### Ready-made site installers
 
-The release workflow packages YouTube, Gmail, and Google Analytics from their URLs. Nimino derives the application ID, display name, profile, window defaults, package metadata, and navigation behavior from each URL. No site-specific navigation allow-list or credentials are embedded; the normal sign-in page and profile cookie store are used.
+The release workflow packages YouTube, Gmail, and Google Analytics from their URLs. Nimino derives the profile, window defaults, package metadata, and navigation behavior from each URL; the reviewed display names and stable application IDs are pinned in the release script because both Google properties would otherwise derive the same "Google" name. No site-specific navigation allow-list or credentials are embedded; the normal sign-in page and profile cookie store are used.
 
 | App | Open in browser | Default window | Profile | Maintainer rebuild |
 | --- | --- | ---: | --- | --- |
