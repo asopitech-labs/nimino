@@ -22,22 +22,48 @@ assets="$output/assets"
 rm -rf "$output"
 mkdir -p "$assets"
 
+# Release assets are an explicit allowlist: each pattern must match exactly
+# one generated file, and any file the allowlist does not cover fails the
+# build instead of leaking into the published release.
 copy_assets() {
   local app=$1
   local package_dir=$2
-  local found=0
+  shift 2
+  local copied=()
+  local pattern artifact name matches
   shopt -s nullglob
+  for pattern in "$@"; do
+    matches=()
+    for artifact in "$package_dir"/$pattern; do
+      [[ -f "$artifact" ]] && matches+=("$artifact")
+    done
+    if [[ "${#matches[@]}" -ne 1 ]]; then
+      echo "site release: expected exactly one $pattern artifact for $app, found ${#matches[@]}" >&2
+      exit 1
+    fi
+    cp "${matches[0]}" "$assets/${app}-$(basename "${matches[0]}")"
+    copied+=("$(basename "${matches[0]}")")
+  done
   for artifact in "$package_dir"/*; do
-    if [[ -f "$artifact" ]]; then
-      cp "$artifact" "$assets/${app}-$(basename "$artifact")"
-      found=1
+    [[ -f "$artifact" ]] || continue
+    name=$(basename "$artifact")
+    case "$name" in
+      *-setup.nsi)
+        # The NSIS script is a tested local byproduct (test_pack_windows.sh
+        # asserts its content); it stays out of the published assets.
+        continue
+        ;;
+    esac
+    local expected=0
+    for pattern in "${copied[@]}"; do
+      [[ "$pattern" == "$name" ]] && expected=1
+    done
+    if [[ "$expected" -ne 1 ]]; then
+      echo "site release: unexpected artifact would leak into the release: $name" >&2
+      exit 1
     fi
   done
   shopt -u nullglob
-  if [[ "$found" -eq 0 ]]; then
-    echo "site release: no package artifact was generated for $app" >&2
-    exit 1
-  fi
 }
 
 for site in \
@@ -54,7 +80,7 @@ for site in \
     --arch amd64 --maintainer "Nimino Site Release <noreply@nimino.invalid>"
   "$cli" package-linux "$linux_bundle" --format rpm --out "$linux_packages" \
     --arch amd64 --license MIT
-  copy_assets "$app" "$linux_packages"
+  copy_assets "$app" "$linux_packages" '*.deb' '*.rpm'
   cp "$linux_bundle/nimino-manifest.json" "$assets/${app}-linux-nimino-manifest.json"
   cp "$linux_bundle/nimino-sbom.cdx.json" "$assets/${app}-linux-nimino-sbom.cdx.json"
 
@@ -66,7 +92,7 @@ for site in \
   mkdir -p "$windows_packages"
   "$cli" package-windows "$windows_bundle" --format nsis --out "$windows_packages"
   "$cli" package-windows "$windows_bundle" --format msi --out "$windows_packages"
-  copy_assets "$app" "$windows_packages"
+  copy_assets "$app" "$windows_packages" '*-setup.exe' '*.msi'
   cp "$windows_bundle/nimino-manifest.json" "$assets/${app}-windows-nimino-manifest.json"
   cp "$windows_bundle/nimino-sbom.cdx.json" "$assets/${app}-windows-nimino-sbom.cdx.json"
 done

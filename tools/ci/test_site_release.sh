@@ -38,6 +38,28 @@ for app in youtube gmail google-analytics; do
   require_artifact "$assets/${app}-*.msi"
 done
 
+# Every asset must be on the release allowlist; anything else is a build
+# intermediate or packaging leak and must fail the release.
+for artifact in "$assets"/*; do
+  name=$(basename "$artifact")
+  case "$name" in
+    SHA256SUMS|Nimino-WebView2-Setup.ps1) ;;
+    youtube-*|gmail-*|google-analytics-*)
+      case "$name" in
+        *-nimino-manifest.json|*-nimino-sbom.cdx.json|*.deb|*.rpm|*-setup.exe|*.msi) ;;
+        *)
+          echo "site release: unexpected asset would be published: $name" >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    *)
+      echo "site release: unexpected asset would be published: $name" >&2
+      exit 1
+      ;;
+  esac
+done
+
 (cd "$assets" && sha256sum -c SHA256SUMS)
 grep -Fq 'Apps: youtube, gmail, google-analytics' "$release_dir/RELEASE-NOTES.txt"
 echo "nimino ready-made site installer rebuild verified"
