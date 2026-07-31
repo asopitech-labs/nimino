@@ -121,7 +121,10 @@ if "$work_pack_linux/nimino" >/dev/null 2>&1; then
   echo "component release: nimino CLI did not report usage without arguments" >&2
   exit 1
 fi
-if ! "$work_pack_linux/nimino" 2>&1 | grep -q 'usage: nimino pack'; then
+# Capture before matching: the CLI exits non-zero when it prints usage, and
+# under `set -o pipefail` that status would fail the pipeline even on a match.
+pack_usage=$("$work_pack_linux/nimino" 2>&1 || true)
+if ! printf '%s\n' "$pack_usage" | grep -q 'usage: nimino pack'; then
   echo "component release: nimino CLI usage output is missing" >&2
   exit 1
 fi
