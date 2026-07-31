@@ -53,8 +53,8 @@ grep -F 'ExecWait '\''"$TEMP\MicrosoftEdgeWebView2Setup.exe" /silent /install'\'
 grep -Fx 'InstallDir "$LOCALAPPDATA\Nimino\app.nimino.windows-demo"' "$script"
 grep -Fx '  File /r "/tmp/nimino-pack-windows-test/bundle/*"' "$script"
 grep -Fx '  WriteUninstaller "$INSTDIR\uninstall.exe"' "$script"
-grep -Fx '  CreateShortcut "$SMPROGRAMS\Nimino\app.nimino.windows-demo.lnk" "$INSTDIR\run-nimino.cmd"' "$script"
-grep -Fx '  CreateShortcut "$DESKTOP\Windows Demo.lnk" "$INSTDIR\run-nimino.cmd"' "$script"
+grep -Fx '  CreateShortcut "$SMPROGRAMS\Nimino\app.nimino.windows-demo.lnk" "$INSTDIR\nimino-host.exe" '\''--manifest "$INSTDIR\nimino-manifest.json"'\''' "$script"
+grep -Fx '  CreateShortcut "$DESKTOP\Windows Demo.lnk" "$INSTDIR\nimino-host.exe" '\''--manifest "$INSTDIR\nimino-manifest.json"'\''' "$script"
 grep -Fx '  Delete "$DESKTOP\Windows Demo.lnk"' "$script"
 grep -F 'register-windows-shortcut.ps1' "$script"
 grep -F 'LocalServer32' "$script"
@@ -89,7 +89,8 @@ msiinfo tables "$msi" | grep -Fx 'Upgrade'
 msiinfo export "$msi" CustomAction | grep -F 'DownloadAndInvokeBootstrapper'
 msiinfo export "$msi" CustomAction | grep -F 'MicrosoftEdgeWebView2Setup.exe'
 msiinfo export "$msi" Registry | grep -F 'Windows\CurrentVersion\Uninstall\app.nimino.windows-demo'
-msiinfo export "$msi" Shortcut | grep -F 'run-nimino.cmd'
+msiinfo export "$msi" Shortcut | grep -F 'nimino-host.exe'
+msiinfo export "$msi" Shortcut | grep -F -- '--manifest'
 msiinfo export "$msi" Shortcut | grep -F 'DesktopFolder'
 msiextract -l "$msi" | grep -F 'nimino-manifest.json'
 msiextract -l "$msi" | grep -F 'run-nimino.cmd'

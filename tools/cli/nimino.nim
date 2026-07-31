@@ -456,12 +456,14 @@ proc windowsInstallScript(manifest: PackManifest; localIcon, hostExecutable: str
     "if (-not (Test-Path -LiteralPath $launcher)) { throw 'run-nimino.cmd is missing from bundle' }\n" &
     "$hostExecutable = Join-Path $target " & powershellLiteral(hostExecutable) & "\n" &
     "if (-not (Test-Path -LiteralPath $hostExecutable)) { throw 'host executable is missing from bundle' }\n" &
+    "$manifestPath = Join-Path $target 'nimino-manifest.json'\n" &
     "$programs = [Environment]::GetFolderPath('Programs')\n" &
     "$shortcutDirectory = Join-Path $programs 'Nimino'\n" &
     "New-Item -ItemType Directory -Force -Path $shortcutDirectory | Out-Null\n" &
     "$shortcutPath = Join-Path $shortcutDirectory " & powershellLiteral(shortcutName) & "\n" &
     "$shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)\n" &
-    "$shortcut.TargetPath = $launcher\n" &
+    "$shortcut.TargetPath = $hostExecutable\n" &
+    "$shortcut.Arguments = '--manifest \"' + $manifestPath + '\"'\n" &
     "$shortcut.WorkingDirectory = $target\n" &
     "$shortcut.Description = " & powershellLiteral(manifest.package.description) & "\n"
   if localIcon.len > 0:
@@ -498,7 +500,8 @@ proc windowsInstallScript(manifest: PackManifest; localIcon, hostExecutable: str
       "New-ItemProperty -Force -LiteralPath $deepLinkKey -Name 'URL Protocol' -Value '' | Out-Null\n" &
       "New-Item -Force -Path (Join-Path $deepLinkKey 'shell\\open\\command') | Out-Null\n" &
       "New-ItemProperty -Force -LiteralPath (Join-Path $deepLinkKey 'shell\\open\\command') -Name '(default)' -Value " &
-        "('" & '"' & "' + $launcher + '" & '"' & "' \"%1\"') | Out-Null\n")
+        "('" & '"' & "' + $hostExecutable + '" & '"' &
+        " --manifest \"' + $manifestPath + '\" \"%1\"') | Out-Null\n")
   if manifest.package.publisher.len > 0:
     result.add("New-ItemProperty -Force -LiteralPath $uninstallKey -Name 'Publisher' -Value " &
       powershellLiteral(manifest.package.publisher) & " | Out-Null\n")
@@ -535,7 +538,8 @@ proc windowsUninstallScript(manifest: PackManifest; hostExecutable: string): str
   for scheme in manifest.deepLink.schemes:
     let key = "HKCU:\\Software\\Classes\\" & scheme
     result.add("$deepLinkKey = " & powershellLiteral(key) & "\n" &
-      "$deepLinkCommand = '\"' + (Join-Path $target 'run-nimino.cmd') + '\" \"%1\"'\n" &
+      "$deepLinkCommand = '\"' + (Join-Path $target " & powershellLiteral(hostExecutable) &
+        ") + '\" --manifest \"' + (Join-Path $target 'nimino-manifest.json') + '\" \"%1\"'\n" &
       "if (Test-Path -LiteralPath (Join-Path $deepLinkKey 'shell\\open\\command')) {\n" &
       "  $registered = (Get-ItemProperty -LiteralPath (Join-Path $deepLinkKey 'shell\\open\\command') -Name '(default)').'(default)'\n" &
       "  if ($registered -eq $deepLinkCommand) { Remove-Item -LiteralPath $deepLinkKey -Recurse -Force }\n" &

@@ -291,14 +291,16 @@ proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: st
     "  File /r \"" & source.nsisString() & "\"\n" &
     "  WriteUninstaller \"$INSTDIR\\uninstall.exe\"\n" &
     "  CreateDirectory \"$SMPROGRAMS\\Nimino\"\n" &
-    "  CreateShortcut \"" & shortcut & "\" \"$INSTDIR\\" & metadata.entryPoint & "\"\n" &
+    "  CreateShortcut \"" & shortcut & "\" \"$INSTDIR\\" & metadata.hostExecutable &
+      "\" '--manifest \"$INSTDIR\\nimino-manifest.json\"'\n" &
     "  ExecWait '\"powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"$INSTDIR\\" &
       metadata.shortcutPropertiesScript & "\" -ShortcutPath \"" & shortcut &
       "\" -AppUserModelId \"" & metadata.appUserModelId.nsisString() &
       "\" -ToastActivatorClsid \"" & metadata.toastActivatorClsid.nsisString() & "\"' $0\n" &
     "  StrCmp $0 \"0\" +2\n" &
     "  Abort \"Unable to configure Windows AppUserModelId shortcut property\"\n" &
-    "  CreateShortcut \"" & desktopShortcut & "\" \"$INSTDIR\\" & metadata.entryPoint & "\"\n" &
+    "  CreateShortcut \"" & desktopShortcut & "\" \"$INSTDIR\\" & metadata.hostExecutable &
+      "\" '--manifest \"$INSTDIR\\nimino-manifest.json\"'\n" &
     "  ExecWait '\"powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"$INSTDIR\\" &
       metadata.shortcutPropertiesScript & "\" -ShortcutPath \"" & desktopShortcut &
       "\" -AppUserModelId \"" & metadata.appUserModelId.nsisString() &
@@ -331,7 +333,7 @@ proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: st
       scheme.nsisString() & " Protocol\"\n" &
       "  WriteRegStr HKCU \"" & schemeKey & "\" \"URL Protocol\" \"\"\n" &
       "  WriteRegStr HKCU \"" & schemeKey & "\\shell\\open\\command\" \"\" \"$\\\"$INSTDIR\\" &
-      metadata.entryPoint & "$\\\" $\\\"%1$\\\"\"\n")
+      metadata.hostExecutable & "$\\\" --manifest $\\\"$INSTDIR\\nimino-manifest.json$\\\" $\\\"%1$\\\"\"\n")
   result.add("SectionEnd\n\n" &
     "Section \"Uninstall\"\n" &
     "  SetShellVarContext current\n" &
@@ -467,7 +469,8 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
   for index, scheme in metadata.deepLinkSchemes:
     let componentId = "cmpDeepLink" & $index
     let componentGuid = stableMsiGuid("deep-link:" & metadata.id & ":" & scheme)
-    let command = "&quot;[INSTALLDIR]" & metadata.entryPoint & "&quot; &quot;%1&quot;"
+    let command = "&quot;[INSTALLDIR]" & metadata.hostExecutable &
+      "&quot; --manifest &quot;[INSTALLDIR]nimino-manifest.json&quot; &quot;%1&quot;"
     result.add("            <Component Id='" & componentId & "' Guid='{" & componentGuid & "}' Win64='yes'>\n" &
       "              <RegistryKey Root='HKCU' Key='Software\\Classes\\" & scheme & "'>\n" &
       "                <RegistryValue Type='string' Value='URL:Nimino " & scheme & " Protocol' KeyPath='yes' />\n" &
@@ -502,8 +505,9 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
     "        <Directory Id='NiminoProgramsFolder' Name='Nimino'>\n" &
     "          <Component Id='" & shortcutComponentId & "' Guid='{" & shortcutComponentGuid & "}'>\n" &
     "            <Shortcut Id='StartMenuShortcut' Name='" & shortcutName &
-      "' Target='[INSTALLDIR]" & metadata.entryPoint.xmlAttribute() &
-      "' WorkingDirectory='INSTALLDIR' />\n" &
+      "' Target='[INSTALLDIR]" & metadata.hostExecutable.xmlAttribute() &
+      "' Arguments='--manifest \"[INSTALLDIR]nimino-manifest.json\"'" &
+      " WorkingDirectory='INSTALLDIR' />\n" &
     "            <RemoveFolder Id='RemoveNiminoProgramsFolder' On='uninstall' />\n" &
     "            <RegistryValue Root='HKCU' Key='" & uninstallKey &
       "' Name='DisplayName' Type='string' Value='" & shortcutName & "' KeyPath='yes' />\n" &
@@ -533,8 +537,9 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
     "      <Directory Id='DesktopFolder'>\n" &
     "        <Component Id='" & desktopComponentId & "' Guid='{" & desktopComponentGuid & "}'>\n" &
     "          <Shortcut Id='DesktopShortcut' Name='" & desktopShortcutName &
-      "' Target='[INSTALLDIR]" & metadata.entryPoint.xmlAttribute() &
-      "' WorkingDirectory='INSTALLDIR' />\n" &
+      "' Target='[INSTALLDIR]" & metadata.hostExecutable.xmlAttribute() &
+      "' Arguments='--manifest \"[INSTALLDIR]nimino-manifest.json\"'" &
+      " WorkingDirectory='INSTALLDIR' />\n" &
     "          <RegistryValue Root='HKCU' Key='" & uninstallKey &
       "' Name='DesktopShortcutInstalled' Type='integer' Value='1' KeyPath='yes' />\n" &
     "        </Component>\n" &

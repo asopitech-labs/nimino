@@ -146,8 +146,11 @@ task buildNiminoHost, "Build the generic native Nimino host":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-host-nimcache --out:/tmp/nimino-host --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
 
 task buildNiminoHostWindows, "Cross-compile the generic Windows Nimino host":
-  exec "nim c --os:windows --cpu:amd64 --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-host-windows-nimcache --out:/tmp/nimino-host.exe --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
+  ## --app:gui matches Pake's `windows_subsystem = "windows"`: a packaged GUI
+  ## application must not allocate a console window at launch.
+  exec "nim c --os:windows --cpu:amd64 --app:gui --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-host-windows-nimcache --out:/tmp/nimino-host.exe --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
   exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-host.exe | grep -q 'file format pei-x86-64'"
+  exec "x86_64-w64-mingw32-objdump -p /tmp/nimino-host.exe | grep -q 'Subsystem.*Windows GUI'"
 
 task buildSiteRelease, "Build downloadable installers for the reviewed web sites":
   exec "nimble buildPackCli"
