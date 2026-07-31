@@ -379,21 +379,31 @@ proc main() =
     if internalUrlRegex.len > 0:
       return target.match(internalRegex)
     true
+  ## The last document the policy let the window navigate to.  A popup
+  ## requested while an identity-provider page is current is the sign-in
+  ## continuation and must stay in-app even for a non-auth target URL.
+  var currentDocumentUrl = appUrl
   if appUrl.len > 0:
     let policyConfigured = if allowPatterns.len > 0 or externalPatterns.len > 0:
       window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
-        if isForcedInternalNavigation(request.url):
-          navigationAllow
-        elif externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
-          navigationExternal
-        elif allowPatterns.anyIt(matchesNavigationPattern(it, request.url)):
-          navigationAllow
-        else:
-          navigationDeny)
+        result =
+          if isForcedInternalNavigation(request.url):
+            navigationAllow
+          elif externalPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+            navigationExternal
+          elif allowPatterns.anyIt(matchesNavigationPattern(it, request.url)):
+            navigationAllow
+          else:
+            navigationDeny
+        if result == navigationAllow:
+          currentDocumentUrl = request.url)
     else:
       window.setNavigationPolicy(proc(request: NavigationRequest): NavigationDecision =
-        if isForcedInternalNavigation(request.url): navigationAllow
-        else: defaultNavigationDecision(appUrl, request.url))
+        result =
+          if isForcedInternalNavigation(request.url): navigationAllow
+          else: defaultNavigationDecision(appUrl, request.url)
+        if result == navigationAllow:
+          currentDocumentUrl = request.url)
     if not policyConfigured.isOk:
       fail(policyConfigured.failure)
   let popupConfigured = window.onNewWindow(proc(request: NewWindowRequest): bool =
@@ -414,7 +424,8 @@ proc main() =
       external = decision == navigationExternal,
       newWindow = newWindow,
       authentication = isAuthenticationNavigation(request.url),
-      blankPopup = request.url.toLowerAscii() == "about:blank")
+      blankPopup = request.url.toLowerAscii() == "about:blank",
+      authenticationSource = isAuthenticationNavigation(currentDocumentUrl))
     case popupDecision
     of popupLinkAllow:
       ## The request came from the WebView's user gesture.  Consume it by

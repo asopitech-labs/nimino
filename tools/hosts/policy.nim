@@ -19,7 +19,7 @@ proc bypassLinkGuard*(href: string): bool =
   normalized.startsWith("javascript:") or normalized.startsWith("#")
 
 proc popupLinkDisposition*(allowed, external, newWindow, authentication: bool;
-                           blankPopup = false):
+                           blankPopup = false; authenticationSource = false):
     PopupLinkDisposition =
   ## Pake's generated-host contract: an allowed popup stays in-app only when
   ## the user enabled new windows or the target is an authentication flow.
@@ -28,13 +28,16 @@ proc popupLinkDisposition*(allowed, external, newWindow, authentication: bool;
   ## `about:blank` is an inert browser-created child document. It becomes an
   ## authentication popup only after a policy-checked redirect, so it must not
   ## be sent to the system browser merely because it has no hostname.
+  ## A popup requested by an identity-provider document (`authenticationSource`)
+  ## is the continuation that returns the signed-in user to the application
+  ## site; sending it to the system browser would strand the session there.
   if blankPopup:
     return popupLinkAllow
   if external:
     return popupLinkExternal
   if not allowed:
     return popupLinkDeny
-  if not newWindow and not authentication:
+  if not newWindow and not authentication and not authenticationSource:
     return popupLinkExternal
   popupLinkAllow
 
