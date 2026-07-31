@@ -54,6 +54,8 @@ grep -Fx 'InstallDir "$LOCALAPPDATA\Nimino\app.nimino.windows-demo"' "$script"
 grep -Fx '  File /r "/tmp/nimino-pack-windows-test/bundle/*"' "$script"
 grep -Fx '  WriteUninstaller "$INSTDIR\uninstall.exe"' "$script"
 grep -Fx '  CreateShortcut "$SMPROGRAMS\Nimino\app.nimino.windows-demo.lnk" "$INSTDIR\run-nimino.cmd"' "$script"
+grep -Fx '  CreateShortcut "$DESKTOP\Windows Demo.lnk" "$INSTDIR\run-nimino.cmd"' "$script"
+grep -Fx '  Delete "$DESKTOP\Windows Demo.lnk"' "$script"
 grep -F 'register-windows-shortcut.ps1' "$script"
 grep -F 'LocalServer32' "$script"
 grep -F -- '-Embedding --manifest' "$script"
@@ -88,6 +90,7 @@ msiinfo export "$msi" CustomAction | grep -F 'DownloadAndInvokeBootstrapper'
 msiinfo export "$msi" CustomAction | grep -F 'MicrosoftEdgeWebView2Setup.exe'
 msiinfo export "$msi" Registry | grep -F 'Windows\CurrentVersion\Uninstall\app.nimino.windows-demo'
 msiinfo export "$msi" Shortcut | grep -F 'run-nimino.cmd'
+msiinfo export "$msi" Shortcut | grep -F 'DesktopFolder'
 msiextract -l "$msi" | grep -F 'nimino-manifest.json'
 msiextract -l "$msi" | grep -F 'run-nimino.cmd'
 msiextract -l "$msi" | grep -F 'nimino-host.exe'

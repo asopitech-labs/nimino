@@ -204,7 +204,7 @@ bundleを生成した後、Docker内でper-user NSIS setupを生成できます�
 nimino package-windows dist/discord --format nsis --out dist/packages
 ```
 
-`<id>-<version>-setup.exe`に加え、同じ内容を監査できる`.nsi` scriptを出力します。setupは`%LOCALAPPDATA%\\Nimino\\<id>`、HKCUのUninstall registry entry、current userのStart Menu shortcutを対象にし、未導入時はWebView2 Evergreen Bootstrapperを取得します。管理者権限、全ユーザー導入、WebView2 Runtime本体の同梱、code signing、Windows実機でのinstall/uninstall/upgrade検証は含みません。
+`<id>-<version>-setup.exe`に加え、同じ内容を監査できる`.nsi` scriptを出力します。setupは`%LOCALAPPDATA%\\Nimino\\<id>`、HKCUのUninstall registry entry、current userのStart Menu shortcutと表示名のDesktop shortcutを対象にし、未導入時はWebView2 Evergreen Bootstrapperを取得します。管理者権限、全ユーザー導入、WebView2 Runtime本体の同梱、code signing、Windows実機でのinstall/uninstall/upgrade検証は含みません。
 
 `[deepLink] schemes`を指定した場合、NSISは各schemeの`URL Protocol`と`shell\\open\\command`をHKCUへ登録します。コマンドライン引数は生成launcherからhostへ転送されるため、OSから渡されたURIをアプリ側で受け取れます。PowerShell templateも同じ登録を行い、uninstall時は自アプリのcommand登録と一致する場合だけ削除します。
 
@@ -216,7 +216,7 @@ Windows通知のAUMIDはmanifestの`id`と同一に固定し、NSISおよび`ins
 nimino package-windows dist/discord --format msi --out dist/packages
 ```
 
-`<id>-<version>.msi`をDocker内のDebian `wixl`（msitools）で生成します。per-userの`%LOCALAPPDATA%\\Nimino\\<id>`へbundleのトップレベルファイルを配置し、Start Menu shortcut、HKCUのARP情報、deep-link registry、Toast COM LocalServerを含むWindows Installer databaseです。安定したUpgradeCodeと`MajorUpgrade`を生成するため同じ製品IDの上書き更新・ダウングレード拒否を定義します。生成物は`msiextract`/`msiinfo`で検査できます。WiX互換サブセットのため、管理者導入、UI、コード署名、Windows実機のinstall/upgrade/uninstallは別release gateです。
+`<id>-<version>.msi`をDocker内のDebian `wixl`（msitools）で生成します。per-userの`%LOCALAPPDATA%\\Nimino\\<id>`へbundleのトップレベルファイルを配置し、Start Menu shortcut、表示名のDesktop shortcut、HKCUのARP情報、deep-link registry、Toast COM LocalServerを含むWindows Installer databaseです。安定したUpgradeCodeと`MajorUpgrade`を生成するため同じ製品IDの上書き更新・ダウングレード拒否を定義します。生成物は`msiextract`/`msiinfo`で検査できます。WiX互換サブセットのため、管理者導入、UI、コード署名、Windows実機のinstall/upgrade/uninstallは別release gateです。
 deep link指定時はMSIにも同じHKCU URL Protocol registry rowsを含めます。
 
 ### Linux archive

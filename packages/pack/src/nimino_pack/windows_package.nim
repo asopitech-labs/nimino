@@ -119,6 +119,18 @@ proc expectedInstallRoot(id: string): string =
 proc expectedShortcut(id: string): string =
   "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Nimino\\" & id & ".lnk"
 
+proc shortcutBaseName(metadata: WindowsBundleMetadata): string =
+  ## The desktop shortcut carries the user-facing display name, which is
+  ## free-form manifest text; drop the characters Windows forbids in file
+  ## names and fall back to the stable id for a degenerate name.
+  for character in metadata.displayName:
+    if character notin {'\\', '/', ':', '*', '?', '"', '<', '>', '|'} and
+        ord(character) >= 32:
+      result.add(character)
+  result = result.strip()
+  if result.len == 0:
+    result = metadata.id
+
 proc readWindowsBundleMetadata(bundleDirectory: string): PackResult[WindowsBundleMetadata] =
   if bundleDirectory.len == 0 or not dirExists(bundleDirectory):
     return failure[WindowsBundleMetadata](ioFailure,
@@ -239,6 +251,7 @@ proc nsisString(value: string): string =
 proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: string): string =
   let uninstallKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" & metadata.id
   let shortcut = "$SMPROGRAMS\\Nimino\\" & metadata.id & ".lnk"
+  let desktopShortcut = "$DESKTOP\\" & metadata.shortcutBaseName().nsisString() & ".lnk"
   let source = bundleDirectory / "*"
   result = "Unicode true\n" &
     "!include LogicLib.nsh\n" &
@@ -285,6 +298,13 @@ proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: st
       "\" -ToastActivatorClsid \"" & metadata.toastActivatorClsid.nsisString() & "\"' $0\n" &
     "  StrCmp $0 \"0\" +2\n" &
     "  Abort \"Unable to configure Windows AppUserModelId shortcut property\"\n" &
+    "  CreateShortcut \"" & desktopShortcut & "\" \"$INSTDIR\\" & metadata.entryPoint & "\"\n" &
+    "  ExecWait '\"powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"$INSTDIR\\" &
+      metadata.shortcutPropertiesScript & "\" -ShortcutPath \"" & desktopShortcut &
+      "\" -AppUserModelId \"" & metadata.appUserModelId.nsisString() &
+      "\" -ToastActivatorClsid \"" & metadata.toastActivatorClsid.nsisString() & "\"' $0\n" &
+    "  StrCmp $0 \"0\" +2\n" &
+    "  Abort \"Unable to configure Windows AppUserModelId shortcut property\"\n" &
     "  WriteRegStr HKCU \"" & uninstallKey & "\" \"DisplayName\" \"" &
       metadata.displayName.nsisString() & "\"\n" &
     "  WriteRegStr HKCU \"" & uninstallKey & "\" \"DisplayVersion\" \"" &
@@ -316,6 +336,7 @@ proc nsisScript(metadata: WindowsBundleMetadata; bundleDirectory, outputPath: st
     "Section \"Uninstall\"\n" &
     "  SetShellVarContext current\n" &
     "  Delete \"" & shortcut & "\"\n" &
+    "  Delete \"" & desktopShortcut & "\"\n" &
     "  DeleteRegKey HKCU \"" & uninstallKey & "\"\n" &
     "  DeleteRegKey HKCU \"Software\\Classes\\CLSID\\{" & metadata.toastActivatorClsid & "}\"\n" &
     "  RMDir /r \"$INSTDIR\"\n")
@@ -503,13 +524,26 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
   if metadata.homepage.len > 0:
     result.add("            <RegistryValue Root='HKCU' Key='" & uninstallKey &
       "' Name='URLInfoAbout' Type='string' Value='" & metadata.homepage.xmlAttribute() & "' />\n")
+  let desktopComponentId = "cmpDesktopShortcut"
+  let desktopComponentGuid = stableMsiGuid("desktop:" & metadata.id)
+  let desktopShortcutName = metadata.shortcutBaseName().xmlAttribute()
   result.add("          </Component>\n" &
     "        </Directory>\n" &
+    "      </Directory>\n" &
+    "      <Directory Id='DesktopFolder'>\n" &
+    "        <Component Id='" & desktopComponentId & "' Guid='{" & desktopComponentGuid & "}'>\n" &
+    "          <Shortcut Id='DesktopShortcut' Name='" & desktopShortcutName &
+      "' Target='[INSTALLDIR]" & metadata.entryPoint.xmlAttribute() &
+      "' WorkingDirectory='INSTALLDIR' />\n" &
+    "          <RegistryValue Root='HKCU' Key='" & uninstallKey &
+      "' Name='DesktopShortcutInstalled' Type='integer' Value='1' KeyPath='yes' />\n" &
+    "        </Component>\n" &
     "      </Directory>\n" &
     "    </Directory>\n" &
     "    <Feature Id='Complete' Level='1' Title='" & metadata.displayName.xmlAttribute() & "'>\n" &
     references &
     "        <ComponentRef Id='" & shortcutComponentId & "' />\n" &
+    "        <ComponentRef Id='" & desktopComponentId & "' />\n" &
     "    </Feature>\n" &
     "  </Product>\n" &
     "</Wix>\n")
