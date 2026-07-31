@@ -175,10 +175,9 @@ task testSiteRelease, "Rebuild and verify the reviewed ready-made site installer
   exec "bash tools/ci/test_site_release.sh /workspace/.tmp/site-release " & version
   exec "bash tools/ci/test_component_release.sh /workspace/.tmp/site-release " & version
 
-task buildComponentRelease, "Build the standalone nimino-core and nimino-pack archives":
-  exec "nimble buildSiteRelease"
-
 task testComponentRelease, "Verify the standalone nimino-core and nimino-pack archives":
+  ## buildSiteRelease produces both the site installers and the component
+  ## archives; this task re-checks only the component half.
   exec "nimble buildSiteRelease"
   exec "bash tools/ci/test_component_release.sh /workspace/.tmp/site-release " & version
 
