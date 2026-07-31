@@ -102,4 +102,23 @@ RUN curl --fail --location --retry 3 --silent --show-error \
     && test -s /opt/nimino/windows-dlls/pcre64.dll \
     && rm /tmp/nim-windows-dlls.zip
 
+# Debian 13 dropped legacy PCRE1, and EL10-family distributions never ship
+# it, but Nim's std/re loads libpcre at process start.  Build a static,
+# PIC-enabled PCRE so the Linux host links it in and runs without a system
+# libpcre.  The tarball digest is pinned; 8.45 is the final PCRE1 release.
+ARG PCRE_VERSION=8.45
+ARG PCRE_SHA256=4dae6fdcd2bb0bb6c37b5f97c33c2be954da743985369cddac3546e3218bffb8
+RUN curl --fail --location --retry 3 --silent --show-error \
+      --output /tmp/pcre-${PCRE_VERSION}.tar.bz2 \
+      https://downloads.sourceforge.net/project/pcre/pcre/${PCRE_VERSION}/pcre-${PCRE_VERSION}.tar.bz2 \
+    && echo "${PCRE_SHA256}  /tmp/pcre-${PCRE_VERSION}.tar.bz2" | sha256sum --check --status \
+    && tar -xjf /tmp/pcre-${PCRE_VERSION}.tar.bz2 -C /tmp \
+    && cd /tmp/pcre-${PCRE_VERSION} \
+    && ./configure --prefix=/opt/nimino/pcre --disable-shared --enable-static \
+      --enable-utf --enable-unicode-properties --with-pic >/dev/null \
+    && make -j"$(nproc)" >/dev/null \
+    && make install >/dev/null \
+    && test -s /opt/nimino/pcre/lib/libpcre.a \
+    && rm -rf /tmp/pcre-${PCRE_VERSION} /tmp/pcre-${PCRE_VERSION}.tar.bz2
+
 WORKDIR /workspace

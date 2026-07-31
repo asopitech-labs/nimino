@@ -91,6 +91,10 @@ sudo dnf install ./dist/packages/*.rpm
 The generated Debian package declares `libgtk-4-1` and `libwebkitgtk-6.0-4`; the RPM declares
 `gtk4` and `webkitgtk6.0`, so the package manager resolves the native WebKit dependencies.
 They are not downloaded by the Nimino host and are not bundled into the Debian/RPM archive.
+On EL10-family systems (CentOS Stream 10, RHEL 10) `webkitgtk6.0` comes from EPEL, so enable
+the EPEL repository first; EL9 does not ship WebKitGTK 6.0 and is not supported.
+`make rpm-centos-smoke` installs and launches the generated RPM inside a CentOS Stream 10
+container as a verification target.
 
 The release catalog is the `popular-packages.json` asset. Download it together with
 `nimino-popular-packages.pub`; applications must pin that public key out-of-band and

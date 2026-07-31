@@ -22,7 +22,7 @@ WSL_SITE_TIMEOUT ?= 180
 WSL_SITE_READ_TIMEOUT_MS ?= 60000
 PACK_SMOKE_URL ?= https://asopi.tech
 
-.PHONY: help container-runtime-check setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-sites-test pack-site-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-popular-catalog-generation-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-windows-smoke pack-macos-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke linux-tray-smoke macos-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help container-runtime-check setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-sites-test pack-site-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-popular-catalog-generation-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-windows-smoke rpm-centos-smoke pack-macos-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke linux-tray-smoke macos-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -216,6 +216,11 @@ windows-cross: image verify-windows-tray-abi verify-windows-dialog-abi ## MinGW�
 core-windows-cross: image ## MinGWを使いWindows x64向けcore RPC facadeをクロスコンパイルする
 
 	$(COMPOSE) run --rm $(SERVICE) $(NIMBLE) testCoreWindowsCross
+
+rpm-centos-smoke: image ## 生成RPMをCentOS Stream 10コンテナへinstallし起動確認する
+
+	$(COMPOSE) run --rm -e NIMINO_PACK_SMOKE_URL=$(PACK_SMOKE_URL) $(SERVICE) $(NIMBLE) buildRpmSmokeArtifact
+	bash tools/ci/test_rpm_centos.sh "$(CONTAINER_RUNTIME)" "$$(ls .tmp/rpm-smoke/packages/*.rpm)"
 
 pack-windows-smoke: image ## URLをpackしたWindows bundleを実WindowsのWebView2で起動確認する
 

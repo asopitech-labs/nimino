@@ -143,7 +143,10 @@ task buildPackCli, "Build the nimino-pack validation CLI":
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"
 
 task buildNiminoHost, "Build the generic native Nimino host":
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-host-nimcache --out:/tmp/nimino-host --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
+  ## PCRE is linked statically: EL10-family distributions no longer ship the
+  ## legacy libpcre.so that Nim's std/re loads at process start.
+  exec "nim c --mm:arc --dynlibOverride:pcre --passL:/opt/nimino/pcre/lib/libpcre.a --nimcache:/tmp/nimino-host-nimcache --out:/tmp/nimino-host --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
+  exec "bash -c '! ldd /tmp/nimino-host | grep -q libpcre'"
 
 task buildNiminoHostWindows, "Cross-compile the generic Windows Nimino host":
   ## --app:gui matches Pake's `windows_subsystem = "windows"`: a packaged GUI
@@ -239,6 +242,12 @@ task buildWslHostArtifact, "Build a disposable Windows WSL host smoke-test artif
   exec "install -m 0644 /opt/nimino/webview2/x64/WebView2Loader.dll /workspace/.tmp/WebView2Loader.dll"
   exec "install -m 0644 /opt/nimino/webview2/LICENSE.txt /workspace/.tmp/WebView2Loader.LICENSE.txt"
   exec "install -m 0644 /opt/nimino/webview2/NOTICE.txt /workspace/.tmp/WebView2Loader.NOTICE.txt"
+
+task buildRpmSmokeArtifact, "Build a disposable RPM for the CentOS container smoke test":
+  exec "mkdir -p /workspace/.tmp"
+  exec "nimble buildPackCli"
+  exec "nimble buildNiminoHost"
+  exec "bash tools/ci/build_rpm_smoke.sh /tmp/nimino /tmp/nimino-host /workspace/.tmp/rpm-smoke"
 
 task buildPackWindowsSmokeArtifact, "Build a disposable packed Windows site bundle for the smoke test":
   exec "mkdir -p /workspace/.tmp"
