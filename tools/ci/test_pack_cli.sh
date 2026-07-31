@@ -131,8 +131,10 @@ fi
 test ! -e "$root/missing-host-no-flag-out"
 
 "$nimino" pack https://example.com --name DemoUrl --id app.nimino.demo-url \
+  --app-version 4.5.6 \
   --icon 'data:image/png;base64,aWNvbg==' --out "$root/url-out" --host "$root/host"
 grep -q 'DemoUrl' "$root/url-out/nimino-manifest.json"
+grep -q '"version": "4.5.6"' "$root/url-out/nimino-manifest.json"
 grep -q 'https://example.com' "$root/url-out/nimino-manifest.json"
 grep -q '"icon": "icon.png"' "$root/url-out/nimino-manifest.json"
 test -s "$root/url-out/icon.png"
@@ -150,7 +152,19 @@ printf '<!doctype html><svg></svg>' > "$root/icon-server/not-an-icon.html"
 python3 -m http.server 18765 --bind 0.0.0.0 --directory "$root/icon-server" > "$root/icon-server.log" 2>&1 &
 icon_server=$!
 trap 'kill "$icon_server" 2>/dev/null || true' EXIT
-sleep 1
+# A fixed sleep races a slow container start; poll until the server responds.
+icon_server_ready=0
+for _ in $(seq 1 50); do
+  if curl -fs -o /dev/null http://127.0.0.1:18765/remote.png; then
+    icon_server_ready=1
+    break
+  fi
+  sleep 0.2
+done
+test "$icon_server_ready" -eq 1 || {
+  echo "pack cli test: icon server did not start" >&2
+  exit 1
+}
 "$nimino" pack https://example.com --name DemoRemoteIcon --id app.nimino.demo-remote-icon \
   --icon http://127.0.0.1:18765/remote.png --out "$root/remote-icon-out" --host "$root/host"
 test -s "$root/remote-icon-out/remote.png"

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cli=${1:?usage: build_site_release.sh <nimino-cli> <linux-host> <windows-host> <output-dir>}
-linux_host=${2:?usage: build_site_release.sh <nimino-cli> <linux-host> <windows-host> <output-dir>}
-windows_host=${3:?usage: build_site_release.sh <nimino-cli> <linux-host> <windows-host> <output-dir>}
-output=${4:?usage: build_site_release.sh <nimino-cli> <linux-host> <windows-host> <output-dir>}
+cli=${1:?usage: build_site_release.sh <nimino-cli> <linux-host> <windows-host> <output-dir> <app-version>}
+linux_host=${2:?usage: build_site_release.sh <nimino-cli> <linux-host> <windows-host> <output-dir> <app-version>}
+windows_host=${3:?usage: build_site_release.sh <nimino-cli> <linux-host> <windows-host> <output-dir> <app-version>}
+output=${4:?usage: build_site_release.sh <nimino-cli> <linux-host> <windows-host> <output-dir> <app-version>}
+app_version=${5:?usage: build_site_release.sh <nimino-cli> <linux-host> <windows-host> <output-dir> <app-version>}
 
 test -x "$cli" || { echo "site release: CLI is not executable: $cli" >&2; exit 1; }
 test -x "$linux_host" || { echo "site release: Linux host is not executable: $linux_host" >&2; exit 1; }
@@ -74,7 +75,7 @@ for site in \
   url=${site#*|}
   linux_bundle="$root/$app-linux"
   linux_packages="$root/$app-linux-packages"
-  "$cli" pack "$url" --out "$linux_bundle" --host "$linux_host"
+  "$cli" pack "$url" --out "$linux_bundle" --host "$linux_host" --app-version "$app_version"
   mkdir -p "$linux_packages"
   "$cli" package-linux "$linux_bundle" --format deb --out "$linux_packages" \
     --arch amd64 --maintainer "Nimino Site Release <noreply@nimino.invalid>"
@@ -86,7 +87,7 @@ for site in \
 
   windows_bundle="$root/$app-windows"
   windows_packages="$root/$app-windows-packages"
-  "$cli" pack "$url" --out "$windows_bundle" --host "$windows_host"
+  "$cli" pack "$url" --out "$windows_bundle" --host "$windows_host" --app-version "$app_version"
   cp "$webview2_loader" "$windows_bundle/WebView2Loader.dll"
   cp "$pcre_dll" "$windows_bundle/pcre64.dll"
   mkdir -p "$windows_packages"

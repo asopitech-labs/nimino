@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-release_dir=${1:?usage: test_site_release.sh <site-release-dir>}
+release_dir=${1:?usage: test_site_release.sh <site-release-dir> [expected-app-version]}
+expected_version=${2:-}
 assets="$release_dir/assets"
 
 test -d "$assets" || {
@@ -36,6 +37,14 @@ for app in youtube gmail google-analytics; do
   require_artifact "$assets/${app}-*.rpm"
   require_artifact "$assets/${app}-*-setup.exe"
   require_artifact "$assets/${app}-*.msi"
+  if [ -n "$expected_version" ]; then
+    # Site applications must carry the Nimino release version, not the
+    # generator default.
+    grep -Fq "\"version\": \"$expected_version\"" "$assets/${app}-windows-nimino-manifest.json"
+    grep -Fq "\"version\": \"$expected_version\"" "$assets/${app}-linux-nimino-manifest.json"
+    require_artifact "$assets/${app}-*-${expected_version}-setup.exe"
+    require_artifact "$assets/${app}-*-${expected_version}.msi"
+  fi
 done
 
 # Every asset must be on the release allowlist; anything else is a build

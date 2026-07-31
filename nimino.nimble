@@ -156,11 +156,12 @@ task buildSiteRelease, "Build downloadable installers for the reviewed web sites
   exec "nimble buildPackCli"
   exec "nimble buildNiminoHost"
   exec "nimble buildNiminoHostWindows"
-  exec "bash tools/ci/build_site_release.sh /tmp/nimino /tmp/nimino-host /tmp/nimino-host.exe /workspace/.tmp/site-release"
+  ## Site applications carry the Nimino release version that built them.
+  exec "bash tools/ci/build_site_release.sh /tmp/nimino /tmp/nimino-host /tmp/nimino-host.exe /workspace/.tmp/site-release " & version
 
 task testSiteRelease, "Rebuild and verify the reviewed ready-made site installers":
   exec "nimble buildSiteRelease"
-  exec "bash tools/ci/test_site_release.sh /workspace/.tmp/site-release"
+  exec "bash tools/ci/test_site_release.sh /workspace/.tmp/site-release " & version
 
 task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "nimble buildPackCli"

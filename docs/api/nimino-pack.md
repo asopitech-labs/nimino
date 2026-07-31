@@ -12,7 +12,7 @@ nimino pack https://discord.com/app \
   --host nimino-host
 ```
 
-`--name`、`--id`、`--profile`は任意です。省略するとURLから安定した名前・IDを生成し、Window設定、既定プロファイル、パッケージメタデータも同じ生成器で補います。
+`--name`、`--id`、`--profile`、`--app-version`は任意です。`--app-version`の既定は`0.1.0`で、reviewed site releaseはNiminoリリース版を流し込みます。省略するとURLから安定した名前・IDを生成し、Window設定、既定プロファイル、パッケージメタデータも同じ生成器で補います。
 
 ローカルの静的サイトも入力にできます。ディレクトリ指定ではルートの
 `index.html`をエントリとしてツリー全体を`assets/`へ同梱します。単一HTML

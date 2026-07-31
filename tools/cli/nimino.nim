@@ -5,7 +5,7 @@ import nimino_pack
 proc usage() =
   stderr.writeLine("usage: nimino pack <manifest.toml> [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino pack --config <manifest.toml|config.json> [--out <directory>] [--host <executable>] [--targets <deb,rpm,appimage,flatpak,zst,nsis,msi>[,-arm64]...]")
-  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id|--identifier <id>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--min-width <px>] [--min-height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--hide-title-bar] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--ignore-certificate-errors] [--dark-mode] [--disabled-web-shortcuts] [--enable-wasm] [--enable-find] [--new-window] [--force-internal-navigation] [--internal-url-regex <pattern>] [--show-system-tray] [--system-tray-icon <path>] [--activation-shortcut <shortcut>] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
+  stderr.writeLine("       nimino pack <url-or-local-path> [--use-local-file] [--name <name>] [--id|--identifier <id>] [--app-version <version>] [--profile <name>] [--title <title>] [--width <px>] [--height <px>] [--min-width <px>] [--min-height <px>] [--resizable <true|false>] [--fullscreen] [--maximize] [--always-on-top] [--hide-window-decorations] [--hide-title-bar] [--enable-drag-drop] [--user-agent <value>] [--proxy-url <url>] [--incognito] [--zoom <percent>] [--ignore-certificate-errors] [--dark-mode] [--disabled-web-shortcuts] [--enable-wasm] [--enable-find] [--new-window] [--force-internal-navigation] [--internal-url-regex <pattern>] [--show-system-tray] [--system-tray-icon <path>] [--activation-shortcut <shortcut>] [--start-to-tray] [--hide-on-close] [--multi-window <true|false>] [--multi-instance] [--icon <path-or-url>] [--deep-link <scheme>]... [--allow-permission <kind>]... [--inject-css <path>]... [--inject-js <path>]... [--allow-url <pattern>]... [--safe-domain <domain>]... [--external-url <pattern>]... [--out <directory>] [--host <executable>]")
   stderr.writeLine("       nimino package-linux <bundle> --format <deb|rpm|appimage|flatpak|zst> --out <directory> [--arch <amd64|arm64>] [--maintainer <value>] [--license <value>]")
   stderr.writeLine("       nimino package-windows <bundle> --format <nsis|msi> --out <directory> [--arch <x64|arm64>]")
   stderr.writeLine("       nimino package-macos <bundle> [--format <app|dmg>] --out <directory> [--arch <arm64|x86_64>] [--sign-identity <identity>] [--notary-profile <keychain-profile>]")
@@ -758,6 +758,7 @@ proc packBooleanFlag(flag: string): bool =
 proc applyManifestCliOverride(manifest: var PackManifest; flag, value: string) =
   case flag
   of "--name": manifest.name = value
+  of "--app-version": manifest.package.version = value
   of "--title": manifest.window.title = value
   of "--id", "--identifier": manifest.id = value
   of "--profile": manifest.profile = value
@@ -888,6 +889,7 @@ if sourceIsUrl or sourceIsLocal:
   var navigationAllow: seq[string]
   var navigationExternal: seq[string]
   var deepLinkSchemes: seq[string]
+  var appVersion = ""
   var index = optionStart
   while index <= paramCount():
     let flag = paramStr(index)
@@ -938,6 +940,7 @@ if sourceIsUrl or sourceIsLocal:
     of "--multi-instance": multiInstance = parseCliBool(value)
     of "--use-local-file": useLocalFile = parseCliBool(value)
     of "--icon": icon = value
+    of "--app-version": appVersion = value
     of "--deep-link": deepLinkSchemes.add(value)
     of "--allow-permission": permissionsAllow.add(value)
     of "--inject-css": css.add(value)
@@ -966,7 +969,7 @@ if sourceIsUrl or sourceIsLocal:
       multiInstance = multiInstance, permissionsAllow = permissionsAllow,
       deepLinkSchemes = deepLinkSchemes,
       css = css, javascript = javascript, navigationAllow = navigationAllow,
-      navigationExternal = navigationExternal)
+      navigationExternal = navigationExternal, appVersion = appVersion)
   else:
     loaded = generateManifest(source, name = name, id = id, profile = profile, title = title,
       icon = icon, deepLinkSchemes = deepLinkSchemes, width = width,
@@ -981,7 +984,7 @@ if sourceIsUrl or sourceIsLocal:
       hideOnClose = hideOnClose, multiWindow = multiWindow,
       multiInstance = multiInstance, permissionsAllow = permissionsAllow,
       css = css, javascript = javascript, navigationAllow = navigationAllow,
-      navigationExternal = navigationExternal)
+      navigationExternal = navigationExternal, appVersion = appVersion)
   if loaded.isOk:
     loaded.value.window.minWidth = minWidth
     loaded.value.window.minHeight = minHeight
@@ -1028,7 +1031,7 @@ while index <= paramCount():
      "--dark-mode", "--disabled-web-shortcuts", "--enable-wasm", "--enable-find", "--new-window",
      "--force-internal-navigation", "--internal-url-regex", "--show-system-tray", "--system-tray-icon", "--activation-shortcut",
      "--start-to-tray", "--hide-on-close", "--multi-window", "--multi-instance",
-     "--icon", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--safe-domain", "--external-url",
+     "--icon", "--app-version", "--deep-link", "--allow-permission", "--inject-css", "--inject-js", "--allow-url", "--safe-domain", "--external-url",
      "--use-local-file":
     if not sourceIsUrl and not sourceIsLocal:
       if not hasValue and not packBooleanFlag(flag): usage()

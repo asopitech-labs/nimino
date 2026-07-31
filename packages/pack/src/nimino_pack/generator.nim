@@ -93,7 +93,8 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
                       permissionsAllow: seq[string] = @[];
                       css: seq[string] = @[]; javascript: seq[string] = @[];
                       navigationAllow: seq[string] = @[];
-                      navigationExternal: seq[string] = @[]):
+                      navigationExternal: seq[string] = @[];
+                      appVersion = ""):
                       PackResult[PackManifest] =
   ## Build a complete, validated manifest from an entry URL.  Navigation
   ## allow-lists are intentionally empty: the host applies Nimino's generic
@@ -111,7 +112,7 @@ proc generateManifest*(url: string; name = ""; id = ""; profile = "default";
     let appName = if requestedName.len > 0: requestedName else: generatedName(parsed.hostname)
     let appId = if id.strip().len > 0: id.strip() else: generatedId(parsed.hostname, requestedName)
     let metadata = PackPackageMetadata(
-      version: "0.1.0",
+      version: if appVersion.strip().len > 0: appVersion.strip() else: "0.1.0",
       description: appName & " web application",
       publisher: "Nimino",
       homepage: url,
@@ -159,7 +160,8 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
                             css: seq[string] = @[]; javascript: seq[string] = @[];
                             deepLinkSchemes: seq[string] = @[];
                             navigationAllow: seq[string] = @[];
-                            navigationExternal: seq[string] = @[]):
+                            navigationExternal: seq[string] = @[];
+                            appVersion = ""):
                             PackResult[PackManifest] =
   ## Build a manifest for a local HTML file or static directory.  The source
   ## itself is staged by the CLI; only the relative entry is persisted here.
@@ -180,7 +182,7 @@ proc generateLocalManifest*(source: string; name = ""; id = "";
   let appId = if id.strip().len > 0: id.strip() else:
     generatedId(localBase, requestedName)
   let metadata = PackPackageMetadata(
-    version: "0.1.0",
+    version: if appVersion.strip().len > 0: appVersion.strip() else: "0.1.0",
     description: appName & " local web application",
     publisher: "Nimino",
     homepage: "",
