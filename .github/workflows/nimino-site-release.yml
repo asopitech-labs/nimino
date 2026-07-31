@@ -40,6 +40,10 @@ jobs:
       - name: Build site installers and checksums
         run: |
           set -eu
+          # Rootful Docker on the runner creates workspace output as root.
+          # Pre-create .tmp as the runner user so later steps can write
+          # their own entries beside the container-owned build output.
+          mkdir -p .tmp
           docker compose run --rm nimino-dev bash -lc 'export PATH=/opt/nim/bin:$PATH; bash tools/ci/run_nimble_task.sh testSiteRelease'
           test -s .tmp/site-release/RELEASE-NOTES.txt
           test -s .tmp/site-release/assets/SHA256SUMS
@@ -77,8 +81,9 @@ jobs:
               --output /workspace/.tmp/site-release/assets/popular-packages.json \
               --tag "$CATALOG_TAG" --commit "$CATALOG_COMMIT" --run-id "$CATALOG_RUN_ID" \
               --secret-key /workspace/.tmp/popular-catalog-signing/release.key \
-              --key-id "$CATALOG_KEY_ID"'
-          cp .tmp/popular-catalog-signing/release.pub .tmp/site-release/assets/nimino-popular-packages.pub
+              --key-id "$CATALOG_KEY_ID" \
+              && cp /workspace/.tmp/popular-catalog-signing/release.pub \
+                /workspace/.tmp/site-release/assets/nimino-popular-packages.pub'
           rm -rf .tmp/popular-catalog-signing
           test -s .tmp/site-release/assets/popular-packages.json
           test -s .tmp/site-release/assets/nimino-popular-packages.pub
