@@ -83,6 +83,10 @@ msi="$root/out/msi/app.nimino.windows-demo-1.2.3.msi"
 test -s "$msi"
 test ! -e "$root/out/msi/app.nimino.windows-demo-1.2.3.wxs"
 msiinfo tables "$msi" | grep -Fx 'File'
+# A 64-bit package must declare installer schema >= 200 or msiexec rejects it
+# with ERROR_INSTALL_PACKAGE_OPEN_FAILED (1620).
+msiinfo suminfo "$msi" | grep -Fq 'Template: x64;1033'
+msiinfo suminfo "$msi" | grep -Fq 'Version: 200'
 msiinfo tables "$msi" | grep -Fx 'Registry'
 msiinfo tables "$msi" | grep -Fx 'Shortcut'
 msiinfo tables "$msi" | grep -Fx 'Upgrade'

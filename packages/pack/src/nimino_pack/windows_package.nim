@@ -429,7 +429,9 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
       metadata.publisher.xmlAttribute() & "'>\n" &
     "    <Package Id='*' Keywords='Installer' Description='" & metadata.description.xmlAttribute() &
       "' Manufacturer='" & metadata.publisher.xmlAttribute() &
-      "' InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252'\n" &
+      # msiexec refuses to open a 64-bit package whose minimum installer
+      # schema is below 200 (ERROR_INSTALL_PACKAGE_OPEN_FAILED).
+      "' InstallerVersion='200' Languages='1033' Compressed='yes' SummaryCodepage='1252'\n" &
     "             InstallPrivileges='limited' InstallScope='perUser' />\n" &
     "    <MajorUpgrade Schedule='afterInstallInitialize' AllowDowngrades='no'\n" &
     "                  DowngradeErrorMessage='A newer version of this application is already installed.' />\n" &
