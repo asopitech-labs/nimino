@@ -265,6 +265,7 @@ type
     fullscreenBottom: int32
     alwaysOnTop: bool
     decorated: bool
+    resizable: bool
     titleBarOverlay: bool
     views: seq[NativeWebView]
     closeRequestedHandler: NativeCloseRequestedHandler
@@ -1181,6 +1182,7 @@ proc newWindow*(app: NativeApp; title = "Nimino"; width = 1200; height = 800;
     height: height,
     profilePath: profilePath,
     decorated: true,
+    resizable: true,
     titleBarOverlay: false
   )
   app.windows.add(window)

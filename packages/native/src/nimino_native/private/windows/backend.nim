@@ -1365,8 +1365,13 @@ proc windowsSetUserAgent(view: NativeWebView; value: string): NativeResult =
   success()
 
 proc windowsSetResizable(window: NativeWindow; resizable: bool): NativeResult =
-  if window.platformWindow == nil:
+  if window.isNil:
     return failure(nativeError(invalidState, "window.setResizable"))
+  window.resizable = resizable
+  if window.platformWindow == nil:
+    ## The Win32 window is realized during run(); windowsCreateWindow applies
+    ## the recorded state through the initial window style.
+    return success()
   var style = uint32(getWindowLongPtrW(window.platformWindow, GwlStyle))
   if resizable:
     style = style or WsThickFrame or WsMaximizeBox or WsMinimizeBox
@@ -2518,8 +2523,11 @@ proc windowsFocusWindow(window: NativeWindow): NativeResult =
 proc windowsCreateWindow(window: NativeWindow): NativeResult =
   let className = newWideCString(window.app.windowClassName)
   let title = newWideCString(window.title)
+  var style = WsOverlappedWindow
+  if not window.resizable:
+    style = style and not (WsThickFrame or WsMaximizeBox or WsMinimizeBox)
   let hwnd = createWindowExW(
-    0, className, title, WsOverlappedWindow,
+    0, className, title, style,
     CwUseDefault, CwUseDefault, int32(window.width), int32(window.height),
     nil, nil, window.app.platformInstance, cast[pointer](window)
   )

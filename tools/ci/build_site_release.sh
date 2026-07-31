@@ -11,6 +11,8 @@ test -x "$linux_host" || { echo "site release: Linux host is not executable: $li
 test -s "$windows_host" || { echo "site release: Windows host is missing: $windows_host" >&2; exit 1; }
 webview2_loader=${NIMINO_WEBVIEW2_LOADER:-/opt/nimino/webview2/x64/WebView2Loader.dll}
 test -s "$webview2_loader" || { echo "site release: WebView2Loader.dll is missing: $webview2_loader" >&2; exit 1; }
+pcre_dll=${NIMINO_WINDOWS_PCRE_DLL:-/opt/nimino/windows-dlls/pcre64.dll}
+test -s "$pcre_dll" || { echo "site release: pcre64.dll is missing: $pcre_dll" >&2; exit 1; }
 webview2_setup=${NIMINO_WEBVIEW2_SETUP:-/workspace/tools/ci/setup-windows-webview2.ps1}
 test -s "$webview2_setup" || { echo "site release: WebView2 setup script is missing: $webview2_setup" >&2; exit 1; }
 
@@ -60,6 +62,7 @@ for site in \
   windows_packages="$root/$app-windows-packages"
   "$cli" pack "$url" --out "$windows_bundle" --host "$windows_host"
   cp "$webview2_loader" "$windows_bundle/WebView2Loader.dll"
+  cp "$pcre_dll" "$windows_bundle/pcre64.dll"
   mkdir -p "$windows_packages"
   "$cli" package-windows "$windows_bundle" --format nsis --out "$windows_packages"
   "$cli" package-windows "$windows_bundle" --format msi --out "$windows_packages"
@@ -80,7 +83,7 @@ printf '%s\n' \
   'Windows installer behavior:' \
   '  NSIS/MSI checks the WebView2 Evergreen Runtime and downloads the Microsoft Bootstrapper when missing.' \
   '  Internet access is required for the first-time Runtime download.' \
-  '  WebView2Loader.dll is bundled with each Windows application package.' \
+  '  WebView2Loader.dll and pcre64.dll are bundled with each Windows application package.' \
   'Manual SHA-256-verified setup is documented in README for repair and development.' \
   'Verify SHA256SUMS before installation.' \
   > "$output/RELEASE-NOTES.txt"

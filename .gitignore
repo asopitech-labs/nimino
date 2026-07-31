@@ -2,6 +2,7 @@ nimcache/
 nimblecache/
 htmldocs/
 .tmp/
+dist/
 .spec-workflow/
 reference/tauri/
 reference/pake/

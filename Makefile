@@ -20,8 +20,9 @@ WSL_SMOKE_TIMEOUT ?= 120
 WSL_INTERACTIVE_TIMEOUT ?= 300
 WSL_SITE_TIMEOUT ?= 180
 WSL_SITE_READ_TIMEOUT_MS ?= 60000
+PACK_SMOKE_URL ?= https://asopi.tech
 
-.PHONY: help container-runtime-check setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-sites-test pack-site-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-popular-catalog-generation-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-macos-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke linux-tray-smoke macos-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help container-runtime-check setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike pack-test pack-cli-test pack-sites-test pack-site-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-popular-catalog-generation-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-windows-smoke pack-macos-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke linux-tray-smoke macos-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -215,6 +216,13 @@ windows-cross: image verify-windows-tray-abi verify-windows-dialog-abi ## MinGW�
 core-windows-cross: image ## MinGWを使いWindows x64向けcore RPC facadeをクロスコンパイルする
 
 	$(COMPOSE) run --rm $(SERVICE) $(NIMBLE) testCoreWindowsCross
+
+pack-windows-smoke: image ## URLをpackしたWindows bundleを実WindowsのWebView2で起動確認する
+
+	@command -v powershell.exe >/dev/null 2>&1 || { echo "ERROR: powershell.exe is unavailable; restore Windows Interop first." >&2; exit 1; }
+	@powershell.exe -NoProfile -Command "exit 0" >/dev/null 2>&1 || { echo "ERROR: Windows Interop is not responding. In elevated Windows PowerShell run: wsl --shutdown; Restart-Service LxssManager; then reopen WSL." >&2; exit 1; }
+	$(COMPOSE) run --rm -e NIMINO_PACK_SMOKE_URL=$(PACK_SMOKE_URL) $(SERVICE) $(NIMBLE) buildPackWindowsSmokeArtifact
+	(timeout --foreground $(WSL_SMOKE_TIMEOUT)s powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w $(CURDIR)/tools/ci/pack-windows-smoke.ps1)" -BundleDirectory "$$(wslpath -w $(CURDIR)/.tmp/pack-windows-smoke)") || { status=$$?; $(WINDOWS_CLEANUP) >/dev/null 2>&1 || true; exit $$status; }
 
 wsl-host-cross: image ## MinGWを使いWindows x64向けnimino-wsl-host.exeをクロスコンパイルする
 

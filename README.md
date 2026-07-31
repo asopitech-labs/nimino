@@ -51,7 +51,7 @@ Download the installer directly from the [Nimino Releases page](https://github.c
 
 The [`Nimino Site Release`](.github/workflows/nimino-site-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, `SHA256SUMS`, and the signed `popular-packages.json` catalog to the GitHub Release. Configure the repository secrets `NIMINO_POPULAR_CATALOG_SECRET_KEY`, `NIMINO_POPULAR_CATALOG_PUBLIC_KEY`, and `NIMINO_POPULAR_CATALOG_KEY_ID` before running a release; the workflow fails if signing material is missing. Verify `SHA256SUMS` before installing.
 
-**Windows installer behavior:** NSIS and MSI installers check the WebView2 Evergreen Runtime and download the official Microsoft Bootstrapper only when the runtime is missing. Internet access is required for that first-time download. `WebView2Loader.dll` is bundled with the application.
+**Windows installer behavior:** NSIS and MSI installers check the WebView2 Evergreen Runtime and download the official Microsoft Bootstrapper only when the runtime is missing. Internet access is required for that first-time download. `WebView2Loader.dll` and `pcre64.dll` are bundled with the application.
 
 For manual repair or development setup, use the optional verified script:
 

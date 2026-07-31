@@ -36,6 +36,7 @@ proc macosShowWindow(window: NativeWindow)
 proc macosFocusWindow(window: NativeWindow)
 proc macosSetTitleBarOverlay(window: NativeWindow; enabled: bool): NativeResult
 proc macosSetMinimumSize(window: NativeWindow; width, height: int): NativeResult
+proc macosSetResizable(window: NativeWindow; enabled: bool): NativeResult
 proc macosSetDarkMode(window: NativeWindow; enabled: bool): NativeResult
 
 proc macosKeepCallbackSymbols() =
@@ -326,6 +327,10 @@ proc macosCreateWindow(window: NativeWindow): NativeResult =
     let configured = window.macosSetTitleBarOverlay(true)
     if not configured.isOk:
       return configured
+  if not window.resizable:
+    let resizableConfigured = window.macosSetResizable(false)
+    if not resizableConfigured.isOk:
+      return resizableConfigured
   if window.minWidth > 0 or window.minHeight > 0:
     let minimum = window.macosSetMinimumSize(
       if window.minWidth > 0: window.minWidth else: window.width,
@@ -399,6 +404,7 @@ proc macosSetPosition(window: NativeWindow; x, y: int): NativeResult =
   success()
 
 proc macosSetResizable(window: NativeWindow; enabled: bool): NativeResult =
+  window.resizable = enabled
   if window.platformWindow.isNil: return success()
   if macosWindowSetResizable(window.platformWindow, if enabled: 1 else: 0) == 0:
     return macosNativeFailure("window.setResizable", "NSWindow style update failed")

@@ -2,6 +2,7 @@ $ErrorActionPreference = "Continue"
 
 $processes = @()
 $processes += Get-CimInstance Win32_Process -Filter "Name='nimino-wsl-host.exe'" -ErrorAction SilentlyContinue
+$processes += Get-CimInstance Win32_Process -Filter "Name='nimino-host.exe'" -ErrorAction SilentlyContinue
 $processes += Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" |
   Where-Object { $_.CommandLine -match '(?i)nimino' }
 

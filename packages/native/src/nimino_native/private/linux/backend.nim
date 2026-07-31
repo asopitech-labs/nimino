@@ -927,6 +927,7 @@ proc linuxSetSize(window: NativeWindow) =
       window.dispatchResized(window.width, window.height)
 
 proc linuxSetResizable(window: NativeWindow; resizable: bool) =
+  window.resizable = resizable
   if window.platformWindow != nil:
     gtk_window_set_resizable(cast[ptr GtkWindow](window.platformWindow),
       if resizable: 1 else: 0)
@@ -1649,6 +1650,7 @@ proc linuxCreateWindow(window: NativeWindow): NativeResult =
   gtk_window_set_title(gtkWindow, cstring(title))
   gtk_window_set_default_size(gtkWindow, cint(window.width), cint(window.height))
   gtk_window_set_decorated(gtkWindow, if window.decorated: 1 else: 0)
+  gtk_window_set_resizable(gtkWindow, if window.resizable: 1 else: 0)
   if window.closeRequestedHandler != nil:
     let closeSignal = g_signal_connect_data(window.platformWindow, "close-request",
       cast[pointer](linuxCloseRequested), cast[pointer](window), nil, 0)

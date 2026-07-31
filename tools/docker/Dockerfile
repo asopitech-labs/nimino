@@ -86,4 +86,20 @@ RUN curl --fail --location --retry 3 --silent --show-error \
     && chmod 0755 /usr/local/bin/linuxdeploy \
     && rm /tmp/linuxdeploy-x86_64.AppImage
 
+# The generic Windows host uses Nim's std/re, which loads pcre64.dll at
+# process start.  Stage the official Nim Windows runtime DLL so packagers can
+# place it beside the cross-compiled host executable.  The archive URL is not
+# versioned upstream, so the digest pin makes any silent content change fail
+# this build loudly.
+ARG NIM_WINDOWS_DLLS_SHA256=4b20b0fc775d2cfece0c1a09d4ec0bdbcd01d257ce8d556d9a8a88e6c4cd6961
+RUN curl --fail --location --retry 3 --silent --show-error \
+      --output /tmp/nim-windows-dlls.zip \
+      https://nim-lang.org/download/dlls.zip \
+    && echo "${NIM_WINDOWS_DLLS_SHA256}  /tmp/nim-windows-dlls.zip" | sha256sum --check --status \
+    && install -d /opt/nimino/windows-dlls \
+    && unzip -p /tmp/nim-windows-dlls.zip pcre64.dll \
+      > /opt/nimino/windows-dlls/pcre64.dll \
+    && test -s /opt/nimino/windows-dlls/pcre64.dll \
+    && rm /tmp/nim-windows-dlls.zip
+
 WORKDIR /workspace

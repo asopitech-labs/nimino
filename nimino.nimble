@@ -236,6 +236,12 @@ task buildWslHostArtifact, "Build a disposable Windows WSL host smoke-test artif
   exec "install -m 0644 /opt/nimino/webview2/LICENSE.txt /workspace/.tmp/WebView2Loader.LICENSE.txt"
   exec "install -m 0644 /opt/nimino/webview2/NOTICE.txt /workspace/.tmp/WebView2Loader.NOTICE.txt"
 
+task buildPackWindowsSmokeArtifact, "Build a disposable packed Windows site bundle for the smoke test":
+  exec "mkdir -p /workspace/.tmp"
+  exec "nimble buildPackCli"
+  exec "nimble buildNiminoHostWindows"
+  exec "bash tools/ci/build_pack_windows_smoke.sh /tmp/nimino /tmp/nimino-host.exe /workspace/.tmp/pack-windows-smoke"
+
 task buildWslClientArtifact, "Build a disposable WSL client smoke-test artifact":
   exec "mkdir -p /workspace/.tmp"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-wsl-client-artifact-nimcache --out:/workspace/.tmp/nimino-wsl-client-smoke --path:packages/wsl --path:packages/native tools/ci/wsl_client_smoke.nim"

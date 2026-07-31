@@ -10,6 +10,16 @@ proc fail(message: string; code = QuitFailure) {.noreturn.} =
   stderr.writeLine("nimino-host: " & message)
   quit(code)
 
+proc fail(error: CoreError; code = QuitFailure) {.noreturn.} =
+  ## Native failures may omit a human-readable detail; always keep the
+  ## operation, kind, and platform code so startup errors stay diagnosable.
+  var message = $error.kind & " during " & error.operation
+  if error.platformCode != 0:
+    message.add(" (platform code " & $error.platformCode & ")")
+  if error.detail.len > 0:
+    message.add(": " & error.detail)
+  fail(message, code)
+
 proc requiredString(node: JsonNode; key: string): string =
   if node.kind != JObject or not node.hasKey(key) or node[key].kind != JString:
     fail("manifest field '" & key & "' must be a string")
@@ -237,7 +247,7 @@ proc main() =
         ## activation request.  A second dock/process launch is successful
         ## from the user's perspective, just as it is in Pake/Tauri.
         quit(QuitSuccess)
-    fail(created.failure.detail)
+    fail(created.failure)
   let app = created.value
   when defined(windows):
     if packageIcon.len > 0:
@@ -247,7 +257,7 @@ proc main() =
       let iconPath = root / packageIcon
       let configured = app.setWindowIcon(iconPath)
       if not configured.isOk:
-        fail(configured.failure.detail)
+        fail(configured.failure)
   when defined(macosx):
     if systemTrayIcon.len > 0:
       let iconPath = if fileExists(systemTrayIcon): systemTrayIcon
@@ -258,7 +268,7 @@ proc main() =
         fail("runtime.systemTrayIcon does not identify a packaged icon: " & systemTrayIcon)
       let trayIconConfigured = app.setSystemTrayIcon(iconPath)
       if not trayIconConfigured.isOk:
-        fail(trayIconConfigured.failure.detail)
+        fail(trayIconConfigured.failure)
   when defined(macosx):
     let deepLink = app.onDeepLink(proc(url: string) =
       if deepLinkAllowed(url):
@@ -266,7 +276,7 @@ proc main() =
       else:
         stderr.writeLine("nimino-host: ignored undeclared deep link: " & url))
     if not deepLink.isOk:
-      fail(deepLink.failure.detail)
+      fail(deepLink.failure)
   let windowCreated = app.newWindow(CoreWindowOptions(
     title: optionalString(windowNode, "title", appName),
     width: windowNode.integer("width", 1200),
@@ -295,7 +305,7 @@ proc main() =
     injectionCss: root.readInjection(injection.stringArray("css")),
     injectionJavaScript: injectionJavaScript))
   if not windowCreated.isOk:
-    fail(windowCreated.failure.detail)
+    fail(windowCreated.failure)
   let window = windowCreated.value
   ## Register before `run()` and retain the notification's web-facing click
   ## contract.  Native activation is delivered by macOS while the host is
@@ -307,13 +317,13 @@ proc main() =
         "window.dispatchEvent(new CustomEvent('nimino-notification-activated',{detail:" &
         detail & "}));"))
     if not activation.isOk:
-      fail(activation.failure.detail)
+      fail(activation.failure)
   if hideOnClose:
     let closeConfigured = window.onCloseRequested(proc(): bool =
       discard window.hide()
       false)
     if not closeConfigured.isOk:
-      fail(closeConfigured.failure.detail)
+      fail(closeConfigured.failure)
   if showSystemTray:
     let trayConfigured = app.configureSystemTray([
       DesktopMenuItem(id: 1, title: "New Window", enabled: multiWindow),
@@ -340,13 +350,13 @@ proc main() =
       of 4: discard app.quit()
       else: discard)
     if not trayConfigured.isOk:
-      fail(trayConfigured.failure.detail)
+      fail(trayConfigured.failure)
   if startToTray:
     if not showSystemTray:
       fail("runtime.startToTray requires runtime.showSystemTray")
     let hidden = window.hide()
     if not hidden.isOk:
-      fail(hidden.failure.detail)
+      fail(hidden.failure)
   when defined(macosx):
     if activationShortcut.len > 0:
       let shortcutConfigured = app.setActivationShortcut(activationShortcut, proc() =
@@ -356,7 +366,7 @@ proc main() =
           discard window.show()
           discard window.focus())
       if not shortcutConfigured.isOk:
-        fail(shortcutConfigured.failure.detail)
+        fail(shortcutConfigured.failure)
   let allowPatterns = navigation.stringArray("allow")
   let externalPatterns = navigation.stringArray("external")
   ## URL-only bundles do not carry a site-specific allow-list.  Use the core
@@ -385,7 +395,7 @@ proc main() =
         if isForcedInternalNavigation(request.url): navigationAllow
         else: defaultNavigationDecision(appUrl, request.url))
     if not policyConfigured.isOk:
-      fail(policyConfigured.failure.detail)
+      fail(policyConfigured.failure)
   let popupConfigured = window.onNewWindow(proc(request: NewWindowRequest): bool =
     let decision = if allowPatterns.len > 0 or externalPatterns.len > 0:
       if isForcedInternalNavigation(request.url):
@@ -420,7 +430,7 @@ proc main() =
     of popupLinkDeny:
       true)
   if not popupConfigured.isOk:
-    fail(popupConfigured.failure.detail)
+    fail(popupConfigured.failure)
   when defined(macosx):
     ## WKWebView does not return a child `WKWebView` to JavaScript when the
     ## host creates an application-owned NSWindow. Keep a narrowly scoped
@@ -482,7 +492,7 @@ proc main() =
     discard request
     downloadAllow)
   if not downloadPolicy.isOk:
-    fail(downloadPolicy.failure.detail)
+    fail(downloadPolicy.failure)
   var downloadNotificationSequence = 0
   let downloadEvents = window.onDownloadEvent(proc(event: DownloadEvent) =
     let label = safeDownloadLabel(event.request.suggestedName)
@@ -517,7 +527,7 @@ proc main() =
       emitInAppNotification(window, notification)
     )
   if not downloadEvents.isOk:
-    fail(downloadEvents.failure.detail)
+    fail(downloadEvents.failure)
   let permissionConfigured = window.onPermission(proc(request: PermissionRequest): PermissionDecision =
     let requested = case request.kind
       of microphone: "microphone"
@@ -528,7 +538,7 @@ proc main() =
       of screenCapture: "screenCapture"
     if requested in allowedPermissions: permissionGrant else: permissionDeny)
   if not permissionConfigured.isOk:
-    fail(permissionConfigured.failure.detail)
+    fail(permissionConfigured.failure)
   let notificationRpc = window.rpc.registerSync("app.sendNotification",
     proc(params: JsonNode): RpcResult =
       if params.kind != JObject or not params.hasKey("id") or
@@ -621,16 +631,16 @@ proc main() =
         "window.dispatchEvent(new CustomEvent('nimino-file-drop',{detail:" &
         $encoded & "}));"))
     if not fileDropConfigured.isOk:
-      fail(fileDropConfigured.failure.detail)
+      fail(fileDropConfigured.failure)
   let resizable = window.setResizable(windowNode.boolean("resizable", true))
   if not resizable.isOk:
-    fail(resizable.failure.detail)
+    fail(resizable.failure)
   for activation in activationArguments:
     if not deepLinkAllowed(activation):
       fail("deep-link activation scheme is not declared by the manifest")
     let delivered = app.deliverDeepLink(activation)
     if not delivered.isOk:
-      fail(delivered.failure.detail)
+      fail(delivered.failure)
   let loaded = if localEntry.len > 0:
       let assets = window.loadAssets(root)
       if not assets.isOk:
@@ -642,7 +652,7 @@ proc main() =
     else:
       CoreResult(isOk: true)
   if not loaded.isOk:
-    fail(loaded.failure.detail)
+    fail(loaded.failure)
   when defined(macosx):
     var currentZoom = zoomFactor
     var currentAlwaysOnTop = initialAlwaysOnTop
@@ -756,10 +766,10 @@ proc main() =
         discard window.openExternally("https://github.com/asopitech-labs/nimino")
       else: discard)
     if not menuConfigured.isOk:
-      fail(menuConfigured.failure.detail)
+      fail(menuConfigured.failure)
   let running = app.run()
   if not running.isOk:
-    fail(running.failure.detail)
+    fail(running.failure)
 
 when isMainModule:
   main()
