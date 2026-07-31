@@ -27,6 +27,7 @@ RUN apt-get update \
       python3 \
       rpm \
       desktop-file-utils \
+      file \
       squashfs-tools \
       bubblewrap \
       xdg-dbus-proxy \
