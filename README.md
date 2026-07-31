@@ -49,6 +49,8 @@ Download the installer directly from the [Nimino Releases page](https://github.c
 | Fedora/RPM | `youtube-*.rpm`, `gmail-*.rpm`, `google-analytics-*.rpm` |
 | Windows | `youtube-*-setup.exe`, `gmail-*-setup.exe`, `google-analytics-*-setup.exe` (NSIS) or matching `.msi`; the installer checks and installs WebView2 when needed |
 
+The same release publishes the two components on their own, for building your own applications rather than installing a ready-made one: `nimino-core-*` (the runtime) and `nimino-pack-*` (the packaging CLI). See [Two released packages](#two-released-packages).
+
 The [`Nimino Site Release`](.github/workflows/nimino-site-release.yml) workflow builds all three applications for every `v*` tag, attaches installers, SBOM files, `SHA256SUMS`, and the signed `popular-packages.json` catalog to the GitHub Release. Configure the repository secrets `NIMINO_POPULAR_CATALOG_SECRET_KEY`, `NIMINO_POPULAR_CATALOG_PUBLIC_KEY`, and `NIMINO_POPULAR_CATALOG_KEY_ID` before running a release; the workflow fails if signing material is missing. Verify `SHA256SUMS` before installing.
 
 **Windows installer behavior:** NSIS and MSI installers check the WebView2 Evergreen Runtime and download the official Microsoft Bootstrapper only when the runtime is missing. Internet access is required for that first-time download. `WebView2Loader.dll` and `pcre64.dll` are bundled with the application.
@@ -199,7 +201,24 @@ See [`docs/api/nimino-pack.md`](docs/api/nimino-pack.md) for manifests, navigati
 | `nimino-wsl` | Authenticated client/host transport that keeps Nim application logic in WSL and Windows GUI ownership in the host process. |
 | `nimino-pack` | URL/manifest wrapping, bundle metadata, icons, injection files, and platform package generation. |
 
-`nimino-native` does not contain RPC, profiles, packaging, WSL transport, or high-level security policy. `nimino-pack` uses only the public `nimino-core` API.
+`nimino-native` does not contain RPC, profiles, packaging, WSL transport, or high-level security policy. `nimino-pack` imports no other Nimino package: it depends on the Nim standard library alone and receives a host executable by path (`--host`), never by linkage.
+
+### Two released packages
+
+The components are released together from this monorepo as two independently distributable packages. Neither is built from the other.
+
+| Package | Contents | Audience | Release assets |
+| --- | --- | --- | --- |
+| **nimino-core** | `nimino-host`, the runtime every packaged application embeds | End users receive it inside an installer; embedders who build their own bundles download it directly | `nimino-core-<version>-linux-x86_64.tar.gz`, `nimino-core-<version>-windows-x64.zip` |
+| **nimino-pack** | `nimino`, the packaging toolkit CLI | Developers and CI | `nimino-pack-<version>-linux-x86_64.tar.gz` |
+
+`nimino-core` needs GTK 4 + WebKitGTK 6.0 on Linux and the WebView2 Runtime on Windows. `nimino-pack` links no GUI stack at all; it needs OpenSSL for HTTPS icon discovery plus the generator for each package format it is asked to produce (`dpkg-deb`, `rpmbuild`, `appimagetool`, `makensis`, `wixl`). It is published for Linux only because those generators are Linux tools.
+
+`nimino-pack` is also installable as a standalone Nimble package:
+
+```bash
+nimble install "https://github.com/asopitech-labs/nimino?subdir=packages/pack"
+```
 
 ## Platform support
 
@@ -259,9 +278,8 @@ The GitHub Actions CI runs containerized tests, Linux checks, packaging checks, 
 packages/native/   nimino-native
 packages/core/     nimino-core
 packages/wsl/      nimino-wsl client and Windows host
-packages/pack/     nimino-pack library and CLI support
+packages/pack/     nimino-pack library, CLI, and its standalone .nimble
 catalog/           Popular Packages metadata
-examples/          small usage examples
 docs/              API, architecture, and ADR documentation
 tools/ci/          reproducible setup and smoke harnesses
 reference/         ignored Tauri/Pake reference checkouts

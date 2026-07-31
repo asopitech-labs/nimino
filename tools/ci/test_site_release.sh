@@ -61,6 +61,9 @@ for artifact in "$assets"/*; do
   name=$(basename "$artifact")
   case "$name" in
     SHA256SUMS|Nimino-WebView2-Setup.ps1) ;;
+    # The standalone component archives are published from the same release;
+    # test_component_release.sh verifies their contents.
+    nimino-core-*.tar.gz|nimino-core-*.zip|nimino-pack-*.tar.gz) ;;
     youtube-*|gmail-*|google-analytics-*)
       case "$name" in
         *-nimino-manifest.json|*-nimino-sbom.cdx.json|*.deb|*.rpm|*-setup.exe|*.msi) ;;

@@ -22,8 +22,10 @@ Application
     `-- nimino-wsl client -- stdio IPC -- nimino-wsl-host.exe
                                                   `-- nimino-native (Windows)
 
-URL / manifest -- nimino-pack -- nimino-core public API -- nimino-native
+URL / manifest -- nimino-pack -- bundle + nimino-host (実行ファイルをパスで受け取る)
 ```
+
+`nimino-pack`は`nimino-core`にも`nimino-native`にもコンパイル時依存しません。Nim標準ライブラリだけをimportし、hostは`--host <executable>`でパスとして受け取ってbundleへ配置します。両者の唯一の界面は生成物の`nimino-manifest.json`です。この独立性により、`nimino-core`（アプリが埋め込むランタイム）と`nimino-pack`（ビルド時のパッケージングツール）は同一リポジトリから2つの独立した配布パッケージとしてリリースされます。
 
 `nimino-wsl-host.exe`はWindowsのGUI資源を所有します。WSL側はGUIバックエンドではなく、ホストのプロキシです。M1/M3ではhostが`nimino-native`を直接利用し、coreは公開`nimino-wsl` clientを選んで同じApp/Window面を中継します。host内部をcoreへ移すかは、M4以降のprofile/policy機能が必要になった時点で再評価します。
 
@@ -99,7 +101,7 @@ packages/
   native/{nimino_native.nim,src/nimino_native/{app,window,webview,events,capabilities,errors,private/}}
   core/{nimino_core.nim,src/nimino_core/}
   wsl/{nimino_wsl.nim,src/nimino_wsl/{client,host,protocol}/}
-  pack/{nimino_pack.nim,src/nimino_pack/}
+  pack/{nimino_pack.nimble,nimino_pack.nim,nimino.nim,src/nimino_pack/,schema/}
 examples/{native-minimal,core-local-app,core-remote-url,core-rpc,wsl-minimal,pack-example}/
 tests/{integration,smoke}/
 docs/{architecture,adr,api}/

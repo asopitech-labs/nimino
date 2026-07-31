@@ -31,12 +31,14 @@ RUN apt-get update \
       bubblewrap \
       xdg-dbus-proxy \
       libgtk-4-dev \
+      libssl-dev \
       libwebkitgtk-6.0-dev \
       libgdk-pixbuf2.0-bin \
       minisign \
       msitools \
       wixl \
       unzip \
+      zip \
       xauth \
       xvfb \
     && rm -rf /var/lib/apt/lists/* \

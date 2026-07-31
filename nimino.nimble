@@ -106,12 +106,12 @@ task testWebShortcutContract, "Run Pake clipboard and F11 document-start unit te
   exec "node tools/hosts/tests/test_web_shortcuts.js"
 
 task testPackMacos, "Build and inspect a macOS app bundle and DMG":
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-macos-cli-nimcache --out:/tmp/nimino-pack-macos-cli --path:packages/pack tools/cli/nimino.nim"
+  exec "nim c -d:ssl --mm:arc --nimcache:/tmp/nimino-pack-macos-cli-nimcache --out:/tmp/nimino-pack-macos-cli --path:packages/pack packages/pack/nimino.nim"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-macos-host-nimcache --out:/tmp/nimino-pack-macos-host --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
   exec "bash tools/ci/test_pack_macos.sh /tmp/nimino-pack-macos-cli /tmp/nimino-pack-macos-host"
 
 task testPackMacosRelease, "Build two macOS release DMGs and inspect each artifact":
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-macos-release-cli-nimcache --out:/tmp/nimino-pack-macos-release-cli --path:packages/pack tools/cli/nimino.nim"
+  exec "nim c -d:ssl --mm:arc --nimcache:/tmp/nimino-pack-macos-release-cli-nimcache --out:/tmp/nimino-pack-macos-release-cli --path:packages/pack packages/pack/nimino.nim"
   exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-macos-release-host-nimcache --out:/tmp/nimino-pack-macos-release-host --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
   exec "bash tools/ci/test_pack_macos_release.sh /tmp/nimino-pack-macos-release-cli /tmp/nimino-pack-macos-release-host"
 
@@ -140,7 +140,10 @@ task testPackIco, "Run Pake Windows multi-resolution ICO tests":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-ico-nimcache --out:/tmp/nimino-test-pack-ico --path:packages/pack packages/pack/tests/test_ico.nim"
 
 task buildPackCli, "Build the nimino-pack validation CLI":
-  exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack tools/cli/nimino.nim"
+  ## -d:ssl is required, not optional: automatic icon discovery fetches over
+  ## HTTPS, and without TLS support every remote icon fails closed with
+  ## "unable to download remote icon", silently shipping icon-less bundles.
+  exec "nim c -d:ssl --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack packages/pack/nimino.nim"
 
 task buildNiminoHost, "Build the generic native Nimino host":
   ## PCRE is linked statically: EL10-family distributions no longer ship the
@@ -161,10 +164,23 @@ task buildSiteRelease, "Build downloadable installers for the reviewed web sites
   exec "nimble buildNiminoHostWindows"
   ## Site applications carry the Nimino release version that built them.
   exec "bash tools/ci/build_site_release.sh /tmp/nimino /tmp/nimino-host /tmp/nimino-host.exe /workspace/.tmp/site-release " & version
+  ## The same build publishes the two components on their own: nimino-core
+  ## (the runtime embedded in every application) and nimino-pack (the
+  ## build-time packaging toolkit). It must run after build_site_release.sh,
+  ## which owns the assets directory and clears it first.
+  exec "bash tools/ci/build_component_release.sh /tmp/nimino /tmp/nimino-host /tmp/nimino-host.exe /workspace/.tmp/site-release " & version
 
 task testSiteRelease, "Rebuild and verify the reviewed ready-made site installers":
   exec "nimble buildSiteRelease"
   exec "bash tools/ci/test_site_release.sh /workspace/.tmp/site-release " & version
+  exec "bash tools/ci/test_component_release.sh /workspace/.tmp/site-release " & version
+
+task buildComponentRelease, "Build the standalone nimino-core and nimino-pack archives":
+  exec "nimble buildSiteRelease"
+
+task testComponentRelease, "Verify the standalone nimino-core and nimino-pack archives":
+  exec "nimble buildSiteRelease"
+  exec "bash tools/ci/test_component_release.sh /workspace/.tmp/site-release " & version
 
 task testPackCli, "Verify nimino-pack emits a runnable manifest bundle":
   exec "nimble buildPackCli"

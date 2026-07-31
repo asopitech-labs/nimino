@@ -24,7 +24,7 @@ Pake/Tauri参照コードとの比較、macOS native smoke、Objective-C bridge�
 | [x] | P1 | 生成hostから汎用Native通知をRPCで呼び出せるようにする | `tools/hosts/nimino_host.nim`, Core RPC | `window.nimino.invoke('app.sendNotification', ...)`が通知を表示する |
 | [x] | P1 | macOS Dock badgeと通知のin-app fallbackを生成hostへ接続する | `tools/hosts/nimino_host.nim`, Core/native macOS bridge | Apple署名通知はDock/Notification Centerへ送り、未署名・Ad-hocではWebバナーへフォールバックする |
 | [x] | P1 | `localEntry`でもPake相当の追加Windowを生成する | `tools/hosts/nimino_host.nim`, Core popup API | File URLとして追加Windowを開き、multiWindowのtray/menu操作がローカルbundleでも機能する |
-| [x] | P1 | Pake互換のWindow/WebView CLIオプションをmanifestへ反映する | `tools/cli/nimino.nim`, `packages/pack/src/nimino_pack/manifest.nim` | min size、dark mode、find、WASM、new window、内部遷移等がCLI/TOML/JSONで保持される |
+| [x] | P1 | Pake互換のWindow/WebView CLIオプションをmanifestへ反映する | `packages/pack/nimino.nim`, `packages/pack/src/nimino_pack/manifest.nim` | min size、dark mode、find、WASM、new window、内部遷移等がCLI/TOML/JSONで保持される |
 | [x] | P1 | macOS dark mode、shortcut抑止、Find helperを実装する | Core/native macOS bridge、document-start injection | dark appearance、ブラウザshortcut抑止、`window.nimino.find`が有効になる |
 | [x] | P1 | macOS activation shortcutを実装する | `packages/native/src/nimino_native/private/macos/bridge.m` | Cmd/Ctrl系ショートカットでWindowの表示/非表示を切り替えられる |
 | [x] | P2 | systemTrayIconをmacOS package Resourcesへ同梱する | `packages/pack/src/nimino_pack/macos_package.nim` | 絶対パスをmanifestへ残さず、生成`.app`内のアイコンを参照する |

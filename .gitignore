@@ -1,5 +1,7 @@
 nimcache/
 nimblecache/
+# `nimble build` inside packages/pack drops the CLI beside its .nimble file.
+packages/pack/nimino
 htmldocs/
 .tmp/
 dist/
