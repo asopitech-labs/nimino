@@ -270,7 +270,9 @@ make pack-windows-test
 make clean
 ```
 
-The GitHub Actions CI runs containerized tests, Linux checks, packaging checks, and Windows cross-builds on pushes and pull requests. It also rebuilds and verifies the YouTube, Gmail, and Google Analytics ready-made installers on every CI run; the generated files are retained as a short-lived workflow artifact. Windows GUI smoke is an explicit manual job for a self-hosted `wsl2,windows-gui` runner.
+The GitHub Actions [CI](.github/workflows/ci.yml) builds the pinned development image and runs `verify-env`, `setup-contract-test`, `test`, `pack-test`, `pack-cli-test`, and `pack-popular-catalog-test` in the container on pushes to `main` and on pull requests.
+
+The ready-made site installers and the two component archives are rebuilt and verified by the [release workflow](.github/workflows/nimino-site-release.yml) on every `v*` tag, before anything is published; that run retains the whole build output as a workflow artifact. Platform-specific suites are opt-in through `NIMINO_TEST_REFERENCE_LINUX`, `NIMINO_TEST_REFERENCE_WINDOWS`, and `NIMINO_TEST_REFERENCE_WSL`, and the Windows and WSL GUI smokes need a logged-in Windows desktop, so they are run from a developer machine rather than by CI.
 
 ## Repository layout
 
