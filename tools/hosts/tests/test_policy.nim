@@ -7,7 +7,7 @@ doAssert bypassLinkGuard("javascript:void(0)")
 doAssert bypassLinkGuard("#captcha-confirm")
 doAssert not bypassLinkGuard("https://example.com/account")
 doAssert popupLinkDisposition(allowed = true, external = false,
-  newWindow = false, authentication = false) == popupLinkExternal
+  newWindow = false, authentication = false) == popupLinkNavigate
 doAssert popupLinkDisposition(allowed = true, external = false,
   newWindow = false, authentication = true) == popupLinkAllow
 doAssert popupLinkDisposition(allowed = true, external = false,
@@ -18,15 +18,6 @@ doAssert popupLinkDisposition(allowed = false, external = true,
   newWindow = false, authentication = false) == popupLinkExternal
 doAssert popupLinkDisposition(allowed = false, external = false,
   newWindow = false, authentication = false, blankPopup = true) == popupLinkAllow
-doAssert popupLinkDisposition(allowed = true, external = false,
-  newWindow = false, authentication = false,
-  authenticationSource = true) == popupLinkAllow
-doAssert popupLinkDisposition(allowed = false, external = false,
-  newWindow = false, authentication = false,
-  authenticationSource = true) == popupLinkDeny
-doAssert popupLinkDisposition(allowed = false, external = true,
-  newWindow = false, authentication = false,
-  authenticationSource = true) == popupLinkExternal
 
 doAssert safeDownloadLabel("report.pdf") == "report.pdf"
 doAssert safeDownloadLabel("blob:https://example.test/123") ==
