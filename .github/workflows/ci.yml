@@ -93,3 +93,72 @@ jobs:
           pack-linux-test
           pack-windows-test
           pack-sites-test
+
+  packaging-formats:
+    # AppImage and the archive/online flows run entirely in the development
+    # image: appimagetool and linuxdeploy are wrapped with
+    # APPIMAGE_EXTRACT_AND_RUN so none of this needs FUSE.
+    name: Packaging formats
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the development image from the repository Dockerfile
+        run: docker compose build nimino-dev
+
+      - name: Verify the AppImage closure and its guardrails
+        run: >-
+          make
+          pack-appimage-guardrails
+          pack-appimage-test
+
+      - name: Verify the archive, online, and catalog flows
+        run: >-
+          make
+          pack-archive-test
+          pack-online-test
+          pack-popular-catalog-generation-test
+
+  flatpak:
+    # flatpak-builder launches bubblewrap and needs a user namespace, which is
+    # why compose keeps that privilege on its own service.
+    name: Flatpak packaging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the development image from the repository Dockerfile
+        run: docker compose build nimino-dev
+
+      - name: Build and export a real Flatpak bundle
+        run: make pack-flatpak-test
+
+  rpm-centos:
+    # The generated RPM is installed and launched inside a CentOS Stream 10
+    # container, so this one drives the runner's container runtime directly
+    # rather than running inside the development image.
+    name: RPM install smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the development image from the repository Dockerfile
+        run: docker compose build nimino-dev
+
+      - name: Install and launch the RPM in CentOS Stream 10
+        run: make rpm-centos-smoke
