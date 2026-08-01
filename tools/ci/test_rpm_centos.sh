@@ -20,25 +20,32 @@ dnf config-manager --set-enabled crb >/dev/null
 dnf -y -q install "/nimino-assets/'"$rpm_name"'" >/dev/null
 echo "rpm centos smoke: package installed with dependency resolution"
 rpm -q gtk4 webkitgtk6.0 >/dev/null
-dnf -y -q install weston dbus-daemon dbus-tools mesa-dri-drivers >/dev/null
+# Xvfb rather than weston headless. The headless Wayland backend drives no
+# input devices, so it advertises no wl_seat; GTK then trips
+# "gdk_seat_get_keyboard: assertion GDK_IS_SEAT (seat) failed" and the
+# process dies before it can be observed. That is a property of the harness,
+# not of the package: every real EL10 desktop has a seat. An X server always
+# provides a core keyboard and pointer, and it is what the other Linux GUI
+# smokes in this repository already run under.
+dnf -y -q install xorg-x11-server-Xvfb dbus-daemon dbus-tools mesa-dri-drivers >/dev/null
 app_root=$(ls -d /opt/nimino/*/ | head -1)
 test -x "${app_root}run-nimino.sh"
 export XDG_RUNTIME_DIR=/tmp/nimino-xdg
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-weston --backend=headless --socket=wl-nimino --width=1280 --height=800 >/tmp/weston.log 2>&1 &
-# Wait for the socket rather than guessing at a sleep: a compositor that is
+Xvfb :99 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &
+# Wait for the X socket rather than guessing at a sleep: a server that is
 # still starting looks exactly like one that failed.
 for _ in $(seq 1 50); do
-  test -S "$XDG_RUNTIME_DIR/wl-nimino" && break
+  test -S /tmp/.X11-unix/X99 && break
   sleep 0.2
 done
-test -S "$XDG_RUNTIME_DIR/wl-nimino" || {
-  echo "rpm centos smoke: weston did not create its socket" >&2
-  cat /tmp/weston.log >&2
+test -S /tmp/.X11-unix/X99 || {
+  echo "rpm centos smoke: Xvfb did not create its socket" >&2
+  cat /tmp/xvfb.log >&2
   exit 1
 }
-export WAYLAND_DISPLAY=wl-nimino GDK_BACKEND=wayland LIBGL_ALWAYS_SOFTWARE=1
+export DISPLAY=:99 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1
 # A CI runner has no /dev/dri, so GSK picks its Vulkan renderer, fails to
 # enumerate any physical device, and takes the process down inside the GTK
 # main loop. Pin the software renderer and keep WebKit off the GPU paths
@@ -61,19 +68,6 @@ export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 # escape hatch exists for exactly this Docker smoke situation.  A real
 # CentOS machine never needs it.
 export NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1
-# GTK crashed here with "gdk_seat_get_keyboard: assertion GDK_IS_SEAT (seat)
-# failed", so record whether the compositor advertises a seat at all. The
-# headless backend drives no input devices, and a Wayland display with no
-# wl_seat is a property of this harness, not of the package under test.
-dnf -y -q install wayland-utils >/dev/null 2>&1 || true
-if command -v wayland-info >/dev/null 2>&1; then
-  wayland-info > /tmp/wayland.log 2>&1 || true
-  if grep -q "wl_seat" /tmp/wayland.log; then
-    echo "rpm centos smoke: compositor advertises wl_seat"
-  else
-    echo "rpm centos smoke: compositor advertises no wl_seat" >&2
-  fi
-fi
 dbus-run-session -- "${app_root}run-nimino.sh" >/tmp/app.log 2>&1 &
 app_pid=$!
 sleep 15
@@ -81,10 +75,10 @@ if ! kill -0 "$app_pid" 2>/dev/null; then
   echo "rpm centos smoke: application exited prematurely" >&2
   echo "--- application log ---" >&2
   cat /tmp/app.log >&2
-  echo "--- compositor log ---" >&2
-  cat /tmp/weston.log >&2 || true
+  echo "--- display server log ---" >&2
+  cat /tmp/xvfb.log >&2 || true
   exit 1
 fi
 kill "$app_pid" 2>/dev/null || true
-echo "rpm centos smoke: application stayed alive under weston headless"
+echo "rpm centos smoke: application stayed alive under Xvfb"
 '
