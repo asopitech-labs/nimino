@@ -11,8 +11,8 @@ rpm_name=$(basename "$rpm_file")
 
 # EPEL supplies webkitgtk6.0 for EL10; CRB is required because EPEL's weston
 # depends on turbojpeg, which only CRB carries.  Weston provides the headless
-# Wayland session: EL10 no longer packages an X11 server, and GTK 4 talks
-# Wayland natively.
+# Wayland session, with Xwayland layered on top so GTK sees a seat: EL10 no
+# longer packages an Xorg server, and headless Wayland exposes no input.
 "$runtime" run --rm -v "$rpm_dir":/nimino-assets:ro "$image" bash -c '
 set -eu
 dnf -y -q install epel-release dnf-plugins-core >/dev/null
@@ -20,29 +20,44 @@ dnf config-manager --set-enabled crb >/dev/null
 dnf -y -q install "/nimino-assets/'"$rpm_name"'" >/dev/null
 echo "rpm centos smoke: package installed with dependency resolution"
 rpm -q gtk4 webkitgtk6.0 >/dev/null
-# Xvfb rather than weston headless. The headless Wayland backend drives no
-# input devices, so it advertises no wl_seat; GTK then trips
-# "gdk_seat_get_keyboard: assertion GDK_IS_SEAT (seat) failed" and the
-# process dies before it can be observed. That is a property of the harness,
-# not of the package: every real EL10 desktop has a seat. An X server always
-# provides a core keyboard and pointer, and it is what the other Linux GUI
-# smokes in this repository already run under.
-dnf -y -q install xorg-x11-server-Xvfb dbus-daemon dbus-tools mesa-dri-drivers >/dev/null
+# Weston headless drives no input devices, so it advertises no wl_seat; GTK
+# then trips "gdk_seat_get_keyboard: assertion GDK_IS_SEAT (seat) failed" and
+# the process dies before it can be observed. Nothing in Nimino asks for a
+# seat -- the call is inside GTK -- and every real EL10 desktop has one, so
+# starving the toolkit here tests nothing about the package.
+#
+# EL10 dropped the Xorg server, so Xvfb is not installable. It does ship
+# Xwayland, which connects to the headless compositor as an ordinary client
+# and serves X on a display number of our choosing, with the core keyboard
+# and pointer an X server always synthesizes.
+dnf -y -q install weston xorg-x11-server-Xwayland dbus-daemon dbus-tools \
+  mesa-dri-drivers >/dev/null
 app_root=$(ls -d /opt/nimino/*/ | head -1)
 test -x "${app_root}run-nimino.sh"
 export XDG_RUNTIME_DIR=/tmp/nimino-xdg
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-Xvfb :99 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &
-# Wait for the X socket rather than guessing at a sleep: a server that is
+weston --backend=headless --socket=wl-nimino --width=1280 --height=800 >/tmp/weston.log 2>&1 &
+# Wait for each socket rather than guessing at a sleep: a server that is
 # still starting looks exactly like one that failed.
+for _ in $(seq 1 50); do
+  test -S "$XDG_RUNTIME_DIR/wl-nimino" && break
+  sleep 0.2
+done
+test -S "$XDG_RUNTIME_DIR/wl-nimino" || {
+  echo "rpm centos smoke: weston did not create its socket" >&2
+  cat /tmp/weston.log >&2
+  exit 1
+}
+WAYLAND_DISPLAY=wl-nimino Xwayland :99 >/tmp/xserver.log 2>&1 &
 for _ in $(seq 1 50); do
   test -S /tmp/.X11-unix/X99 && break
   sleep 0.2
 done
 test -S /tmp/.X11-unix/X99 || {
-  echo "rpm centos smoke: Xvfb did not create its socket" >&2
-  cat /tmp/xvfb.log >&2
+  echo "rpm centos smoke: Xwayland did not create its socket" >&2
+  cat /tmp/xserver.log >&2
+  cat /tmp/weston.log >&2
   exit 1
 }
 export DISPLAY=:99 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1
@@ -59,7 +74,7 @@ export WEBKIT_DISABLE_DMABUF_RENDERER=1
 # unprivileged user namespace. Ubuntu 24.04 hosts restrict those by default
 # (kernel.apparmor_restrict_unprivileged_userns), so inside an unprivileged
 # container bwrap fails with "Creating new namespace failed" and the app
-# exits before it can be observed. The same escape hatch the Xvfb smokes
+# exits before it can be observed. The same escape hatch the headless GUI smokes
 # already use applies here. It does not weaken what this test checks: the
 # subject is RPM dependency resolution and launch, and a real CentOS machine
 # has the namespaces the sandbox needs.
@@ -76,9 +91,9 @@ if ! kill -0 "$app_pid" 2>/dev/null; then
   echo "--- application log ---" >&2
   cat /tmp/app.log >&2
   echo "--- display server log ---" >&2
-  cat /tmp/xvfb.log >&2 || true
+  cat /tmp/xserver.log >&2 || true; cat /tmp/weston.log >&2 || true
   exit 1
 fi
 kill "$app_pid" 2>/dev/null || true
-echo "rpm centos smoke: application stayed alive under Xvfb"
+echo "rpm centos smoke: application stayed alive under Xwayland"
 '
