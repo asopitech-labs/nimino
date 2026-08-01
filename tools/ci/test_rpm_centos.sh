@@ -27,7 +27,17 @@ export XDG_RUNTIME_DIR=/tmp/nimino-xdg
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 weston --backend=headless --socket=wl-nimino --width=1280 --height=800 >/tmp/weston.log 2>&1 &
-sleep 3
+# Wait for the socket rather than guessing at a sleep: a compositor that is
+# still starting looks exactly like one that failed.
+for _ in $(seq 1 50); do
+  test -S "$XDG_RUNTIME_DIR/wl-nimino" && break
+  sleep 0.2
+done
+test -S "$XDG_RUNTIME_DIR/wl-nimino" || {
+  echo "rpm centos smoke: weston did not create its socket" >&2
+  cat /tmp/weston.log >&2
+  exit 1
+}
 export WAYLAND_DISPLAY=wl-nimino GDK_BACKEND=wayland LIBGL_ALWAYS_SOFTWARE=1
 # A CI runner has no /dev/dri, so GSK picks its Vulkan renderer, fails to
 # enumerate any physical device, and takes the process down inside the GTK
@@ -51,6 +61,19 @@ export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 # escape hatch exists for exactly this Docker smoke situation.  A real
 # CentOS machine never needs it.
 export NIMINO_TEST_ALLOW_NATIVE_IN_WSL=1
+# GTK crashed here with "gdk_seat_get_keyboard: assertion GDK_IS_SEAT (seat)
+# failed", so record whether the compositor advertises a seat at all. The
+# headless backend drives no input devices, and a Wayland display with no
+# wl_seat is a property of this harness, not of the package under test.
+dnf -y -q install wayland-utils >/dev/null 2>&1 || true
+if command -v wayland-info >/dev/null 2>&1; then
+  wayland-info > /tmp/wayland.log 2>&1 || true
+  if grep -q "wl_seat" /tmp/wayland.log; then
+    echo "rpm centos smoke: compositor advertises wl_seat"
+  else
+    echo "rpm centos smoke: compositor advertises no wl_seat" >&2
+  fi
+fi
 dbus-run-session -- "${app_root}run-nimino.sh" >/tmp/app.log 2>&1 &
 app_pid=$!
 sleep 15
