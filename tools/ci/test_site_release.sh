@@ -41,7 +41,11 @@ require_deb_icon() {
   extracted="$work/$app-deb"
   rm -rf "$extracted"
   mkdir -p "$extracted"
-  (cd "$extracted" && ar x "$deb" && tar -xf data.tar.* )
+  # dpkg-deb rather than ar plus tar: it is guaranteed present (nimino-pack
+  # requires it to build these packages in the first place) and it knows how
+  # to read whichever compression dpkg-deb chose, without depending on the
+  # xz binary being installed for tar to shell out to.
+  dpkg-deb -x "$deb" "$extracted"
 
   desktop=$(find "$extracted/usr/share/applications" -name '*.desktop' | head -n 1)
   if [ -z "$desktop" ]; then
