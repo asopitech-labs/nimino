@@ -36,3 +36,60 @@ jobs:
           pack-test
           pack-cli-test
           pack-popular-catalog-test
+
+  linux-gui:
+    # The development image ships GTK, WebKitGTK, and Xvfb precisely so these
+    # run headless, but nothing ever executed them: the GUI backends, the RPC
+    # bootstrap, the custom protocol, and the tray were only exercised by hand.
+    name: Linux GUI smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the development image from the repository Dockerfile
+        run: docker compose build nimino-dev
+
+      - name: Run the Xvfb-backed Linux smoke tests
+        run: >-
+          make
+          linux-smoke
+          linux-custom-protocol-smoke
+          linux-tray-smoke
+          core-linux-rpc-smoke
+          core-linux-rpc-url-smoke
+          core-linux-rpc-async-smoke
+
+  cross-build:
+    # Windows and WSL targets are cross-compiled, so they need no Windows
+    # host to be checked -- only the mingw toolchain the image already has.
+    name: Cross builds and packaging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the development image from the repository Dockerfile
+        run: docker compose build nimino-dev
+
+      - name: Cross-compile the Windows and WSL targets
+        run: >-
+          make
+          windows-cross
+          core-windows-cross
+          wsl-host-cross
+
+      - name: Build the Linux and Windows packages
+        run: >-
+          make
+          pack-linux-test
+          pack-windows-test
+          pack-sites-test
