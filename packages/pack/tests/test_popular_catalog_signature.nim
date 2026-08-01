@@ -2,7 +2,16 @@ import std/[base64, os, osproc, streams, strutils]
 
 import nimino_pack
 
+proc requireTool(tool: string) =
+  ## Name the missing dependency instead of letting startProcess raise a bare
+  ## "No such file or directory" with a stack trace, which reads like a bug in
+  ## the test rather than a tool that was never installed.
+  if findExe(tool).len == 0:
+    quit("test_popular_catalog_signature requires '" & tool &
+      "' on PATH; install it (the development container already provides it)", 1)
+
 proc run(tool: string; arguments: seq[string]): tuple[code: int, output: string] =
+  requireTool(tool)
   let process = startProcess(tool, args = arguments,
     options = {poUsePath, poStdErrToStdOut})
   result.output = process.outputStream.readAll()

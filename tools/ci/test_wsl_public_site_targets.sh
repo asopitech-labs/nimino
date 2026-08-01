@@ -11,7 +11,14 @@ if [[ ! -f "$catalog" ]]; then
   exit 1
 fi
 
-mapfile -t actual < "$catalog"
+# Read with a `while` loop rather than mapfile: the WSL targets are edited
+# and checked from developer machines as well as CI, and macOS still ships
+# bash 3.2, where mapfile does not exist. Without this the contract check
+# aborted before comparing anything.
+actual=()
+while IFS= read -r line || [ -n "$line" ]; do
+  actual+=("$line")
+done < "$catalog"
 expected=(
   "https://www.youtube.com/"
   "https://github.com/nim-lang/Nim"
