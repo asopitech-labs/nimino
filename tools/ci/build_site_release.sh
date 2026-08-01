@@ -67,6 +67,29 @@ copy_assets() {
   shopt -u nullglob
 }
 
+# Automatic icon discovery is fail-open by design: a site with no icon still
+# produces a valid wrapper. That makes "this site has no icon" and "icon
+# fetching is broken for every site" indistinguishable, and a CLI built
+# without TLS support shipped seven icon-less releases behind an exit status
+# of 0. All three reviewed sites do serve an icon, so for this release the
+# absence of one is a build failure, not an accepted outcome.
+require_bundle_icon() {
+  local app=$1
+  local platform=$2
+  local bundle=$3
+  local icon
+  icon=$(sed -n 's/.*"icon": *"\([^"]*\)".*/\1/p' "$bundle/nimino-manifest.json")
+  if [[ -z "$icon" ]]; then
+    echo "site release: $app ($platform) has no icon; the reviewed sites all serve one," >&2
+    echo "site release: so icon discovery is broken (check TLS support and network egress)" >&2
+    exit 1
+  fi
+  if [[ ! -s "$bundle/$icon" ]]; then
+    echo "site release: $app ($platform) manifest names icon '$icon' but the file is missing" >&2
+    exit 1
+  fi
+}
+
 # Display names and stable ids are pinned explicitly: URL derivation names
 # both Google properties "Google", and passing --name alone would change the
 # generated id and break upgrade continuity for installed apps.
@@ -84,6 +107,7 @@ for site in \
   linux_packages="$root/$app-linux-packages"
   "$cli" pack "$url" --name "$display_name" --id "$app_id" \
     --out "$linux_bundle" --host "$linux_host" --app-version "$app_version"
+  require_bundle_icon "$app" linux "$linux_bundle"
   mkdir -p "$linux_packages"
   "$cli" package-linux "$linux_bundle" --format deb --out "$linux_packages" \
     --arch amd64 --maintainer "Nimino Site Release <noreply@nimino.invalid>"
@@ -97,6 +121,7 @@ for site in \
   windows_packages="$root/$app-windows-packages"
   "$cli" pack "$url" --name "$display_name" --id "$app_id" \
     --out "$windows_bundle" --host "$windows_host" --app-version "$app_version"
+  require_bundle_icon "$app" windows "$windows_bundle"
   cp "$webview2_loader" "$windows_bundle/WebView2Loader.dll"
   cp "$pcre_dll" "$windows_bundle/pcre64.dll"
   mkdir -p "$windows_packages"

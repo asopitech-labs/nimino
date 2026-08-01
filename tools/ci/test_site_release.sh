@@ -28,6 +28,39 @@ require_artifact() {
   fi
 }
 
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# Icon coverage is checked on the published artifact, not just the manifest.
+# Seven releases shipped with an empty icon field and passed this suite,
+# because nothing here looked at icons at all: the manifest key was blank,
+# no icon file was packaged, and the desktop entry had no Icon= line.
+require_deb_icon() {
+  app=$1
+  deb=$2
+  extracted="$work/$app-deb"
+  rm -rf "$extracted"
+  mkdir -p "$extracted"
+  (cd "$extracted" && ar x "$deb" && tar -xf data.tar.* )
+
+  desktop=$(find "$extracted/usr/share/applications" -name '*.desktop' | head -n 1)
+  if [ -z "$desktop" ]; then
+    echo "site release: $app package has no desktop entry" >&2
+    exit 1
+  fi
+  icon_line=$(grep '^Icon=' "$desktop" || true)
+  if [ -z "$icon_line" ]; then
+    echo "site release: $app desktop entry has no Icon= line; the launcher would" >&2
+    echo "site release: fall back to a generic icon" >&2
+    exit 1
+  fi
+  icon_path=${icon_line#Icon=}
+  if [ ! -s "$extracted$icon_path" ]; then
+    echo "site release: $app desktop entry points at $icon_path, which the package does not install" >&2
+    exit 1
+  fi
+}
+
 for app in youtube gmail google-analytics; do
   case "$app" in
     youtube) expected_name="YouTube" ;;
@@ -40,11 +73,34 @@ for app in youtube gmail google-analytics; do
     # Reviewed display names, not the URL-derived defaults (both Google
     # properties would otherwise be called "Google").
     grep -Fq "\"name\": \"$expected_name\"" "$assets/${app}-${platform}-nimino-manifest.json"
+    # All three reviewed sites serve an icon, so an empty icon field means
+    # discovery failed rather than that the site has none.
+    manifest_icon=$(sed -n 's/.*"icon": *"\([^"]*\)".*/\1/p' \
+      "$assets/${app}-${platform}-nimino-manifest.json")
+    if [ -z "$manifest_icon" ]; then
+      echo "site release: ${app} (${platform}) manifest has an empty icon" >&2
+      exit 1
+    fi
   done
   require_artifact "$assets/${app}-*.deb"
   require_artifact "$assets/${app}-*.rpm"
   require_artifact "$assets/${app}-*-setup.exe"
   require_artifact "$assets/${app}-*.msi"
+  for deb in "$assets/${app}-"*.deb; do
+    require_deb_icon "$app" "$deb"
+  done
+  # The Windows installers write the "Installed apps" DisplayIcon from the
+  # bundle's icon; without one the entry shows no icon in Windows settings
+  # and the multi-resolution ICO conversion never runs. NSIS compresses its
+  # payload, so assert on the MSI, which stores file names uncompressed.
+  windows_icon=$(sed -n 's/.*"icon": *"\([^"]*\)".*/\1/p' \
+    "$assets/${app}-windows-nimino-manifest.json")
+  for installer in "$assets/${app}-"*.msi; do
+    if ! grep -aq "$windows_icon" "$installer"; then
+      echo "site release: $app MSI does not install the icon $windows_icon" >&2
+      exit 1
+    fi
+  done
   if [ -n "$expected_version" ]; then
     # Site applications must carry the Nimino release version, not the
     # generator default.

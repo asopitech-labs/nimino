@@ -183,6 +183,40 @@ kill "$icon_server" 2>/dev/null || true
 wait "$icon_server" 2>/dev/null || true
 trap - EXIT
 
+# Every icon case above speaks plaintext HTTP to a local server, so a CLI
+# built without TLS support passes all of them while failing every real
+# fetch: production discovery uses HTTPS for both the site favicon and the
+# dashboard-icons CDN. That gap shipped seven icon-less releases.
+#
+# Two checks close it. The first is hermetic and always runs.
+if ! grep -aq 'libssl' "$nimino"; then
+  echo "pack cli test: the CLI has no TLS support; build it with -d:ssl or every" >&2
+  echo "pack cli test: HTTPS icon fetch fails closed with 'unable to download remote icon'" >&2
+  exit 1
+fi
+
+# The second actually fetches over TLS. curl proves the endpoint is
+# reachable first, so a nimino failure afterwards is attributable to the
+# client rather than to a sandbox with no egress: no network means skip,
+# reachable endpoint plus failing client means fail.
+tls_icon_url="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/youtube.png"
+if curl -fsS --max-time 20 -o "$root/tls-reference.png" "$tls_icon_url" 2>/dev/null; then
+  test -s "$root/tls-reference.png"
+  "$nimino" pack https://example.com --name TlsIcon --id app.nimino.tls-icon \
+    --icon "$tls_icon_url" --out "$root/tls-icon-out" --host "$root/host"
+  test -s "$root/tls-icon-out/youtube.png" || {
+    echo "pack cli test: the CLI could not fetch an icon over HTTPS from an endpoint" >&2
+    echo "pack cli test: curl just reached, so its TLS support is broken" >&2
+    exit 1
+  }
+  grep -q '"icon": "youtube.png"' "$root/tls-icon-out/nimino-manifest.json"
+  cmp "$root/tls-reference.png" "$root/tls-icon-out/youtube.png"
+  echo "pack cli test: HTTPS icon fetch verified"
+else
+  echo "pack cli test: no HTTPS egress; skipped the live TLS fetch (the compiled-in" >&2
+  echo "pack cli test: TLS support check above still ran)" >&2
+fi
+
 "$nimino" pack https://example.com --name DemoUrlDeep --id app.nimino.demo-url-deep \
   --deep-link "DEMO" --safe-domain ' slack.com , , acme.com ' \
   --out "$root/url-deep-out" --host "$root/host"
