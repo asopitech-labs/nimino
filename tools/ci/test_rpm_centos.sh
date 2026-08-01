@@ -29,6 +29,15 @@ chmod 700 "$XDG_RUNTIME_DIR"
 weston --backend=headless --socket=wl-nimino --width=1280 --height=800 >/tmp/weston.log 2>&1 &
 sleep 3
 export WAYLAND_DISPLAY=wl-nimino GDK_BACKEND=wayland LIBGL_ALWAYS_SOFTWARE=1
+# WebKitGTK sandboxes its web process with bubblewrap, which needs an
+# unprivileged user namespace. Ubuntu 24.04 hosts restrict those by default
+# (kernel.apparmor_restrict_unprivileged_userns), so inside an unprivileged
+# container bwrap fails with "Creating new namespace failed" and the app
+# exits before it can be observed. The same escape hatch the Xvfb smokes
+# already use applies here. It does not weaken what this test checks: the
+# subject is RPM dependency resolution and launch, and a real CentOS machine
+# has the namespaces the sandbox needs.
+export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 # On a WSL-hosted kernel every container looks like WSL to the host; the
 # escape hatch exists for exactly this Docker smoke situation.  A real
 # CentOS machine never needs it.
