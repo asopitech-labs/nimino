@@ -29,6 +29,15 @@ chmod 700 "$XDG_RUNTIME_DIR"
 weston --backend=headless --socket=wl-nimino --width=1280 --height=800 >/tmp/weston.log 2>&1 &
 sleep 3
 export WAYLAND_DISPLAY=wl-nimino GDK_BACKEND=wayland LIBGL_ALWAYS_SOFTWARE=1
+# A CI runner has no /dev/dri, so GSK picks its Vulkan renderer, fails to
+# enumerate any physical device, and takes the process down inside the GTK
+# main loop. Pin the software renderer and keep WebKit off the GPU paths
+# that need a real device. A developer machine with a GPU never needs this;
+# what the test checks -- that the RPM installs and the application runs --
+# is the same either way.
+export GSK_RENDERER=cairo
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
 # WebKitGTK sandboxes its web process with bubblewrap, which needs an
 # unprivileged user namespace. Ubuntu 24.04 hosts restrict those by default
 # (kernel.apparmor_restrict_unprivileged_userns), so inside an unprivileged
@@ -47,8 +56,10 @@ app_pid=$!
 sleep 15
 if ! kill -0 "$app_pid" 2>/dev/null; then
   echo "rpm centos smoke: application exited prematurely" >&2
+  echo "--- application log ---" >&2
   cat /tmp/app.log >&2
-  tail -5 /tmp/weston.log >&2 || true
+  echo "--- compositor log ---" >&2
+  cat /tmp/weston.log >&2 || true
   exit 1
 fi
 kill "$app_pid" 2>/dev/null || true
