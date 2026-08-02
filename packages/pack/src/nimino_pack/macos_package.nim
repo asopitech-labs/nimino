@@ -47,6 +47,46 @@ proc runTool(command: string; args: openArray[string]): PackResult[bool] =
       (if output.len > 0: ": " & output else: ""))
   success(true)
 
+const iconsetSizes = [16, 32, 64, 128, 256, 512]
+
+proc convertToIcns(source, destination: string): PackResult[bool] =
+  ## Build an .icns from a raster icon. URL packing resolves whatever the site
+  ## serves -- normally favicon.ico, sometimes PNG -- and only macOS insists on
+  ## its own container format, so without this the documented flow of packing a
+  ## URL and then packaging it could never produce an icon at all. Windows
+  ## already expands its .ico in the same spirit.
+  ##
+  ## sips and iconutil ship with macOS, which is the only place this packager
+  ## runs. A source smaller than a given size is upscaled rather than skipped:
+  ## a 16x16 favicon is what the site offers, and an upscaled icon beats none.
+  if findExe("sips").len == 0 or findExe("iconutil").len == 0:
+    return failure[bool](unsupportedFeature,
+      "macOS icon conversion requires sips and iconutil")
+  let workRoot = destination & ".iconset-work"
+  removeDir(workRoot)
+  createDir(workRoot)
+  defer:
+    try: removeDir(workRoot)
+    except CatchableError: discard
+  let flattened = workRoot / "source.png"
+  let rasterized = runTool("sips", ["-s", "format", "png", source, "--out", flattened])
+  if not rasterized.isOk:
+    return failure[bool](rasterized.error.kind,
+      "macOS icon source could not be read as an image: " & extractFilename(source))
+  let iconset = workRoot / "icon.iconset"
+  createDir(iconset)
+  for size in iconsetSizes:
+    let scaled = runTool("sips", ["-z", $size, $size, flattened,
+      "--out", iconset / ("icon_" & $size & "x" & $size & ".png")])
+    if not scaled.isOk:
+      return failure[bool](scaled.error.kind, scaled.error.detail)
+  let built = runTool("iconutil", ["-c", "icns", iconset, "-o", destination])
+  if not built.isOk:
+    return failure[bool](built.error.kind, built.error.detail)
+  if not fileExists(destination):
+    return failure[bool](ioFailure, "macOS icon conversion produced no .icns")
+  success(true)
+
 proc copyTree(source, destination: string): PackResult[bool] =
   try:
     createDir(destination)
@@ -199,10 +239,18 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
     if icon.len > 0 and not fileExists(bundle / icon):
       return failure[string](ioFailure, "macOS manifest icon is missing from the package bundle")
     if icon.len > 0:
-      if not icon.toLowerAscii().endsWith(".icns"):
-        return failure[string](unsupportedFeature, "macOS application icons must use .icns")
-      copyFile(bundle / icon, resources / extractFilename(icon))
-      iconEntry = extractFilename(icon)
+      if icon.toLowerAscii().endsWith(".icns"):
+        copyFile(bundle / icon, resources / extractFilename(icon))
+        iconEntry = extractFilename(icon)
+      else:
+        ## Convert rather than refuse. Packing a URL resolves whatever the
+        ## site serves, which is almost always favicon.ico, and rejecting it
+        ## meant the documented "pack a URL, then package it" flow could not
+        ## produce an icon on macOS at all.
+        iconEntry = splitFile(icon).name & ".icns"
+        let converted = convertToIcns(bundle / icon, resources / iconEntry)
+        if not converted.isOk:
+          return failure[string](converted.error.kind, converted.error.detail)
     let trayIcon = manifest.runtimeJsonString("systemTrayIcon")
     if trayIcon.len > 0:
       let traySource = if fileExists(trayIcon): trayIcon
@@ -211,15 +259,18 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
         else: ""
       if traySource.len == 0:
         return failure[string](ioFailure, "macOS system tray icon is missing from the package bundle")
-      let trayName = extractFilename(traySource)
+      var trayName = extractFilename(traySource)
       let trayExtension = splitFile(trayName).ext.toLowerAscii()
-      ## NSStatusItem accepts native PNG/ICNS resources reliably. Reject other
-      ## staged files here instead of producing an application that fails only
-      ## after its tray has been installed at runtime.
-      if trayExtension notin [".icns", ".png"]:
-        return failure[string](unsupportedFeature,
-          "macOS system tray icons must use .icns or .png")
-      copyFile(traySource, resources / trayName)
+      ## NSStatusItem accepts native PNG/ICNS resources reliably. Anything else
+      ## is converted here rather than left to fail at runtime, once the tray
+      ## has already been installed.
+      if trayExtension in [".icns", ".png"]:
+        copyFile(traySource, resources / trayName)
+      else:
+        trayName = splitFile(trayName).name & ".icns"
+        let converted = convertToIcns(traySource, resources / trayName)
+        if not converted.isOk:
+          return failure[string](converted.error.kind, converted.error.detail)
       if packagedManifest.hasKey("runtime") and packagedManifest["runtime"].kind == JObject:
         packagedManifest["runtime"]["systemTrayIcon"] = %trayName
       writeFile(resources / "nimino-manifest.json", packagedManifest.pretty())

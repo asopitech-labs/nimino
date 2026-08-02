@@ -268,7 +268,7 @@ nimino package-macos dist/discord --format dmg --out dist/packages \
   --sign-identity 'Developer ID Application: Example' --notary-profile 'nimino-release'
 ```
 
-`Contents/Info.plist`にはmanifestのbundle ID、version、deep-link URL scheme、camera/microphone権限用途説明を記録し、Mach-O host、manifest、assetsを`Contents/MacOS`と`Contents/Resources`へ配置します。指定アイコンは`.icns`に限定し、`--arch`でhostが要求アーキテクチャを含むことを検証します。DMGは`hdiutil create`で生成します。`--sign-identity`を指定しない場合は未署名bundleを生成し、指定時だけ`codesign --deep --options runtime`を実行します。`--notary-profile`を指定した場合は、署名済みDMGを`xcrun notarytool submit --wait`へ送り、成功後に`xcrun stapler staple`を実行します。notary profile、Apple証明書、実機Gatekeeper確認はrelease環境で行います。
+`Contents/Info.plist`にはmanifestのbundle ID、version、deep-link URL scheme、camera/microphone権限用途説明を記録し、Mach-O host、manifest、assetsを`Contents/MacOS`と`Contents/Resources`へ配置します。アイコンが`.icns`でない場合は`sips`と`iconutil`で16〜512pxの`.icns`へ変換して配置します（URL包装が取得するのは通常`favicon.ico`であり、変換しなければmacOSではアイコン無しになるため）。読み込めない画像は変換失敗として拒否します。system trayアイコンは`.icns`/`.png`をそのまま使い、それ以外は同様に変換します。`--arch`でhostが要求アーキテクチャを含むことを検証します。DMGは`hdiutil create`で生成します。`--sign-identity`を指定しない場合は未署名bundleを生成し、指定時だけ`codesign --deep --options runtime`を実行します。`--notary-profile`を指定した場合は、署名済みDMGを`xcrun notarytool submit --wait`へ送り、成功後に`xcrun stapler staple`を実行します。notary profile、Apple証明書、実機Gatekeeper確認はrelease環境で行います。
 
 ローカル開発用の未署名／Ad-hoc bundleは、アプリ起動、WebView、メニュー、トレイ、Deep Linkなどの実機確認には利用できます。ただし、現行macOSでは`UNUserNotificationCenter`がApple-issuedなアプリ識別情報を要求するため、未署名／Ad-hoc bundleではmacOSネイティブ通知の登録・通知クリックを利用できない場合があります。ブラウザの`notifications` permissionもmacOS generated hostでは明示拒否されます。通知を使うアプリは、通知が使えない場合のin-app bannerや状態表示を用意してください。
 
