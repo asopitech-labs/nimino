@@ -228,4 +228,27 @@ if [ "${NIMINO_TEST_MACOS_DMG:-0}" = 1 ] && command -v hdiutil >/dev/null 2>&1; 
   dmg=$($cli package-macos "$root/bundle" --format dmg --out "$root/out")
   test -s "$dmg"
 fi
+## A rejected package must leave nothing behind. The bundle tree is built
+## before the icon and tray validations run, so a failed package-macos used
+## to leave a `.app` with no Info.plist in the output directory -- complete
+## enough to list and to copy, impossible to launch. Feed it the .ico that
+## URL packing produces, which macOS does not accept.
+rejected_out="$root/rejected-out"
+mkdir -p "$rejected_out"
+cp -R "$root/bundle" "$root/ico-bundle"
+rm -f "$root/ico-bundle/GenericApplicationIcon.icns"
+printf 'not really an icon' > "$root/ico-bundle/favicon.ico"
+sed -e 's/"icon": "GenericApplicationIcon.icns"/"icon": "favicon.ico"/' \
+  -e 's/"systemTrayIcon": "GenericApplicationIcon.icns"/"systemTrayIcon": "favicon.ico"/' \
+  "$root/bundle/nimino-manifest.json" > "$root/ico-bundle/nimino-manifest.json"
+if "$cli" package-macos "$root/ico-bundle" --format app --out "$rejected_out" >/dev/null 2>&1; then
+  echo 'nimino package-macos unexpectedly accepted a .ico application icon' >&2
+  exit 1
+fi
+if [ -n "$(ls -A "$rejected_out")" ]; then
+  echo 'nimino package-macos left a partial bundle behind after failing:' >&2
+  ls -A "$rejected_out" >&2
+  exit 1
+fi
+
 echo 'macOS package smoke passed'

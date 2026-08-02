@@ -156,7 +156,23 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
   if not architecture.isOk: return failure[string](architecture.error.kind, architecture.error.detail)
   try:
     createDir(options.outputDirectory)
-    let appPath = options.outputDirectory / (id & ".app")
+    let finalAppPath = options.outputDirectory / (id & ".app")
+    ## Assemble out of the way and move into place only once the bundle is
+    ## complete. Every validation below runs after the tree exists, so
+    ## returning straight from one used to leave a `.app` with no Info.plist
+    ## in the output directory: a caller that trusts the listing rather than
+    ## the exit status would ship an unlaunchable bundle.
+    let stagingPath = options.outputDirectory / ("." & id & ".app.incomplete")
+    removeDir(stagingPath)
+    var appPath = stagingPath
+    var movedIntoPlace = false
+    var packageCompleted = false
+    defer:
+      if not packageCompleted:
+        try:
+          removeDir(stagingPath)
+          if movedIntoPlace: removeDir(finalAppPath)
+        except CatchableError: discard
     let contents = appPath / "Contents"
     let macos = contents / "MacOS"
     let resources = contents / "Resources"
@@ -248,11 +264,20 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
         entitlements.add("<key>com.apple.security.device.audio-input</key><true/>")
       entitlements.add("</dict></plist>\n")
       writeFile(resources / "nimino-entitlements.plist", entitlements)
+    ## The bundle is complete here. Signing and DMG creation both name the
+    ## `.app` in their output, so they have to run against the real path
+    ## rather than the staging one.
+    removeDir(finalAppPath)
+    moveDir(stagingPath, finalAppPath)
+    movedIntoPlace = true
+    appPath = finalAppPath
     if options.signingIdentity.len > 0:
       var signArgs = @["--deep", "--force", "--options", "runtime", "--timestamp"]
       if entitlements.len > 0:
         signArgs.add("--entitlements")
-        signArgs.add(resources / "nimino-entitlements.plist")
+        ## `resources` still points into the staging tree, which the move
+        ## above emptied; resolve the entitlements against the real bundle.
+        signArgs.add(appPath / "Contents" / "Resources" / "nimino-entitlements.plist")
       signArgs.add("--sign")
       signArgs.add(options.signingIdentity)
       signArgs.add(appPath)
@@ -276,7 +301,9 @@ proc buildMacosPackage*(options: MacosPackageOptions): PackResult[string] =
         let staplerValidated = runTool("xcrun", ["stapler", "validate", dmgPath])
         if not staplerValidated.isOk:
           return failure[string](staplerValidated.error.kind, staplerValidated.error.detail)
+      packageCompleted = true
       return success(dmgPath)
+    packageCompleted = true
     success(appPath)
   except OSError:
     failure[string](ioFailure, "macOS application bundle could not be written")
