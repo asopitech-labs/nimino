@@ -124,6 +124,34 @@ jobs:
           pack-online-test
           pack-popular-catalog-generation-test
 
+  release-artifacts:
+    # The release path used to be verified only when a tag was pushed, so its
+    # checks first ran at the moment they had to pass. That is how seven
+    # releases shipped with no application icon. Rebuild the site installers
+    # and the component archives on every change instead, and verify them with
+    # exactly the scripts the release workflow runs.
+    name: Release artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the development image from the repository Dockerfile
+        run: docker compose build nimino-dev
+
+      - name: Rebuild and verify the site installers and component archives
+        run: |
+          set -eu
+          # Rootful Docker on the runner creates workspace output as root, so
+          # pre-create .tmp as the runner user, exactly as the release
+          # workflow does.
+          mkdir -p .tmp
+          make pack-site-release-test
+
   flatpak:
     # flatpak-builder launches bubblewrap and needs a user namespace, which is
     # why compose keeps that privilege on its own service.
