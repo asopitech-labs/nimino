@@ -143,7 +143,7 @@ task buildPackCli, "Build the nimino-pack validation CLI":
   ## -d:ssl is required, not optional: automatic icon discovery fetches over
   ## HTTPS, and without TLS support every remote icon fails closed with
   ## "unable to download remote icon", silently shipping icon-less bundles.
-  exec "nim c -d:ssl --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack packages/pack/nimino.nim"
+  exec "nim c --mm:arc --nimcache:/tmp/nimino-pack-cli-nimcache --out:/tmp/nimino --path:packages/pack packages/pack/nimino.nim"
 
 task buildNiminoHost, "Build the generic native Nimino host":
   ## PCRE is linked statically: EL10-family distributions no longer ship the
