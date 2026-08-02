@@ -99,3 +99,32 @@ msiinfo export "$msi" Shortcut | grep -F 'DesktopFolder'
 msiextract -l "$msi" | grep -F 'nimino-manifest.json'
 msiextract -l "$msi" | grep -F 'run-nimino.cmd'
 msiextract -l "$msi" | grep -F 'nimino-host.exe'
+
+## Windows packs ProductVersion into fixed-width fields: one byte each for
+## major and minor, two for the build. A version that overflows them is
+## truncated, so two releases can land on the same ProductVersion and upgrade
+## detection quietly stops working. Nothing pinned these bounds, and the
+## check itself ran after the wixl lookup -- so on any machine without wixl
+## an unrepresentable version was reported as a missing tool instead.
+for rejected in 256.1.1 1.256.1 1.1.65536 70000.1.1; do
+  version_bundle="$root/version-$rejected"
+  rm -rf "$version_bundle" "$root/version-out"
+  "$nimino" pack https://example.com --name VersionBound --id app.nimino.version-bound \
+    --app-version "$rejected" --out "$version_bundle" --host "$root/nimino-host.exe" >/dev/null
+  if "$nimino" package-windows "$version_bundle" --format msi --out "$root/version-out" >/dev/null 2>&1; then
+    echo "nimino package-windows accepted an unrepresentable MSI version: $rejected" >&2
+    exit 1
+  fi
+  "$nimino" package-windows "$version_bundle" --format msi --out "$root/version-out" 2>&1 |
+    grep -q 'cannot be greater than' || {
+      echo "nimino package-windows rejected $rejected without naming the version bound" >&2
+      exit 1
+    }
+done
+## The maximum representable version must still pass validation and reach the
+## generator rather than being rejected off by one.
+rm -rf "$root/version-max" "$root/version-max-out"
+"$nimino" pack https://example.com --name VersionMax --id app.nimino.version-max \
+  --app-version 255.255.65535 --out "$root/version-max" --host "$root/nimino-host.exe" >/dev/null
+"$nimino" package-windows "$root/version-max" --format msi --out "$root/version-max-out"
+test -s "$root/version-max-out/app.nimino.version-max-255.255.65535.msi"

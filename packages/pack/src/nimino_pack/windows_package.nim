@@ -390,13 +390,23 @@ proc stableMsiGuid(seed: string): string =
     right[0..3] & "-" & right[4..15]
 
 proc msiVersion(value: string): PackResult[string] =
+  ## Windows packs ProductVersion into fixed-width fields: major and minor get
+  ## one byte each and the build gets two. Treating every component as 16-bit
+  ## accepted versions the installer cannot represent -- Windows truncates
+  ## them, so two different releases can collide on the same ProductVersion
+  ## and upgrade detection silently stops working.
   let parts = value.split('.')
   if parts.len < 1 or parts.len > 4:
     return failure[string](invalidManifest, "MSI package version must contain one to four numeric components")
   for part in parts:
-    if part.len == 0 or not part.allCharsInSet({'0'..'9'}) or
-        parseInt(part) > 65535:
-      return failure[string](invalidManifest, "MSI package version must contain numeric components <= 65535")
+    if part.len == 0 or not part.allCharsInSet({'0'..'9'}):
+      return failure[string](invalidManifest, "MSI package version must contain numeric components")
+  let limits = [255, 255, 65535, 65535]
+  let names = ["major", "minor", "build", "revision"]
+  for index, part in parts:
+    if parseInt(part) > limits[index]:
+      return failure[string](invalidManifest, "MSI package version " & names[index] &
+        " number cannot be greater than " & $limits[index])
   success(value)
 
 proc wixFileEntries(bundleDirectory: string): PackResult[seq[tuple[name, source: string]]] =
@@ -556,13 +566,16 @@ proc wixSource(metadata: WindowsBundleMetadata; bundleDirectory, version: string
     "</Wix>\n")
 
 proc buildMsi(options: WindowsPackageOptions; metadata: WindowsBundleMetadata): PackResult[string] =
+  ## Validate the version before looking for wixl. A version the installer
+  ## cannot represent is wrong on every machine, so reporting it must not
+  ## depend on whether the packaging tool happens to be installed.
+  let version = metadata.version.msiVersion()
+  if not version.isOk:
+    return failure[string](version.error.kind, version.error.detail)
   let tool = findExe("wixl")
   if tool.len == 0:
     return failure[string](unsupportedFeature,
       "MSI package generation requires wixl (msitools) in the Docker image")
-  let version = metadata.version.msiVersion()
-  if not version.isOk:
-    return failure[string](version.error.kind, version.error.detail)
   let entries = options.bundleDirectory.wixFileEntries()
   if not entries.isOk:
     return failure[string](entries.error.kind, entries.error.detail)
