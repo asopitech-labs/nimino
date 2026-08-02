@@ -339,3 +339,20 @@ grep -q '"maximized": true' "$root/options-out/nimino-manifest.json"
 grep -q '"enableDragDrop": true' "$root/options-out/nimino-manifest.json"
 grep -q '"title": "Options Window"' "$root/options-out/nimino-manifest.json"
 grep -q '"zoom": 125' "$root/options-out/nimino-manifest.json"
+
+## --always-on-top, --start-to-tray, and --multi-instance were the only CLI
+## options with no test at all. --start-to-tray additionally depends on
+## --show-system-tray: normalization drops it when there is no tray to start
+## into, which is deliberate but silent, so pin both directions.
+"$nimino" pack https://example.com --name DemoRuntimeFlags --id app.nimino.demo-runtime-flags \
+  --always-on-top --show-system-tray --start-to-tray --multi-instance \
+  --out "$root/runtime-flags-out" --host "$root/host"
+grep -q '"alwaysOnTop": true' "$root/runtime-flags-out/nimino-manifest.json"
+grep -q '"showSystemTray": true' "$root/runtime-flags-out/nimino-manifest.json"
+grep -q '"startToTray": true' "$root/runtime-flags-out/nimino-manifest.json"
+grep -q '"multiInstance": true' "$root/runtime-flags-out/nimino-manifest.json"
+"$nimino" pack https://example.com --name DemoTrayless --id app.nimino.demo-trayless \
+  --start-to-tray --out "$root/trayless-out" --host "$root/host"
+grep -q '"startToTray": false' "$root/trayless-out/nimino-manifest.json"
+## Single instance is the default; --multi-instance is the opt-out.
+grep -q '"multiInstance": false' "$root/options-out/nimino-manifest.json"
