@@ -36,7 +36,7 @@ URL / manifest -- nimino-pack -- bundle + nimino-host (実行ファイルをパ�
 | Windows | Win32 + WebView2 Evergreen Runtime | Win32 COM APIを直接FFIする | M1/M2とM3 core facadeをx64クロスコンパイル済み。導入済みRuntimeを使うWSL hostでWindow/WebView、HTML/URL、document-start script、title/resize、評価/messageを実行済み。通常Windows GUI CIは未整備 |
 | Linux | GTK 4 + WebKitGTK 6.0 + libsoup 3 | GTK 3 / WebKitGTK 4.1との混在を許容しない | M1/M2評価/message/navigation開始/完了/errorとM3 RPC同期往復、URL document-start RPCをXvfb実行済み |
 | WSL | WSL Nim client + Windows host | 継承stdin/stdoutによる認証付きIPC | host/client/core setup smoke済み。M3 core adapterは`-d:niminoWsl`でLinux GUI FFIを除外し、hostを自動選択する。Windows WebView2 Runtime上のasync RPC/timeoutとURL document-start RPCも実行済み |
-| macOS | Cocoa + WKWebView | Cocoa/WebKitをprivate bridgeに閉じ込め、共通APIへ固有要件を入れない | native menu/tray/notification、deep link、複数WebView、Window/WebView、HTML/URL、JS/message/navigation、permission/download、custom scheme、profile data store、`.app`/`.dmg` packagingを実装。GUI/package smoke確認済み |
+| macOS | Cocoa + WKWebView | Cocoa/WebKitをprivate bridgeに閉じ込め、共通APIへ固有要件を入れない | native menu/tray/notification、deep link、複数WebView、Window/WebView、HTML/URL、JS/message/navigation、permission/download、custom scheme、profile data store、`.app`/`.dmg` packagingを実装。GUI/package smoke確認済み（notificationを除く。下記の通り実配信は未検証）|
 
 ## 公開面とエラー
 
@@ -61,6 +61,8 @@ type Capability* = enum
 ```
 
 `multipleWebViews`、Windows/Linux/macOSのnative menu/notification、macOSのNSStatusItem tray、deep link、WebKit permission/download delegate、web permission eventsは実装済みです。Linuxの`systemTray`はGTK4のStatusNotifierItem/dbusmenuを直接D-Busで登録し、セッションに`StatusNotifierWatcher`がある場合だけCapabilityを`true`にします。WebView内部のcustom resource schemeはWindows WebView2、Linux WebKitGTK、macOS WKURLSchemeHandler、WSLの認証済み同期relayへ接続済みです。`transparentWindow`は未対応として明示的に`false`または`unsupported`を返します。Capabilityが`true`でも、権限または現在の状態による失敗は別途結果で返します。
+
+notificationは**実配信が未検証**です。自動テストが確認しているのはCapabilityが`true`を返すこと、activation callbackの登録が成功すること、Linuxでは`GNotification`要求がエラーを返さないことだけで、GIOはデスクトップシェルが実際に表示したかを報告しません。唯一のend-to-end確認（`NIMINO_TEST_MACOS_NOTIFICATION=1`）はApple発行のdevelopment identityと人手のクリックを要するためCIでは実行されません。動作する機能として扱わず、未検証または未対応として記述してください。
 
 ## 所有権とスレッド
 

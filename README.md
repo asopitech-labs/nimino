@@ -197,11 +197,13 @@ See [`docs/api/nimino-pack.md`](docs/api/nimino-pack.md) for manifests, navigati
 | Component | Responsibility |
 | --- | --- |
 | `nimino-native` | Thin Window/WebView layer, native events, JavaScript evaluation, string messages, and capability reporting. |
-| `nimino-core` | App lifecycle, typed RPC, profiles, local assets, navigation and permission policy, downloads, dialogs, notifications, menus, and custom protocols. |
+| `nimino-core` | App lifecycle, typed RPC, profiles, local assets, navigation and permission policy, downloads, dialogs, menus, custom protocols, and notifications (see the caveat below). |
 | `nimino-wsl` | Authenticated client/host transport that keeps Nim application logic in WSL and Windows GUI ownership in the host process. |
 | `nimino-pack` | URL/manifest wrapping, bundle metadata, icons, injection files, and platform package generation. |
 
 `nimino-native` does not contain RPC, profiles, packaging, WSL transport, or high-level security policy. `nimino-pack` imports no other Nimino package: it depends on the Nim standard library alone and receives a host executable by path (`--host`), never by linkage.
+
+**Notifications are untested.** Treat them as unverified rather than as a working feature. Nothing checks that a notification is ever delivered or activated: the automated tests assert only that the capability reports itself available, that registering an activation callback succeeds, and — on Linux — that the GNotification request returns without error, which GIO does not tie to the desktop shell actually showing anything. The one end-to-end check needs an Apple-issued development identity and a person to click the notification, so it does not run in CI.
 
 ### Two released packages
 

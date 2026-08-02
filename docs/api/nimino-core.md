@@ -52,7 +52,7 @@ proc onFileDrop*(window: Window; handler: proc(paths: seq[string])): CoreResult
 
 ## デスクトップ統合
 
-`configureNativeMenu`と`configureSystemTray`は`run()`前に一度だけ呼び出し、明示したIDの項目だけをクリックイベントとして通知します。Windows/Linux nativeとWSL hostで同じ`DesktopMenuItem`型を使用し、WSLでは認証済みIPCイベントとしてCoreへ戻します。`sendNotification`は`run()`後にOS通知を要求し、表示がシェル側で抑制された場合も成功を表示保証とは解釈しません。未対応OSは`platformUnavailable`を返します。
+`configureNativeMenu`と`configureSystemTray`は`run()`前に一度だけ呼び出し、明示したIDの項目だけをクリックイベントとして通知します。Windows/Linux nativeとWSL hostで同じ`DesktopMenuItem`型を使用し、WSLでは認証済みIPCイベントとしてCoreへ戻します。`sendNotification`は`run()`後にOS通知を要求し、表示がシェル側で抑制された場合も成功を表示保証とは解釈しません。未対応OSは`platformUnavailable`を返します。**通知の実配信は未検証です**。自動テストはCapabilityが`true`を返すこと、activation callbackの登録が成功すること、Linuxでは`GNotification`要求がエラーを返さないことまでしか確認しておらず、実際に通知が表示・クリックされる経路を検証したテストはありません（唯一のend-to-end確認はApple発行のidentityと人手のクリックを要し、CIでは実行されません）。動作する機能として扱わないでください。
 
 ### OSファイルダイアログ
 
