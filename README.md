@@ -20,7 +20,7 @@ WSL application
 
 ### For Nim developers: install with nimble
 
-The Nim packages install straight from this repository through nimble's `?subdir=` URL form. Until the [nim-lang/packages registration](https://github.com/nim-lang/packages/pull/3447) is published, install them in dependency order; once it merges, `nimble install nimino_core` and `nimble install nimino_pack` resolve everything by name.
+The Nim packages install straight from this repository through nimble's `?subdir=` URL form. **Until [nim-lang/packages#3447](https://github.com/nim-lang/packages/pull/3447) is merged, use the repository URLs below — package-name installs such as `nimble install nimino_core` do not resolve yet.** Run the four commands in this order; the later packages depend on the earlier ones. Once the registration merges, this tutorial switches to name-based installs.
 
 ```bash
 # Application framework and its platform layers
