@@ -23,9 +23,32 @@ foreach ($required in @(
   }
 }
 
+# Capture the host's own output. It is a GUI-subsystem binary with no
+# console, so without redirection every diagnostic it writes is discarded and
+# a failure here looks like silence.
+$hostStdout = Join-Path ([IO.Path]::GetTempPath()) 'nimino-host-stdout.log'
+$hostStderr = Join-Path ([IO.Path]::GetTempPath()) 'nimino-host-stderr.log'
 $process = Start-Process -FilePath $hostExecutable `
-  -ArgumentList @('--manifest', $manifest) -PassThru
+  -ArgumentList @('--manifest', $manifest) -PassThru `
+  -RedirectStandardOutput $hostStdout -RedirectStandardError $hostStderr
 Write-Output ("pack smoke: started nimino-host PID {0}" -f $process.Id)
+
+function Write-HostDiagnostics {
+  foreach ($log in @($hostStdout, $hostStderr)) {
+    if (Test-Path -LiteralPath $log) {
+      $text = (Get-Content -Raw -LiteralPath $log)
+      if ($text) {
+        Write-Output ("pack smoke: --- {0} ---" -f (Split-Path -Leaf $log))
+        Write-Output $text
+      }
+    }
+  }
+  # MainWindowTitle reports one window; a failure may have put up another.
+  Get-Process -Id $process.Id -ErrorAction SilentlyContinue |
+    ForEach-Object { $_.Refresh(); $_ } |
+    Where-Object { $_.MainWindowHandle -ne 0 } |
+    ForEach-Object { Write-Output ("pack smoke: window '{0}'" -f $_.MainWindowTitle) }
+}
 
 try {
   $deadline = [DateTime]::UtcNow.AddMilliseconds($StartupTimeoutMs)
@@ -80,6 +103,7 @@ try {
       Write-Output 'pack smoke: no WebView2 Evergreen Runtime is registered on this machine'
     }
     Write-Output ("pack smoke: main window title at failure: '{0}'" -f $process.MainWindowTitle)
+    Write-HostDiagnostics
     throw 'pack smoke: no WebView2 runtime process appeared for the packaged host'
   }
   Write-Output 'pack smoke: WebView2 runtime is running'
