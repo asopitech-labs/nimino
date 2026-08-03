@@ -152,6 +152,30 @@ jobs:
           mkdir -p .tmp
           make pack-site-release-test
 
+  macos:
+    # Cocoa and WKWebView cannot be built in the Linux development image, so
+    # the macOS suites were the one part of the tree that only ever ran when
+    # someone remembered to run them by hand on a Mac. GitHub-hosted macOS
+    # runners are free for public repositories, which covers that gap without
+    # attaching a self-hosted machine to a repository anyone can fork.
+    name: macOS suites
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Nim
+        run: |
+          set -eu
+          brew install nim
+          nim --version | head -1
+
+      - name: Run the macOS reference-parity suites
+        env:
+          NIMINO_TEST_REFERENCE_MACOS: "1"
+        run: bash tools/ci/run_nimble_task.sh testReferenceParity
+
   flatpak:
     # flatpak-builder launches bubblewrap and needs a user namespace, which is
     # why compose keeps that privilege on its own service.
