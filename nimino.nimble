@@ -149,27 +149,34 @@ task buildNiminoHost, "Build the generic native Nimino host":
   ## PCRE is linked statically: EL10-family distributions no longer ship the
   ## legacy libpcre.so that Nim's std/re loads at process start.
   ##
-  ## -d:ssl because Core's inlineRemoteAssets fetches over HTTPS. It is a
-  ## public option, so a host built without TLS would return empty assets
-  ## silently -- the same failure that shipped icon-less releases. OpenSSL is
-  ## loaded on first use rather than linked, so this adds no startup
-  ## dependency; the assertion below holds that line.
-  exec "nim c -d:ssl --mm:arc --dynlibOverride:pcre --passL:/opt/nimino/pcre/lib/libpcre.a --nimcache:/tmp/nimino-host-nimcache --out:/tmp/nimino-host --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
+  ## No -d:ssl. Nim loads a dynlib-declared library during module init, not on
+  ## first use, so a TLS-enabled host requires OpenSSL to be present before it
+  ## can open a window at all -- it aborts with "could not load" otherwise.
+  ## Its only caller is Core's inlineRemoteAssets, which packaged applications
+  ## never enable, so this would trade a startup dependency for a feature the
+  ## shipped host cannot reach. Nothing in a packaged application needs TLS in
+  ## process: the WebView does its own networking.
+  exec "nim c --mm:arc --dynlibOverride:pcre --passL:/opt/nimino/pcre/lib/libpcre.a --nimcache:/tmp/nimino-host-nimcache --out:/tmp/nimino-host --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
   exec "bash -c '! ldd /tmp/nimino-host | grep -q libpcre'"
-  exec "bash -c '! ldd /tmp/nimino-host | grep -q libssl'"
+  exec "bash -c '! strings -a /tmp/nimino-host | grep -qi \"libssl(\"'"
 
 task buildNiminoHostWindows, "Cross-compile the generic Windows Nimino host":
   ## --app:gui matches Pake's `windows_subsystem = "windows"`: a packaged GUI
   ## application must not allocate a console window at launch.
-  ## -d:ssl for the same reason as the Linux host. Nim resolves OpenSSL with
-  ## LoadLibrary on first use, so the import table must stay free of it: a
-  ## packaged application that gained a hard libssl import would refuse to
-  ## start on any machine without OpenSSL installed.
-  exec "nim c -d:ssl --os:windows --cpu:amd64 --app:gui --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-host-windows-nimcache --out:/tmp/nimino-host.exe --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
+  ## No -d:ssl here, unlike the Linux host. Windows ships no OpenSSL, and Nim
+  ## resolves it through dynlib, so a TLS-enabled build aborts at startup with
+  ## "could not load: (libcrypto-1_1-x64|libeay64).dll" and the packaged
+  ## application never opens. The only caller is Core's inlineRemoteAssets,
+  ## which packaged applications never enable, so an unreachable feature is
+  ## not worth an application that cannot start. Bundling the OpenSSL DLLs
+  ## would be the alternative if that ever changes.
+  ##
+  ## An import-table check does not catch this: dynlib failures happen at run
+  ## time, which is why the Windows GUI smoke exists.
+  exec "nim c --os:windows --cpu:amd64 --app:gui --mm:arc --gcc.exe:x86_64-w64-mingw32-gcc --gcc.linkerexe:x86_64-w64-mingw32-gcc --passL:-static --nimcache:/tmp/nimino-host-windows-nimcache --out:/tmp/nimino-host.exe --path:packages/core --path:packages/native --path:packages/wsl tools/hosts/nimino_host.nim"
   exec "x86_64-w64-mingw32-objdump -f /tmp/nimino-host.exe | grep -q 'file format pei-x86-64'"
   exec "x86_64-w64-mingw32-objdump -p /tmp/nimino-host.exe | grep -q 'Subsystem.*Windows GUI'"
-  exec "bash -c '! x86_64-w64-mingw32-objdump -p /tmp/nimino-host.exe | grep -i \"DLL Name\" | grep -qi ssl'"
-  exec "bash -c '! x86_64-w64-mingw32-objdump -p /tmp/nimino-host.exe | grep -i \"DLL Name\" | grep -qi crypto'"
+  exec "bash -c '! strings -a /tmp/nimino-host.exe | grep -qi \"libcrypto-1_1\"'"
 
 task buildSiteRelease, "Build downloadable installers for the reviewed web sites":
   exec "nimble buildPackCli"

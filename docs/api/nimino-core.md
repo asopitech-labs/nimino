@@ -185,7 +185,7 @@ WebView自身に解決させます。WSLではWindows hostへローカルrootを
 転送し、root内の相対`<script src="…">`とstylesheet`<link href="…">`を本文へインライン化します。
 一般的な画像形式（PNG/JPEG/GIF/SVG/WebP）の相対`<img src="…">`もdata URIへ変換します。
 CSS内のローカル`url(...)`も画像・フォント（WOFF/WOFF2/TTF）をdata URIへ変換します。
-WSLの`loadEntry`では、ローカルのCSS、JavaScript、画像、音声・動画、`srcset`候補、Web Manifestなどを安全にasset root内へ限定してインライン化します。`CoreWindowOptions.inlineRemoteAssets`を明示的に有効化した場合だけ、HTTP(S)画像、CSS内URL、stylesheet linkを最大8MiBまで取得してインライン化します。既定値は無効です。
+WSLの`loadEntry`では、ローカルのCSS、JavaScript、画像、音声・動画、`srcset`候補、Web Manifestなどを安全にasset root内へ限定してインライン化します。`CoreWindowOptions.inlineRemoteAssets`を明示的に有効化した場合だけ、HTTP(S)画像、CSS内URL、stylesheet linkを最大8MiBまで取得してインライン化します。既定値は無効です。**HTTPSを使う場合は自分のアプリケーションを`-d:ssl`でビルドする必要があります**。配布される`nimino-host`は`-d:ssl`なしでビルドされており、この機能を有効化しません（Nimはdynlibを起動時にロードするため、`-d:ssl`はOpenSSLがない環境で起動不能になります。Windowsは同梱しません）。`-d:ssl`なしのビルドでHTTPS URLを与えると、エラーではなく空文字列が返ります。
 
 `setNavigationRules`はallow/denyの宣言的URL ruleを設定します。denyが優先され、
 設定後に未一致のURLは拒否します。nativeはUI callback内で同期評価し、WSLはUI loop
