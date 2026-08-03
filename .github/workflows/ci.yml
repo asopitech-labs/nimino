@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  # Every branch, not just main: a push that only reaches CI once a pull
+  # request exists leaves the work unverified for as long as the branch sits
+  # there, which is how breakage gets discovered late.
   push:
-    branches: [main]
   pull_request:
 
 permissions:
@@ -94,6 +96,22 @@ jobs:
           pack-windows-test
           pack-sites-test
 
+      # Cross-build the bundle the Windows GUI smoke launches. Only this image
+      # has the mingw toolchain and the staged WebView2/PCRE DLLs.
+      - name: Build the Windows GUI smoke bundle
+        run: |
+          set -eu
+          mkdir -p .tmp
+          docker compose run --rm nimino-dev bash -lc \
+            'export PATH=/opt/nim/bin:$PATH; bash tools/ci/run_nimble_task.sh buildPackWindowsSmokeArtifact'
+
+      - name: Upload the Windows GUI smoke bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: pack-windows-smoke-bundle
+          if-no-files-found: error
+          path: .tmp/pack-windows-smoke/
+
   packaging-formats:
     # AppImage and the archive/online flows run entirely in the development
     # image: appimagetool and linuxdeploy are wrapped with
@@ -151,6 +169,36 @@ jobs:
           # workflow does.
           mkdir -p .tmp
           make pack-site-release-test
+
+  windows-gui:
+    # Windows is a primary target and had no runtime verification at all: the
+    # cross-build job proves the host links and is a GUI-subsystem PE, nothing
+    # proved it starts. The smoke script needs a Windows desktop and the
+    # WebView2 runtime, both of which a GitHub-hosted Windows runner provides
+    # -- it does not need WSL, which is only how a developer reaches Windows
+    # from their own machine.
+    name: Windows GUI smoke
+    runs-on: windows-2025
+    needs: cross-build
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      # A Windows runner cannot run the Linux development image, so the bundle
+      # is cross-built by the Linux job and carried over as an artifact. It is
+      # self-contained: the host, the manifest, WebView2Loader.dll and
+      # pcre64.dll all travel with it.
+      - name: Download the cross-built Windows bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: pack-windows-smoke-bundle
+          path: .tmp/pack-windows-smoke
+
+      - name: Launch the packaged application and verify it starts
+        shell: pwsh
+        run: |
+          ./tools/ci/pack-windows-smoke.ps1 -BundleDirectory (Resolve-Path .tmp/pack-windows-smoke)
 
   macos:
     # Cocoa and WKWebView cannot be built in the Linux development image, so
