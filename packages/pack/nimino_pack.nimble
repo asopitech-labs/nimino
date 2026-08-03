@@ -1,4 +1,4 @@
-version = "0.2.0"
+version = "0.2.1"
 author = "asopitech-labs"
 description = "Nimino packaging toolkit: URL/manifest wrapping, bundle metadata, and platform package generation"
 license = "MIT"
@@ -19,6 +19,7 @@ license = "MIT"
 srcDir = "."
 bin = @["nimino"]
 installDirs = @["src", "schema"]
+installFiles = @["nimino_pack.nim"]
 skipDirs = @["tests"]
 
 requires "nim >= 2.2.0"
