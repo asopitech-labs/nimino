@@ -18,6 +18,28 @@ WSL application
 
 ## Start here
 
+### For Nim developers: install with nimble
+
+The Nim packages install straight from this repository through nimble's `?subdir=` URL form. Until the [nim-lang/packages registration](https://github.com/nim-lang/packages/pull/3447) is published, install them in dependency order; once it merges, `nimble install nimino_core` and `nimble install nimino_pack` resolve everything by name.
+
+```bash
+# Application framework and its platform layers
+nimble install "https://github.com/asopitech-labs/nimino?subdir=packages/native"
+nimble install "https://github.com/asopitech-labs/nimino?subdir=packages/wsl"
+nimble install "https://github.com/asopitech-labs/nimino?subdir=packages/core"
+
+# Packaging toolkit and the `nimino` CLI (standard library only)
+nimble install "https://github.com/asopitech-labs/nimino?subdir=packages/pack"
+```
+
+Building an application against `nimino_core` needs the GTK 4 and WebKitGTK 6.0 development headers on Linux (`libgtk-4-dev` and `libwebkitgtk-6.0-dev` on Debian/Ubuntu) and the WebView2 loader on Windows; `nimino_pack` needs no GUI stack at all. Start from [a minimal application](#a-minimal-application), then wrap any site with the installed CLI:
+
+```bash
+nimino pack https://example.com --out dist/example --host <nimino-host>
+```
+
+The flow above is verified with the stable nimble shipped with Nim 2.2 (0.18); the devel nimble 0.22 vnext resolver currently has an upstream regression with `?subdir=` URLs.
+
 ### For beginners: build online
 
 No Nim, Docker, or local GUI SDK installation is required for the online path.
@@ -216,11 +238,7 @@ The components are released together from this monorepo as two independently dis
 
 `nimino-core` needs GTK 4 + WebKitGTK 6.0 on Linux and the WebView2 Runtime on Windows. `nimino-pack` links no GUI stack at all; it needs OpenSSL for HTTPS icon discovery plus the generator for each package format it is asked to produce (`dpkg-deb`, `rpmbuild`, `appimagetool`, `makensis`, `wixl`). It is published for Linux only because those generators are Linux tools.
 
-`nimino-pack` is also installable as a standalone Nimble package:
-
-```bash
-nimble install "https://github.com/asopitech-labs/nimino?subdir=packages/pack"
-```
+All four Nim components (`nimino_core`, `nimino_native`, `nimino_wsl`, `nimino_pack`) are also installable as standalone Nimble packages; see [For Nim developers: install with nimble](#for-nim-developers-install-with-nimble).
 
 ## Platform support
 
