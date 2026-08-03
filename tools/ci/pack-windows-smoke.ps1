@@ -59,6 +59,27 @@ try {
     Start-Sleep -Milliseconds 500
   }
   if (-not $webViewReady) {
+    # Report what the machine actually offers before blaming the package. The
+    # bundle does not install the Evergreen Runtime -- the NSIS and MSI
+    # installers do that -- so a host that starts and then never spawns a
+    # WebView2 child is usually a machine without the runtime, which is a
+    # different failure from a broken build.
+    $runtimeKeys = @(
+      'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+      'HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+    )
+    $installed = $false
+    foreach ($key in $runtimeKeys) {
+      $entry = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+      if ($entry -and $entry.pv) {
+        Write-Output ("pack smoke: WebView2 Evergreen Runtime {0} is installed ({1})" -f $entry.pv, $key)
+        $installed = $true
+      }
+    }
+    if (-not $installed) {
+      Write-Output 'pack smoke: no WebView2 Evergreen Runtime is registered on this machine'
+    }
+    Write-Output ("pack smoke: main window title at failure: '{0}'" -f $process.MainWindowTitle)
     throw 'pack smoke: no WebView2 runtime process appeared for the packaged host'
   }
   Write-Output 'pack smoke: WebView2 runtime is running'
