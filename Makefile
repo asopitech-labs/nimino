@@ -128,7 +128,7 @@ nimble-install-test: image ## 公開手順のnimble installでCLIが入ること
 
 pack-host-resolution-test: image ## --host省略時にpackがhostを見つけることを検証する
 
-	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; $(NIMBLE) testPackHostResolution'
+	$(COMPOSE) run --rm -e NIMINO_TEST_HOST_FETCH=1 $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; $(NIMBLE) testPackHostResolution'
 
 pack-host-runtime-test: image ## packがhostの隣のランタイムを同梱することを検証する
 
