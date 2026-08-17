@@ -124,4 +124,26 @@ RUN curl --fail --location --retry 3 --silent --show-error \
     && test -s /opt/nimino/pcre/lib/libpcre.a \
     && rm -rf /tmp/pcre-${PCRE_VERSION} /tmp/pcre-${PCRE_VERSION}.tar.bz2
 
+# Run as a normal user. The container mounts the repository at /workspace, so
+# anything a build writes there lands on the host with the container's owner:
+# building as root leaves files the developer cannot delete without sudo.
+# The base image already carries uid/gid 1000 as `node`; reuse it so bind
+# mounts line up with the common single-user host account.
+ARG NIMINO_UID=1000
+ARG NIMINO_GID=1000
+RUN install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /workspace \
+  ## nim writes compilation caches under .cache/nim and nimble keeps its
+  ## package index under .nimble; both are created on first use, so the
+  ## parent directories have to belong to the build user.
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /home/node/.cache \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /home/node/.cache/nim \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /home/node/.cache/nimble \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /home/node/.nimble \
+  ## Nimble writes its package index beside the compiler, and the toolchain
+  ## itself is read-only for a normal user, so hand both to the build user.
+  && chown -R ${NIMINO_UID}:${NIMINO_GID} /opt/nim
+
+USER ${NIMINO_UID}:${NIMINO_GID}
+ENV HOME=/home/node
+
 WORKDIR /workspace

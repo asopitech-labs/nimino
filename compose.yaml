@@ -9,7 +9,7 @@ services:
     working_dir: /workspace
     volumes:
       - .:/workspace
-      - nimble-cache:/root/.cache/nimble
+      - nimble-cache:/home/node/.cache/nimble
       - flatpak-cache:/var/lib/flatpak
     init: true
     tty: true
