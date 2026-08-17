@@ -83,9 +83,17 @@ jobs:
               --out /workspace/.tmp/online-bundle --host "$host" "${icon_args[@]}"
             case "$NIMINO_TARGET" in
               windows-nsis|windows-msi)
+                ## Both libraries load at process start, so a bundle missing
+                ## either one dies before it can open a window: WebView2Loader
+                ## for the WebView, and pcre64 for the regular expressions that
+                ## std/re initialises during module init.  The site release
+                ## stages the same pair; keep the two paths in step.
                 test -s /opt/nimino/webview2/x64/WebView2Loader.dll
                 install -m 0644 /opt/nimino/webview2/x64/WebView2Loader.dll \
                   /workspace/.tmp/online-bundle/WebView2Loader.dll
+                test -s /opt/nimino/windows-dlls/pcre64.dll
+                install -m 0644 /opt/nimino/windows-dlls/pcre64.dll \
+                  /workspace/.tmp/online-bundle/pcre64.dll
                 ;;
             esac
             case "$NIMINO_TARGET" in
