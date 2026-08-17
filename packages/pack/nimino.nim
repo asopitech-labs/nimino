@@ -573,7 +573,21 @@ proc copyGenerated(source, destination: string): bool =
 type HostPlatform = enum
   hostLinux, hostWindows, hostMacos
 
-const niminoVersion {.strdefine: "niminoVersion".} = ""
+const niminoVersion = block:
+  ## Read the version out of the manifest that ships beside this source rather
+  ## than relying on a -d: flag: nimble builds `bin` entries without passing
+  ## one, so a compile-time define is empty exactly where it matters most --
+  ## in the CLI a reader installed. staticRead resolves relative to this file,
+  ## and nimino_pack.nimble is installed alongside it.
+  var found = ""
+  for line in staticRead("nimino_pack.nimble").splitLines():
+    let trimmed = line.strip()
+    if trimmed.startsWith("version"):
+      let parts = trimmed.split('"')
+      if parts.len >= 2:
+        found = parts[1]
+      break
+  found
 
 proc hostFileName(platform: HostPlatform): string =
   if platform == hostWindows: "nimino-host.exe" else: "nimino-host"

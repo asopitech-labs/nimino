@@ -1,4 +1,4 @@
-version = "0.2.5"
+version = "0.2.6"
 author = "asopitech-labs"
 description = "Nim-native cross-platform Web UI desktop application foundation"
 license = "MIT"
@@ -18,11 +18,13 @@ bin = @["nimino"]
 installDirs = @["src", "schema"]
 skipDirs = @["tests"]
 
-## The CLI resolves release archives for its own version, so the version in
-## this manifest has to reach the binary nimble builds from `bin`.
-switch("define", "niminoVersion:" & version)
-
 requires "nim >= 2.2.0"
+
+before build:
+  ## The CLI resolves release archives for its own version, so the version
+  ## declared here has to reach the binary nimble builds from `bin`.
+  switch("define", "niminoVersion:" & version)
+
 after install:
   ## Place the host for this machine beside the CLI so `nimino pack <url>
   ## --out <dir>` works without staging anything.  Nothing is compiled: the
