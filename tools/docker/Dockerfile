@@ -127,24 +127,31 @@ RUN curl --fail --location --retry 3 --silent --show-error \
 # Run as a normal user. The container mounts the repository at /workspace, so
 # anything a build writes there lands on the host with the container's owner:
 # building as root leaves files the developer cannot delete without sudo.
-# The base image already carries uid/gid 1000 as `node`; reuse it so bind
-# mounts line up with the common single-user host account.
+# The uid must match the owner of the checkout the caller bind-mounts, not a
+# fixed account baked into the image: a chown inside the image is replaced by
+# the bind mount, so a mismatch fails at the first write to /workspace. A
+# developer passes their own id, and a GitHub-hosted runner checks out as uid
+# 1001, so both are build arguments rather than constants.
 ARG NIMINO_UID=1000
 ARG NIMINO_GID=1000
+## The home directory is named for the project rather than for the base
+## image's `node` account, because that account only exists at uid 1000 and
+## the build user is whatever the caller passed.
+ENV HOME=/home/nimino
 RUN install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /workspace \
   ## nim writes compilation caches under .cache/nim and nimble keeps its
   ## package index under .nimble; both are created on first use, so the
   ## parent directories have to belong to the build user.
-  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /home/node/.cache \
-  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /home/node/.cache/nim \
-  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /home/node/.cache/nimble \
-  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /home/node/.nimble \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME} \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache/nim \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache/nimble \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.nimble \
   ## Nimble writes its package index beside the compiler, and the toolchain
   ## itself is read-only for a normal user, so hand both to the build user.
   && chown -R ${NIMINO_UID}:${NIMINO_GID} /opt/nim
 
 USER ${NIMINO_UID}:${NIMINO_GID}
-ENV HOME=/home/node
 
 WORKDIR /workspace
 
@@ -183,11 +190,18 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd -g ${NIMINO_GID} nimino \
   && useradd -u ${NIMINO_UID} -g ${NIMINO_GID} -m -s /bin/bash nimino \
-  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /work
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /work \
+  ## The caller mounts their own directory here and must run as the account
+  ## that owns it, which is not always the uid this image was built for. The
+  ## CLI caches downloaded hosts under $HOME, so HOME has to be a path any
+  ## uid can write; a home created by useradd only serves the built-in one,
+  ## and an unwritable HOME makes every run re-download the host.
+  && install -d -m 1777 /home/nimino
 
 COPY --from=build /out/usr/local/bin/nimino /usr/local/bin/nimino
 
 USER ${NIMINO_UID}:${NIMINO_GID}
+ENV HOME=/home/nimino
 WORKDIR /work
 
 ENTRYPOINT ["nimino"]

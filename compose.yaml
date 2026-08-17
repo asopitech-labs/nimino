@@ -8,11 +8,22 @@ services:
       target: dev
       args:
         NIM_IMAGE: docker.io/nimlang/nim:latest@sha256:62428daa4a39baeb6f5e429a9c2ca3cee27a80ef880fe6e1bf3e29cc2296ac1b
+        ## The container writes into the bind-mounted checkout, so it has to
+        ## run as the account that owns it. A developer's single-user host is
+        ## uid 1000; a GitHub-hosted runner checks out as uid 1001. Neither is
+        ## a safe constant, so both the image and the container take the id
+        ## from the caller's environment.
+        NIMINO_UID: ${NIMINO_UID:-1000}
+        NIMINO_GID: ${NIMINO_GID:-1000}
     image: nimino-dev:local
+    ## Set at run time as well as at build time: the image's USER fixes the
+    ## default, but a cached image built for another id would still write as
+    ## that id.
+    user: "${NIMINO_UID:-1000}:${NIMINO_GID:-1000}"
     working_dir: /workspace
     volumes:
       - .:/workspace
-      - nimble-cache:/home/node/.cache/nimble
+      - nimble-cache:/home/nimino/.cache/nimble
       - flatpak-cache:/var/lib/flatpak
     init: true
     tty: true

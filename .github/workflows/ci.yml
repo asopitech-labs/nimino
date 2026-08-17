@@ -23,6 +23,19 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # The development container runs as a normal user and writes into the
+      # checkout, which the runner owns as uid 1001 rather than the uid 1000 a
+      # developer's host uses. A chown inside the image cannot change that:
+      # the bind mount replaces it. Read the id here instead of hard-coding
+      # it, so a runner image that renumbers its account stays covered.
+      - name: Match the container user to the checkout owner
+        run: |
+          set -eu
+          {
+            echo "NIMINO_UID=$(id -u)"
+            echo "NIMINO_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -53,6 +66,19 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # The development container runs as a normal user and writes into the
+      # checkout, which the runner owns as uid 1001 rather than the uid 1000 a
+      # developer's host uses. A chown inside the image cannot change that:
+      # the bind mount replaces it. Read the id here instead of hard-coding
+      # it, so a runner image that renumbers its account stays covered.
+      - name: Match the container user to the checkout owner
+        run: |
+          set -eu
+          {
+            echo "NIMINO_UID=$(id -u)"
+            echo "NIMINO_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -78,6 +104,19 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      # The development container runs as a normal user and writes into the
+      # checkout, which the runner owns as uid 1001 rather than the uid 1000 a
+      # developer's host uses. A chown inside the image cannot change that:
+      # the bind mount replaces it. Read the id here instead of hard-coding
+      # it, so a runner image that renumbers its account stays covered.
+      - name: Match the container user to the checkout owner
+        run: |
+          set -eu
+          {
+            echo "NIMINO_UID=$(id -u)"
+            echo "NIMINO_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -126,6 +165,19 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # The development container runs as a normal user and writes into the
+      # checkout, which the runner owns as uid 1001 rather than the uid 1000 a
+      # developer's host uses. A chown inside the image cannot change that:
+      # the bind mount replaces it. Read the id here instead of hard-coding
+      # it, so a runner image that renumbers its account stays covered.
+      - name: Match the container user to the checkout owner
+        run: |
+          set -eu
+          {
+            echo "NIMINO_UID=$(id -u)"
+            echo "NIMINO_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -157,6 +209,19 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      # The development container runs as a normal user and writes into the
+      # checkout, which the runner owns as uid 1001 rather than the uid 1000 a
+      # developer's host uses. A chown inside the image cannot change that:
+      # the bind mount replaces it. Read the id here instead of hard-coding
+      # it, so a runner image that renumbers its account stays covered.
+      - name: Match the container user to the checkout owner
+        run: |
+          set -eu
+          {
+            echo "NIMINO_UID=$(id -u)"
+            echo "NIMINO_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -237,6 +302,19 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # The development container runs as a normal user and writes into the
+      # checkout, which the runner owns as uid 1001 rather than the uid 1000 a
+      # developer's host uses. A chown inside the image cannot change that:
+      # the bind mount replaces it. Read the id here instead of hard-coding
+      # it, so a runner image that renumbers its account stays covered.
+      - name: Match the container user to the checkout owner
+        run: |
+          set -eu
+          {
+            echo "NIMINO_UID=$(id -u)"
+            echo "NIMINO_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -256,6 +334,19 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      # The development container runs as a normal user and writes into the
+      # checkout, which the runner owns as uid 1001 rather than the uid 1000 a
+      # developer's host uses. A chown inside the image cannot change that:
+      # the bind mount replaces it. Read the id here instead of hard-coding
+      # it, so a runner image that renumbers its account stays covered.
+      - name: Match the container user to the checkout owner
+        run: |
+          set -eu
+          {
+            echo "NIMINO_UID=$(id -u)"
+            echo "NIMINO_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
