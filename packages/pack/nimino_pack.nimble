@@ -1,4 +1,4 @@
-version = "0.2.4"
+version = "0.2.5"
 author = "asopitech-labs"
 description = "Nimino packaging toolkit: URL/manifest wrapping, bundle metadata, and platform package generation"
 license = "MIT"
