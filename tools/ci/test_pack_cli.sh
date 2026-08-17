@@ -126,8 +126,22 @@ if [ "$test_windows" = 1 ]; then
   grep -q 'host^&name' "$root/cmd-escape-out/run-nimino.cmd"
 fi
 
-! "$nimino" pack https://example.com --name MissingHost --id app.nimino.missing-host \
-  --out "$root/missing-host-no-flag-out"
+# pack only fails here when it can find no host at all, and it looks in five
+# places: NIMINO_HOST, the cache under HOME, PATH, an unpacked archive in the
+# working directory, and finally the network. Leaving any of them reachable
+# makes this check pass or fail with the machine it runs on rather than with
+# the behaviour it is meant to pin -- which is how it passed on a developer's
+# machine and failed in CI. An empty HOME closes the cache and the download
+# with it, because the downloader writes to the same cache path.
+! (
+  cd "$root"
+  HOME=
+  NIMINO_HOST=
+  PATH=/usr/bin:/bin
+  export HOME NIMINO_HOST PATH
+  "$nimino" pack https://example.com --name MissingHost \
+    --id app.nimino.missing-host --out "$root/missing-host-no-flag-out"
+)
 test ! -e "$root/missing-host-no-flag-out"
 
 "$nimino" pack https://example.com --name DemoUrl --id app.nimino.demo-url \
