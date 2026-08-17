@@ -24,7 +24,9 @@ services:
     volumes:
       - .:/workspace
       - nimble-cache:/home/nimino/.cache/nimble
-      - flatpak-cache:/var/lib/flatpak
+      ## The Flatpak suite installs its runtime and SDK per-user, because a
+      ## system-wide install needs a system bus the container does not have.
+      - flatpak-cache:/home/nimino/.local/share/flatpak
     init: true
     tty: true
 

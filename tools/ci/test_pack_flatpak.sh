@@ -54,11 +54,18 @@ command -v flatpak-builder >/dev/null
 flatpak --version
 flatpak-builder --version
 
-# Runtime and SDK refs are intentionally explicit.  A named /var/lib/flatpak
-# volume in compose.yaml keeps this download out of every subsequent smoke run.
-flatpak remote-add --if-not-exists --system flathub \
+# Runtime and SDK refs are intentionally explicit.  A named volume over the
+# per-user Flatpak directory in compose.yaml keeps this download out of every
+# subsequent smoke run.
+#
+# The install is per-user, not system-wide: a system-wide one reaches the
+# store through the system bus, which the container has no socket for, so it
+# only ever worked because the container ran as root and flatpak wrote the
+# store directly. Running as the user who owns the checkout takes that away,
+# and --user needs no bus at all.
+flatpak remote-add --if-not-exists --user flathub \
   https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --system --noninteractive flathub \
+flatpak install --user --noninteractive flathub \
   "$runtime//$runtime_version" "$sdk//$runtime_version"
 
 # The manifest source is the same bundle that package-linux emits.  Building

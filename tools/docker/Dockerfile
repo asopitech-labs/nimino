@@ -158,11 +158,13 @@ RUN if ! getent group ${NIMINO_GID} >/dev/null; then \
   && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache/nim \
   && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache/nimble \
   && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.nimble \
-  ## The Flatpak suite installs the runtime and SDK system-wide so the named
-  ## volume mounted here caches them between runs. Docker copies this
-  ## directory's ownership onto that volume when it creates it, so handing it
-  ## to the build user is what lets a non-root `flatpak --system` write.
-  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /var/lib/flatpak \
+  ## The Flatpak suite installs its runtime and SDK per-user, so the named
+  ## volume caching them between runs mounts here. Docker copies this
+  ## directory's ownership onto that volume when it creates it, so the
+  ## directory has to exist and belong to the build user first.
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.local \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.local/share \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.local/share/flatpak \
   ## Nimble writes its package index beside the compiler, and the toolchain
   ## itself is read-only for a normal user, so hand both to the build user.
   && chown -R ${NIMINO_UID}:${NIMINO_GID} /opt/nim
