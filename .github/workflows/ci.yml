@@ -37,6 +37,7 @@ jobs:
           test
           nimble-install-test
           pack-test
+          pack-host-resolution-test
           pack-host-runtime-test
           pack-cli-test
           pack-popular-catalog-test

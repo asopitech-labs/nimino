@@ -17,6 +17,9 @@ test -d "$assets" || {
 
 core_linux="$assets/nimino-core-$version-linux-x86_64.tar.gz"
 core_windows="$assets/nimino-core-$version-windows-x64.zip"
+# Published only when the release workflow supplies a host built on a macOS
+# runner; a local staging run leaves it out.
+core_macos="$assets/nimino-core-$version-macos-arm64.tar.gz"
 pack_linux="$assets/nimino-pack-$version-linux-x86_64.tar.gz"
 
 for archive in "$core_linux" "$core_windows" "$pack_linux"; do
@@ -141,5 +144,20 @@ done
 
 grep -Fq 'Components (released independently of the site installers):' \
   "$release_dir/RELEASE-NOTES.txt"
+
+if [ -f "$core_macos" ]; then
+  mkdir -p "$work/core-macos"
+  tar xzf "$core_macos" -C "$work/core-macos"
+  work_core_macos="$work/core-macos/nimino-core-$version-macos-arm64"
+  test -x "$work_core_macos/nimino-host"
+  test -s "$work_core_macos/LICENSE"
+  test -s "$work_core_macos/README.txt"
+  # The archive must carry the runtime alone: WKWebView ships with macOS, so
+  # a stray Windows or Linux library here means the wrong host was staged.
+  if compgen -G "$work_core_macos/*.dll" > /dev/null; then
+    echo "component release: macOS archive carries a Windows library" >&2
+    exit 1
+  fi
+fi
 
 echo "nimino component release verified: nimino-core and nimino-pack $version"

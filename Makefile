@@ -22,7 +22,7 @@ WSL_SITE_TIMEOUT ?= 180
 WSL_SITE_READ_TIMEOUT_MS ?= 60000
 PACK_SMOKE_URL ?= https://asopi.tech
 
-.PHONY: help container-runtime-check setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike nimble-install-test pack-host-runtime-test pack-test pack-cli-test pack-sites-test pack-site-release-test component-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-popular-catalog-generation-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-windows-smoke rpm-centos-smoke pack-macos-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke linux-tray-smoke macos-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
+.PHONY: help container-runtime-check setup setup-contract-test image nim-version nimble-version gtk-version webkit-version verify-env verify-webview2-header verify-webview2-profile-header verify-windows-dialog-abi setup-windows-webview2 kill-nimino-windows shell test webview2-profile-ffi-spike nimble-install-test pack-host-resolution-test pack-host-runtime-test pack-test pack-cli-test pack-sites-test pack-site-release-test component-release-test pack-linux-test pack-flatpak-test pack-popular-catalog-test pack-popular-catalog-generation-test pack-appimage-guardrails pack-appimage-test pack-windows-test pack-windows-smoke rpm-centos-smoke pack-macos-test pack-bundle-test pack-archive-test host-linux host-windows linux-smoke linux-custom-protocol-smoke linux-tray-smoke macos-smoke core-linux-rpc-smoke core-linux-rpc-url-smoke core-linux-rpc-async-smoke windows-cross core-windows-cross wsl-host-cross wsl-host-smoke wsl-site-smoke wsl-host-abnormal-smoke wsl-host-interactive wsl-host-popup-smoke wsl-client-smoke wsl-core-smoke wsl-core-rpc-url-smoke wsl-core-rpc-async-smoke check clean
 
 help: ## 利用可能な固定手順を表示する
 
@@ -125,6 +125,10 @@ kill-nimino-windows: ## Nimino hostとNimino由来WebView2プロセスをWindows
 nimble-install-test: image ## 公開手順のnimble installでCLIが入ることを検証する
 
 	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; bash tools/ci/test_nimble_install.sh'
+
+pack-host-resolution-test: image ## --host省略時にpackがhostを見つけることを検証する
+
+	$(COMPOSE) run --rm $(SERVICE) bash -lc 'export PATH=/opt/nim/bin:$$PATH; $(NIMBLE) testPackHostResolution'
 
 pack-host-runtime-test: image ## packがhostの隣のランタイムを同梱することを検証する
 

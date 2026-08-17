@@ -570,6 +570,152 @@ proc copyGenerated(source, destination: string): bool =
     stderr.writeLine("nimino pack: unable to copy " & source)
     false
 
+type HostPlatform = enum
+  hostLinux, hostWindows, hostMacos
+
+const niminoVersion {.strdefine: "niminoVersion".} = ""
+
+proc hostFileName(platform: HostPlatform): string =
+  if platform == hostWindows: "nimino-host.exe" else: "nimino-host"
+
+proc hostArchiveName(platform: HostPlatform): string =
+  ## Release archives are named for the platform they run on, not for the
+  ## machine that packs them, so a Linux workstation asking for the Windows
+  ## host looks up the same name a Windows user would download by hand.
+  case platform
+  of hostLinux: "nimino-core-" & niminoVersion & "-linux-x86_64.tar.gz"
+  of hostWindows: "nimino-core-" & niminoVersion & "-windows-x64.zip"
+  of hostMacos: "nimino-core-" & niminoVersion & "-macos-arm64.tar.gz"
+
+proc hostPlatformName(platform: HostPlatform): string =
+  case platform
+  of hostLinux: "linux-x86_64"
+  of hostWindows: "windows-x64"
+  of hostMacos: "macos-arm64"
+
+proc currentHostPlatform(): HostPlatform =
+  when defined(windows): hostWindows
+  elif defined(macosx): hostMacos
+  else: hostLinux
+
+proc requiredHostPlatform(targets: seq[string]): HostPlatform =
+  ## The distributable formats already say which platform the bundle runs on;
+  ## deriving the host from them keeps a second, redundant option off the
+  ## command line.
+  for target in targets:
+    let base = target.split('-')[0]
+    if base in ["nsis", "msi"]:
+      return hostWindows
+    if base in ["app", "dmg"]:
+      return hostMacos
+  currentHostPlatform()
+
+proc cachedHostPath(platform: HostPlatform): string =
+  let home = getEnv("HOME", getEnv("USERPROFILE"))
+  if home.len == 0:
+    return ""
+  home / ".cache" / "nimino" / "hosts" / niminoVersion /
+    hostPlatformName(platform) / hostFileName(platform)
+
+proc discoverHost(platform: HostPlatform): string =
+  ## Look where a host is already sitting before reaching for the network.
+  let explicit = getEnv("NIMINO_HOST")
+  if explicit.len > 0:
+    if fileExists(explicit):
+      return explicit
+    stderr.writeLine("nimino pack: NIMINO_HOST does not point at a file: " & explicit)
+    quit(1)
+
+  let cached = cachedHostPath(platform)
+  if cached.len > 0 and fileExists(cached):
+    return cached
+
+  ## The install hook puts the host for this machine on PATH, so a plain
+  ## `nimino pack <url> --out <dir>` finds it without any staging.
+  if platform == currentHostPlatform():
+    let onPath = findExe(hostFileName(platform))
+    if onPath.len > 0:
+      return onPath
+
+  ## An unpacked release archive in the working directory is the layout a
+  ## reader following the download instructions ends up with.
+  let unpacked = getCurrentDir() / hostArchiveName(platform).replace(".tar.gz", "")
+    .replace(".zip", "") / hostFileName(platform)
+  if fileExists(unpacked):
+    return unpacked
+  ""
+
+proc fetchHost(platform: HostPlatform): string =
+  ## Download the released host for a platform this machine cannot build.
+  ## Nothing is compiled here: the archive carries a binary produced by the
+  ## release workflow for exactly this version.
+  let destination = cachedHostPath(platform)
+  if destination.len == 0:
+    stderr.writeLine("nimino pack: cannot determine a cache directory for the host")
+    return ""
+  let archive = hostArchiveName(platform)
+  let url = "https://github.com/asopitech-labs/nimino/releases/download/v" &
+    niminoVersion & "/" & archive
+  stderr.writeLine("nimino pack: fetching " & archive)
+  let workspace = destination.parentDir()
+  try:
+    createDir(workspace)
+  except OSError:
+    stderr.writeLine("nimino pack: unable to create " & workspace)
+    return ""
+  let archivePath = workspace / archive
+  var client = newHttpClient()
+  defer: client.close()
+  try:
+    client.downloadFile(url, archivePath)
+  except CatchableError:
+    stderr.writeLine("nimino pack: unable to download " & url)
+    return ""
+  let extractRoot = workspace / "unpacked"
+  removeDir(extractRoot)
+  createDir(extractRoot)
+  let command =
+    if archive.endsWith(".zip"):
+      "unzip -q -o " & quoteShell(archivePath) & " -d " & quoteShell(extractRoot)
+    else:
+      "tar xzf " & quoteShell(archivePath) & " -C " & quoteShell(extractRoot)
+  if execShellCmd(command) != 0:
+    stderr.writeLine("nimino pack: unable to unpack " & archive)
+    return ""
+  for path in walkDirRec(extractRoot):
+    if extractFilename(path) == hostFileName(platform):
+      ## Keep the libraries the host loads beside it; hostRuntimeLibraries
+      ## reads that directory when the bundle is staged.
+      for kind, sibling in walkDir(path.parentDir(), relative = false):
+        if kind == pcFile:
+          try:
+            copyFile(sibling, workspace / extractFilename(sibling))
+          except OSError:
+            discard
+      if fileExists(destination):
+        setFilePermissions(destination, {fpUserExec, fpUserRead, fpUserWrite,
+          fpGroupExec, fpGroupRead, fpOthersExec, fpOthersRead})
+        removeDir(extractRoot)
+        removeFile(archivePath)
+        return destination
+  stderr.writeLine("nimino pack: " & archive & " does not contain " & hostFileName(platform))
+  ""
+
+proc resolveHost(explicitHost: string; targets: seq[string]): string =
+  if explicitHost.len > 0:
+    return explicitHost
+  let platform = requiredHostPlatform(targets)
+  let discovered = discoverHost(platform)
+  if discovered.len > 0:
+    return discovered
+  let fetched = fetchHost(platform)
+  if fetched.len > 0:
+    return fetched
+  stderr.writeLine("nimino pack: no " & hostPlatformName(platform) &
+    " host found; pass --host, set NIMINO_HOST, or unpack " &
+    hostArchiveName(platform) & " into the working directory")
+  quit(1)
+
 proc hostRuntimeLibraries(hostPath: string): seq[string] =
   ## Runtime libraries the host loads by name at process start do not appear in
   ## the PE import table, so a bundle carrying only the executable installs and
@@ -1091,9 +1237,7 @@ if hostPath.len > 0 and not fileExists(hostPath):
 if outputDirectory.len == 0:
   echo output
 else:
-  if hostPath.len == 0:
-    stderr.writeLine("nimino pack: --host is required when --out is used; bundles must carry their host executable")
-    quit(1)
+  hostPath = resolveHost(hostPath, targets)
   let directory = outputDirectory
   if directory.len == 0:
     usage()
