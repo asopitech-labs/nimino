@@ -1,7 +1,22 @@
-version = "0.2.2"
+version = "0.2.3"
 author = "asopitech-labs"
 description = "Nim-native cross-platform Web UI desktop application foundation"
 license = "MIT"
+
+## Installing by repository URL has to work without `?subdir=`: nimble resolves
+## the base URL against the package registry before it reads the subdirectory,
+## and a repository that is only registered under `?subdir=` URLs fails with
+## "Unable to identify url" before any package is fetched.  Shipping the
+## packaging CLI from the repository root keeps
+##
+##   nimble install https://github.com/asopitech-labs/nimino
+##
+## working on a stock toolchain.  The per-package .nimble files under
+## packages/ stay authoritative for library consumers.
+srcDir = "packages/pack"
+bin = @["nimino"]
+installDirs = @["src", "schema"]
+skipDirs = @["tests"]
 
 requires "nim >= 2.2.0"
 
@@ -217,7 +232,8 @@ task testPackFlatpak, "Build and export a real Flatpak bundle from the pack cont
 task testPackOnline, "Exercise the URL-to-bundle online pack flow":
   exec "nimble buildPackCli"
   exec "nimble buildNiminoHost"
-  exec "bash tools/ci/test_pack_online.sh /tmp/nimino /tmp/nimino-host"
+  exec "nimble buildNiminoHostWindows"
+  exec "bash tools/ci/test_pack_online.sh /tmp/nimino /tmp/nimino-host /tmp/nimino-host.exe"
 
 task testPackPopularCatalog, "Verify signed Popular Packages catalog entries":
   exec "nim c -r --mm:arc --nimcache:/tmp/nimino-pack-popular-catalog-nimcache --out:/tmp/nimino-test-popular-catalog --path:packages/pack --path:packages/pack/src packages/pack/tests/test_popular_catalog.nim"

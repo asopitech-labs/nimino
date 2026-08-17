@@ -35,6 +35,7 @@ jobs:
           verify-env
           setup-contract-test
           test
+          nimble-install-test
           pack-test
           pack-cli-test
           pack-popular-catalog-test
