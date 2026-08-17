@@ -26,7 +26,22 @@ The packaging CLI installs from the repository URL:
 nimble install https://github.com/asopitech-labs/nimino
 ```
 
-That puts the `nimino` executable in `~/.nimble/bin`, along with the
+A container image carrying the CLI and every package generator is published
+for each release, for callers who would rather not install Nim:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
+  ghcr.io/asopitech-labs/nimino:latest \
+  pack https://example.com --out /work/dist/app
+```
+
+The image defaults to uid 1000, which is the single-user host account. Pass
+`--user` as shown to cover the rest: the container writes into the directory
+you mount, so it has to run as the account that owns it. Without it, a host
+whose account is numbered differently gets files it cannot delete, or a
+`permission denied` before the first file is written.
+
+Installing with nimble puts the `nimino` executable in `~/.nimble/bin`, along with the
 `nimino-host` runtime for the machine it ran on. The host is downloaded, not
 compiled, so installing the CLI still needs no GUI toolchain; a machine
 without network access gets the CLI alone and `pack` reports the missing host

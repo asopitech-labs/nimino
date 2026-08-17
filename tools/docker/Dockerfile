@@ -1,7 +1,7 @@
 # Keep the compiler/toolchain reproducible. Updating Nim is an intentional
 # dependency change that must update this digest.
 ARG NIM_IMAGE=docker.io/nimlang/nim:latest@sha256:62428daa4a39baeb6f5e429a9c2ca3cee27a80ef880fe6e1bf3e29cc2296ac1b
-FROM ${NIM_IMAGE}
+FROM ${NIM_IMAGE} AS dev
 
 ARG WEBVIEW2_SDK_VERSION=1.0.3967.48
 ARG WEBVIEW2_SDK_SHA256=c66357ac7f324ec9bcafe5241706a023b4122d8c22300c31de4b0eb220db689e
@@ -124,4 +124,103 @@ RUN curl --fail --location --retry 3 --silent --show-error \
     && test -s /opt/nimino/pcre/lib/libpcre.a \
     && rm -rf /tmp/pcre-${PCRE_VERSION} /tmp/pcre-${PCRE_VERSION}.tar.bz2
 
+# Run as a normal user. The container mounts the repository at /workspace, so
+# anything a build writes there lands on the host with the container's owner:
+# building as root leaves files the developer cannot delete without sudo.
+# The uid must match the owner of the checkout the caller bind-mounts, not a
+# fixed account baked into the image: a chown inside the image is replaced by
+# the bind mount, so a mismatch fails at the first write to /workspace. A
+# developer passes their own id, and a GitHub-hosted runner checks out as uid
+# 1001, so both are build arguments rather than constants.
+ARG NIMINO_UID=1000
+ARG NIMINO_GID=1000
+## The home directory is named for the project rather than for the base
+## image's `node` account, because that account only exists at uid 1000 and
+## the build user is whatever the caller passed.
+ENV HOME=/home/nimino
+## The uid needs a real account, not just ownership: D-Bus refuses to start a
+## session bus when it cannot find its own uid in the password database, which
+## is what the Linux GUI suite runs under. The base image already carries uid
+## 1000 as `node`, so reuse whatever account holds the id when one exists and
+## create it otherwise.
+RUN if ! getent group ${NIMINO_GID} >/dev/null; then \
+      groupadd -g ${NIMINO_GID} nimino; \
+    fi \
+  && if ! getent passwd ${NIMINO_UID} >/dev/null; then \
+      useradd -u ${NIMINO_UID} -g ${NIMINO_GID} -d ${HOME} -s /bin/bash nimino; \
+    fi \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /workspace \
+  ## nim writes compilation caches under .cache/nim and nimble keeps its
+  ## package index under .nimble; both are created on first use, so the
+  ## parent directories have to belong to the build user.
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME} \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache/nim \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache/nimble \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.nimble \
+  ## The Flatpak suite installs its runtime and SDK per-user, so the named
+  ## volume caching them between runs mounts here. Docker copies this
+  ## directory's ownership onto that volume when it creates it, so the
+  ## directory has to exist and belong to the build user first.
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.local \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.local/share \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.local/share/flatpak \
+  ## Nimble writes its package index beside the compiler, and the toolchain
+  ## itself is read-only for a normal user, so hand both to the build user.
+  && chown -R ${NIMINO_UID}:${NIMINO_GID} /opt/nim
+
+USER ${NIMINO_UID}:${NIMINO_GID}
+
 WORKDIR /workspace
+
+## Build the CLI in the development image, then ship it from a base that
+## carries only what running it needs. The dev stage holds the Nim compiler,
+## the cross toolchain, and the GUI headers: none of that is used by a caller
+## who only wants to wrap a URL.
+FROM dev AS build
+USER root
+COPY . /src
+WORKDIR /src
+RUN export PATH=/opt/nim/bin:$PATH \
+  && nimble buildPackCli \
+  && install -D -m 0755 /tmp/nimino /out/usr/local/bin/nimino \
+  && /out/usr/local/bin/nimino --help 2>&1 | grep -q 'usage: nimino pack'
+
+## The distribution image. nimino itself links against libc alone -- Nim
+## statically links the rest -- but it shells out to the generator for each
+## package format, and loads OpenSSL at run time to fetch icons and hosts.
+FROM debian:13-slim AS dist
+
+ARG NIMINO_UID=1000
+ARG NIMINO_GID=1000
+
+RUN apt-get update \
+  && apt-get install --no-install-recommends -y \
+    ca-certificates \
+    curl \
+    desktop-file-utils \
+    dpkg-dev \
+    libssl3 \
+    nsis \
+    rpm \
+    unzip \
+    msitools \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd -g ${NIMINO_GID} nimino \
+  && useradd -u ${NIMINO_UID} -g ${NIMINO_GID} -m -s /bin/bash nimino \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /work \
+  ## The caller mounts their own directory here and must run as the account
+  ## that owns it, which is not always the uid this image was built for. The
+  ## CLI caches downloaded hosts under $HOME, so HOME has to be a path any
+  ## uid can write; a home created by useradd only serves the built-in one,
+  ## and an unwritable HOME makes every run re-download the host.
+  && install -d -m 1777 /home/nimino
+
+COPY --from=build /out/usr/local/bin/nimino /usr/local/bin/nimino
+
+USER ${NIMINO_UID}:${NIMINO_GID}
+ENV HOME=/home/nimino
+WORKDIR /work
+
+ENTRYPOINT ["nimino"]
+CMD ["--help"]
