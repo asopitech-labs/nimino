@@ -138,7 +138,18 @@ ARG NIMINO_GID=1000
 ## image's `node` account, because that account only exists at uid 1000 and
 ## the build user is whatever the caller passed.
 ENV HOME=/home/nimino
-RUN install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /workspace \
+## The uid needs a real account, not just ownership: D-Bus refuses to start a
+## session bus when it cannot find its own uid in the password database, which
+## is what the Linux GUI suite runs under. The base image already carries uid
+## 1000 as `node`, so reuse whatever account holds the id when one exists and
+## create it otherwise.
+RUN if ! getent group ${NIMINO_GID} >/dev/null; then \
+      groupadd -g ${NIMINO_GID} nimino; \
+    fi \
+  && if ! getent passwd ${NIMINO_UID} >/dev/null; then \
+      useradd -u ${NIMINO_UID} -g ${NIMINO_GID} -d ${HOME} -s /bin/bash nimino; \
+    fi \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /workspace \
   ## nim writes compilation caches under .cache/nim and nimble keeps its
   ## package index under .nimble; both are created on first use, so the
   ## parent directories have to belong to the build user.
@@ -147,6 +158,11 @@ RUN install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /workspace \
   && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache/nim \
   && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.cache/nimble \
   && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} ${HOME}/.nimble \
+  ## The Flatpak suite installs the runtime and SDK system-wide so the named
+  ## volume mounted here caches them between runs. Docker copies this
+  ## directory's ownership onto that volume when it creates it, so handing it
+  ## to the build user is what lets a non-root `flatpak --system` write.
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /var/lib/flatpak \
   ## Nimble writes its package index beside the compiler, and the toolchain
   ## itself is read-only for a normal user, so hand both to the build user.
   && chown -R ${NIMINO_UID}:${NIMINO_GID} /opt/nim
