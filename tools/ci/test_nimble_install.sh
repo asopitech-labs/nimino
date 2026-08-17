@@ -40,4 +40,22 @@ schema=$(find "$nimble_dir/pkgs2" -name 'nimino-pack.schema.json' -print -quit)
 test -n "$schema" \
   || { echo "nimble install: installed package omits nimino-pack.schema.json" >&2; exit 1; }
 
+# The CLI builds release archive names from its own version. nimble builds
+# `bin` entries without passing a -d: define, so a version read from a compile
+# flag is empty in exactly the binary a reader installs -- and pack then asks
+# for "nimino-core--windows-x64.zip" and fails to download it.
+archive=$("$binary" pack https://example.com --out "$nimble_dir/probe" \
+  --targets nsis 2>&1 | grep -oE 'nimino-core-[^ ]*\.zip' | head -1 || true)
+case "$archive" in
+  nimino-core--*)
+    echo "nimble install: the installed CLI reports no version ($archive)" >&2
+    exit 1
+    ;;
+  nimino-core-*) ;;
+  *)
+    echo "nimble install: could not read the archive name the CLI resolves" >&2
+    exit 1
+    ;;
+esac
+
 echo "Nimble install contract passed"
