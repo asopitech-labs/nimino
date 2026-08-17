@@ -59,15 +59,16 @@ platform fetches that platform's released host and caches it; which one is
 needed comes from `--targets`, so `--targets nsis` gets the Windows host
 without a second option to say so.
 
-The library packages live under `packages/` and install by name as well:
+The library packages live under `packages/` and install by name as well.
+`nimino_core` is the one an application depends on, and it declares the other
+two, so nimble installs all three:
 
 ```bash
-nimble install nimino_native
-nimble install nimino_wsl
 nimble install nimino_core
 ```
 
-Run them in that order; the later packages depend on the earlier ones.
+Installing `nimino_native` or `nimino_wsl` on its own works too, for a program
+that only needs the window layer or only the WSL transport.
 
 Building an application against `nimino_core` needs the GTK 4 and WebKitGTK 6.0 development headers on Linux (`libgtk-4-dev` and `libwebkitgtk-6.0-dev` on Debian/Ubuntu) and the WebView2 loader on Windows; `nimino_pack` needs no GUI stack at all. Start from [a minimal application](#a-minimal-application), then wrap any site with the installed CLI:
 

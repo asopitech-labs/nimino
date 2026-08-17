@@ -1,4 +1,4 @@
-version = "0.2.8"
+version = "0.2.9"
 author = "asopitech-labs"
 description = "Nimino application framework: app lifecycle, typed RPC, profiles, downloads, navigation and permission policy over native WebViews"
 license = "MIT"
@@ -16,5 +16,5 @@ installFiles = @["nimino_core.nim"]
 skipDirs = @["tests"]
 
 requires "nim >= 2.2.0"
-requires "nimino_native >= 0.2.8"
-requires "nimino_wsl >= 0.2.8"
+requires "nimino_native >= 0.2.9"
+requires "nimino_wsl >= 0.2.9"

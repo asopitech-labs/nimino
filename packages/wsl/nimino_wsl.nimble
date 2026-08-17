@@ -1,4 +1,4 @@
-version = "0.2.8"
+version = "0.2.9"
 author = "asopitech-labs"
 description = "Authenticated WSL client / Windows host transport for Nimino: Nim application logic in WSL, GUI ownership in a WebView2 host process"
 license = "MIT"
@@ -15,4 +15,4 @@ installFiles = @["nimino_wsl.nim"]
 skipDirs = @["tests"]
 
 requires "nim >= 2.2.0"
-requires "nimino_native >= 0.2.8"
+requires "nimino_native >= 0.2.9"
