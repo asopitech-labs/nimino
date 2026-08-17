@@ -47,6 +47,7 @@ jobs:
           make
           verify-env
           setup-contract-test
+          component-versions-test
           test
           nimble-install-test
           pack-test

@@ -62,20 +62,12 @@ without a second option to say so.
 The library packages live under `packages/` and install by name as well:
 
 ```bash
-nimble install --legacy nimino_native
-nimble install --legacy nimino_wsl
-nimble install --legacy nimino_core
+nimble install nimino_native
+nimble install nimino_wsl
+nimble install nimino_core
 ```
 
 Run them in that order; the later packages depend on the earlier ones.
-
-`--legacy` is required on nimble 0.22 for these three. Its default resolver
-caches a download under the repository URL and version alone, without the
-subdirectory, so fetching a second component from this repository finds the
-first one's contents already unpacked there and stops at `Could not find a
-file with a .nimble extension`. The legacy resolver re-fetches and gets past
-it. `nimino_pack` declares no dependency inside this repository, so it never
-reaches that case and needs no flag.
 
 Building an application against `nimino_core` needs the GTK 4 and WebKitGTK 6.0 development headers on Linux (`libgtk-4-dev` and `libwebkitgtk-6.0-dev` on Debian/Ubuntu) and the WebView2 loader on Windows; `nimino_pack` needs no GUI stack at all. Start from [a minimal application](#a-minimal-application), then wrap any site with the installed CLI:
 
