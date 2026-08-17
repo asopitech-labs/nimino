@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: tools/docker/Dockerfile
+      ## Stop at the development stage; the later stages build the CLI and
+      ## assemble the distribution image, which the compose services do not use.
+      target: dev
       args:
         NIM_IMAGE: docker.io/nimlang/nim:latest@sha256:62428daa4a39baeb6f5e429a9c2ca3cee27a80ef880fe6e1bf3e29cc2296ac1b
     image: nimino-dev:local

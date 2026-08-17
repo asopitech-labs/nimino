@@ -1,7 +1,7 @@
 # Keep the compiler/toolchain reproducible. Updating Nim is an intentional
 # dependency change that must update this digest.
 ARG NIM_IMAGE=docker.io/nimlang/nim:latest@sha256:62428daa4a39baeb6f5e429a9c2ca3cee27a80ef880fe6e1bf3e29cc2296ac1b
-FROM ${NIM_IMAGE}
+FROM ${NIM_IMAGE} AS dev
 
 ARG WEBVIEW2_SDK_VERSION=1.0.3967.48
 ARG WEBVIEW2_SDK_SHA256=c66357ac7f324ec9bcafe5241706a023b4122d8c22300c31de4b0eb220db689e
@@ -147,3 +147,48 @@ USER ${NIMINO_UID}:${NIMINO_GID}
 ENV HOME=/home/node
 
 WORKDIR /workspace
+
+## Build the CLI in the development image, then ship it from a base that
+## carries only what running it needs. The dev stage holds the Nim compiler,
+## the cross toolchain, and the GUI headers: none of that is used by a caller
+## who only wants to wrap a URL.
+FROM dev AS build
+USER root
+COPY . /src
+WORKDIR /src
+RUN export PATH=/opt/nim/bin:$PATH \
+  && nimble buildPackCli \
+  && install -D -m 0755 /tmp/nimino /out/usr/local/bin/nimino \
+  && /out/usr/local/bin/nimino --help 2>&1 | grep -q 'usage: nimino pack'
+
+## The distribution image. nimino itself links against libc alone -- Nim
+## statically links the rest -- but it shells out to the generator for each
+## package format, and loads OpenSSL at run time to fetch icons and hosts.
+FROM debian:13-slim AS dist
+
+ARG NIMINO_UID=1000
+ARG NIMINO_GID=1000
+
+RUN apt-get update \
+  && apt-get install --no-install-recommends -y \
+    ca-certificates \
+    curl \
+    desktop-file-utils \
+    dpkg-dev \
+    libssl3 \
+    nsis \
+    rpm \
+    unzip \
+    msitools \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd -g ${NIMINO_GID} nimino \
+  && useradd -u ${NIMINO_UID} -g ${NIMINO_GID} -m -s /bin/bash nimino \
+  && install -d -o ${NIMINO_UID} -g ${NIMINO_GID} /work
+
+COPY --from=build /out/usr/local/bin/nimino /usr/local/bin/nimino
+
+USER ${NIMINO_UID}:${NIMINO_GID}
+WORKDIR /work
+
+ENTRYPOINT ["nimino"]
+CMD ["--help"]
