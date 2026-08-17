@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The published install path is `nimble install <repository URL>`, with no
-# `?subdir=` fragment and no flags.  nimble resolves the base URL against the
-# package registry before it reads any subdirectory, so a repository that only
-# carries per-package .nimble files under packages/ fails with "Unable to
-# identify url" before it fetches anything.  Installing from a checkout
-# exercises the same manifest the URL install reads, without depending on the
-# tag history or on network access to the registry.
+# The published install path is `nimble install nimino_pack`, which the
+# registry resolves to this repository's packages/pack subdirectory.  What a
+# caller ends up running is the manifest in that directory, so installing from
+# a checkout exercises the same thing without depending on the tag history or
+# on network access to the registry.
+#
+# The root manifest is still checked here: it is what a caller who installs
+# the repository URL directly receives, and it must keep publishing the CLI.
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 nimble_dir=$(mktemp -d "${TMPDIR:-/tmp}/nimino-nimble-install.XXXXXX")

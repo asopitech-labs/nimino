@@ -20,10 +20,10 @@ WSL application
 
 ### For Nim developers: install with nimble
 
-The packaging CLI installs from the repository URL:
+The packaging CLI installs by name:
 
 ```bash
-nimble install https://github.com/asopitech-labs/nimino
+nimble install nimino_pack
 ```
 
 A container image carrying the CLI and every package generator is published
@@ -59,21 +59,23 @@ platform fetches that platform's released host and caches it; which one is
 needed comes from `--targets`, so `--targets nsis` gets the Windows host
 without a second option to say so.
 
-The library packages live under `packages/` and are installed with nimble's
-`?subdir=` URL form:
+The library packages live under `packages/` and install by name as well:
 
 ```bash
-nimble install --legacy "https://github.com/asopitech-labs/nimino?subdir=packages/native"
-nimble install --legacy "https://github.com/asopitech-labs/nimino?subdir=packages/wsl"
-nimble install --legacy "https://github.com/asopitech-labs/nimino?subdir=packages/core"
+nimble install --legacy nimino_native
+nimble install --legacy nimino_wsl
+nimble install --legacy nimino_core
 ```
 
 Run them in that order; the later packages depend on the earlier ones.
-`--legacy` is required on nimble 0.22: its default resolver looks the base
-repository URL up in the package registry before it reads the subdirectory,
-and this repository is registered only under `?subdir=` URLs, so the install
-stops at `Unable to identify url` before fetching anything. The CLI install
-above needs no such flag.
+
+`--legacy` is required on nimble 0.22 for these three. Its default resolver
+caches a download under the repository URL and version alone, without the
+subdirectory, so fetching a second component from this repository finds the
+first one's contents already unpacked there and stops at `Could not find a
+file with a .nimble extension`. The legacy resolver re-fetches and gets past
+it. `nimino_pack` declares no dependency inside this repository, so it never
+reaches that case and needs no flag.
 
 Building an application against `nimino_core` needs the GTK 4 and WebKitGTK 6.0 development headers on Linux (`libgtk-4-dev` and `libwebkitgtk-6.0-dev` on Debian/Ubuntu) and the WebView2 loader on Windows; `nimino_pack` needs no GUI stack at all. Start from [a minimal application](#a-minimal-application), then wrap any site with the installed CLI:
 
