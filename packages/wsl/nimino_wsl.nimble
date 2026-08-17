@@ -1,4 +1,4 @@
-version = "0.2.2"
+version = "0.2.3"
 author = "asopitech-labs"
 description = "Authenticated WSL client / Windows host transport for Nimino: Nim application logic in WSL, GUI ownership in a WebView2 host process"
 license = "MIT"
