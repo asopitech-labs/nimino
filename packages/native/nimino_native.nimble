@@ -1,4 +1,4 @@
-version = "0.2.3"
+version = "0.2.4"
 author = "asopitech-labs"
 description = "Thin native Window/WebView layer for Nimino: Win32 + WebView2, GTK 4 + WebKitGTK 6.0, and AppKit + WKWebView"
 license = "MIT"

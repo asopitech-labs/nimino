@@ -1,4 +1,4 @@
-version = "0.2.3"
+version = "0.2.4"
 author = "asopitech-labs"
 description = "Nimino application framework: app lifecycle, typed RPC, profiles, downloads, navigation and permission policy over native WebViews"
 license = "MIT"

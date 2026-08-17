@@ -14,7 +14,22 @@ pcre_dll=${NIMINO_WINDOWS_PCRE_DLL:-/opt/nimino/windows-dlls/pcre64.dll}
 test -s "$pcre_dll" || { echo "pack windows smoke: pcre64.dll is missing: $pcre_dll" >&2; exit 1; }
 
 rm -rf "$output"
-"$cli" pack "$url" --out "$output" --host "$windows_host"
-cp "$webview2_loader" "$output/WebView2Loader.dll"
-cp "$pcre_dll" "$output/pcre64.dll"
+
+# Assemble the layout the released nimino-core archive ships: the host and the
+# libraries it loads at process start in one directory.  pack stages what the
+# host names from there, so the smoke exercises the same path a caller who
+# unpacks that archive takes, instead of copying the libraries in afterwards.
+runtime=$(mktemp -d)
+trap 'rm -rf "$runtime"' EXIT HUP INT TERM
+cp "$windows_host" "$runtime/nimino-host.exe"
+cp "$webview2_loader" "$runtime/WebView2Loader.dll"
+cp "$pcre_dll" "$runtime/pcre64.dll"
+
+"$cli" pack "$url" --out "$output" --host "$runtime/nimino-host.exe"
+for library in WebView2Loader.dll pcre64.dll; do
+  test -s "$output/$library" || {
+    echo "pack windows smoke: bundle omits $library" >&2
+    exit 1
+  }
+done
 echo "pack windows smoke bundle: $output ($url)"

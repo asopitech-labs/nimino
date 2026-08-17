@@ -23,22 +23,38 @@ foreach ($required in @(
   }
 }
 
-# Capture the host's own output. It is a GUI-subsystem binary with no
-# console, so without redirection every diagnostic it writes is discarded and
-# a failure here looks like silence.
-$hostStdout = Join-Path ([IO.Path]::GetTempPath()) 'nimino-host-stdout.log'
-$hostStderr = Join-Path ([IO.Path]::GetTempPath()) 'nimino-host-stderr.log'
-$process = Start-Process -FilePath $hostExecutable `
-  -ArgumentList @('--manifest', $manifest) -PassThru `
-  -RedirectStandardOutput $hostStdout -RedirectStandardError $hostStderr
+# Capture the host's own output. It is a GUI-subsystem binary with no console,
+# so without redirection every diagnostic it writes is discarded and a failure
+# here looks like silence.  Start it through Process.Start rather than
+# Start-Process -PassThru: the object the latter returns reports HasExited but
+# leaves ExitCode null once output is redirected, so a clean shutdown becomes
+# indistinguishable from a crash and the smoke fails on a host that exited 0.
+$startInfo = New-Object System.Diagnostics.ProcessStartInfo
+$startInfo.FileName = $hostExecutable
+# Windows PowerShell 5.1 runs on .NET Framework, where ProcessStartInfo has no
+# ArgumentList; quote the manifest path into the single Arguments string so a
+# path containing spaces still reaches the host as one argument.
+$startInfo.Arguments = '--manifest "{0}"' -f $manifest
+$startInfo.UseShellExecute = $false
+$startInfo.RedirectStandardOutput = $true
+$startInfo.RedirectStandardError = $true
+$process = [System.Diagnostics.Process]::Start($startInfo)
+# Drain both pipes on background tasks: a GUI host that fills the buffer
+# blocks on write, which would look like a hang at the WebView2 check.
+$stdoutReader = $process.StandardOutput.ReadToEndAsync()
+$stderrReader = $process.StandardError.ReadToEndAsync()
 Write-Output ("pack smoke: started nimino-host PID {0}" -f $process.Id)
 
 function Write-HostDiagnostics {
-  foreach ($log in @($hostStdout, $hostStderr)) {
-    if (Test-Path -LiteralPath $log) {
-      $text = (Get-Content -Raw -LiteralPath $log)
+  # The readers complete when the host closes its pipes, which a live process
+  # has not done yet; report what has arrived without waiting on either task.
+  foreach ($stream in @(
+      @{ Name = 'stdout'; Task = $stdoutReader },
+      @{ Name = 'stderr'; Task = $stderrReader })) {
+    if ($stream.Task.IsCompleted) {
+      $text = $stream.Task.Result
       if ($text) {
-        Write-Output ("pack smoke: --- {0} ---" -f (Split-Path -Leaf $log))
+        Write-Output ("pack smoke: --- {0} ---" -f $stream.Name)
         Write-Output $text
       }
     }

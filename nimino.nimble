@@ -1,4 +1,4 @@
-version = "0.2.3"
+version = "0.2.4"
 author = "asopitech-labs"
 description = "Nim-native cross-platform Web UI desktop application foundation"
 license = "MIT"
@@ -228,6 +228,11 @@ task testPackLinux, "Build Debian/RPM archives from nimino-pack Linux metadata":
 
 task testPackFlatpak, "Build and export a real Flatpak bundle from the pack context":
   exec "bash tools/ci/test_pack_flatpak.sh /tmp/nimino"
+
+task testPackHostRuntime, "Verify pack stages the libraries the host loads":
+  exec "nimble buildPackCli"
+  exec "nimble buildNiminoHostWindows"
+  exec "bash tools/ci/test_pack_host_runtime.sh /tmp/nimino /tmp/nimino-host.exe"
 
 task testPackOnline, "Exercise the URL-to-bundle online pack flow":
   exec "nimble buildPackCli"
