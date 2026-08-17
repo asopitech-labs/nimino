@@ -42,12 +42,16 @@ sha256sum "$package" "$bundle/nimino-sbom.cdx.json" > "$out/SHA256SUMS"
 windows_bundle="$root/windows-bundle"
 windows_out="$root/windows-out"
 mkdir -p "$windows_out"
-"$nimino" pack https://example.com --name Example --id app.nimino.online \
-  --out "$windows_bundle" --host "$windows_host"
 test -s "$webview2_loader"
 test -s "$pcre_dll"
-install -m 0644 "$webview2_loader" "$windows_bundle/WebView2Loader.dll"
-install -m 0644 "$pcre_dll" "$windows_bundle/pcre64.dll"
+# Mirror the released nimino-core archive: host beside the libraries it loads.
+windows_runtime="$root/windows-runtime"
+mkdir -p "$windows_runtime"
+install -m 0755 "$windows_host" "$windows_runtime/nimino-host.exe"
+install -m 0644 "$webview2_loader" "$windows_runtime/WebView2Loader.dll"
+install -m 0644 "$pcre_dll" "$windows_runtime/pcre64.dll"
+"$nimino" pack https://example.com --name Example --id app.nimino.online \
+  --out "$windows_bundle" --host "$windows_runtime/nimino-host.exe"
 test -s "$windows_bundle/nimino-host.exe"
 "$nimino" package-windows "$windows_bundle" --format nsis --out "$windows_out"
 setup=$(find "$windows_out" -maxdepth 1 -type f -name '*-setup.exe' -print -quit)

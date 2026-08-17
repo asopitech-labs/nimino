@@ -65,7 +65,21 @@ jobs:
                 ;;
               windows-nsis|windows-msi)
                 bash tools/ci/run_nimble_task.sh buildNiminoHostWindows
-                host=/tmp/nimino-host.exe
+                ## Assemble the layout of the released nimino-core archive: the
+                ## host beside the libraries it loads at process start.  pack
+                ## stages what the host names from that directory, so the
+                ## bundle carries them without a separate copy step here.
+                test -s /opt/nimino/webview2/x64/WebView2Loader.dll
+                test -s /opt/nimino/windows-dlls/pcre64.dll
+                rm -rf /tmp/nimino-windows-runtime
+                mkdir -p /tmp/nimino-windows-runtime
+                install -m 0755 /tmp/nimino-host.exe \
+                  /tmp/nimino-windows-runtime/nimino-host.exe
+                install -m 0644 /opt/nimino/webview2/x64/WebView2Loader.dll \
+                  /tmp/nimino-windows-runtime/WebView2Loader.dll
+                install -m 0644 /opt/nimino/windows-dlls/pcre64.dll \
+                  /tmp/nimino-windows-runtime/pcre64.dll
+                host=/tmp/nimino-windows-runtime/nimino-host.exe
                 ;;
               *)
                 echo "unsupported online build target: $NIMINO_TARGET" >&2
@@ -84,16 +98,13 @@ jobs:
             case "$NIMINO_TARGET" in
               windows-nsis|windows-msi)
                 ## Both libraries load at process start, so a bundle missing
-                ## either one dies before it can open a window: WebView2Loader
-                ## for the WebView, and pcre64 for the regular expressions that
-                ## std/re initialises during module init.  The site release
-                ## stages the same pair; keep the two paths in step.
-                test -s /opt/nimino/webview2/x64/WebView2Loader.dll
-                install -m 0644 /opt/nimino/webview2/x64/WebView2Loader.dll \
-                  /workspace/.tmp/online-bundle/WebView2Loader.dll
-                test -s /opt/nimino/windows-dlls/pcre64.dll
-                install -m 0644 /opt/nimino/windows-dlls/pcre64.dll \
-                  /workspace/.tmp/online-bundle/pcre64.dll
+                ## either one installs and then dies before opening a window.
+                for library in WebView2Loader.dll pcre64.dll; do
+                  test -s "/workspace/.tmp/online-bundle/$library" || {
+                    echo "online build: bundle omits $library" >&2
+                    exit 1
+                  }
+                done
                 ;;
             esac
             case "$NIMINO_TARGET" in

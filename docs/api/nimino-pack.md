@@ -85,6 +85,8 @@ Windows NSIS/MSI installerは、WebView2 Evergreen Runtimeの有無を確認し�
 Microsoft Bootstrapperをダウンロードして導入するため、利用者はinstallerを1回実行するだけです。
 初回導入時はインターネット接続が必要です。`WebView2Loader.dll`とNim実行時の正規表現が使う`pcre64.dll`はWindows bundleへ同梱します。
 
+これらは`--host`に渡した実行ファイルと同じディレクトリから取得します。packは、hostの隣にあり、かつhostが名前で参照しているライブラリだけをbundleへ配置します。OS標準のDLLはhostの隣に存在しないため対象になりません。参照されないファイルを同じディレクトリへ置いても同梱しません。リリース資産の`nimino-core-<version>-windows-x64.zip`はこの配置で公開しているため、展開して`--host`をその中の`nimino-host.exe`へ向ければ、利用者がライブラリを個別に指定する必要はありません。
+
 開発環境の修復や手動確認では、READMEに掲載したSHA-256検証付きbootstrapコマンドを使用できます。
 
 ```powershell
