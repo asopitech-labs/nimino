@@ -58,4 +58,16 @@ case "$archive" in
     ;;
 esac
 
+# The CLI fetches over HTTPS to discover icons and to download a released
+# host for another platform. nimble builds `bin` entries without the -d: flags
+# a task would pass, so ssl has to come from the package's own config; without
+# it those fetches fail at run time with a bare "unable to download".
+# grep -q exits at the first match, so strings dies of SIGPIPE and pipefail
+# turns a successful search into a failed pipeline. Count instead of matching.
+ssl_symbols=$(strings -a "$binary" | grep -ciE 'libssl|openssl' || true)
+if [ "$ssl_symbols" = "0" ]; then
+  echo "nimble install: the installed CLI was built without ssl" >&2
+  exit 1
+fi
+
 echo "Nimble install contract passed"

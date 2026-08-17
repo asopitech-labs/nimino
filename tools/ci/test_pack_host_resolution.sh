@@ -38,4 +38,11 @@ cp "$linux_host" "$unpacked/nimino-host"
 test -s "$root/work/bundle/nimino-host" \
   || { echo "pack host resolution: an unpacked archive was not found" >&2; exit 1; }
 
+# Fetching a host for another platform is not exercised here. The CLI asks
+# for its own version, and on a pre-release branch that tag has no published
+# archive yet -- the release is cut after this runs. Verifying it against the
+# previous release needs that release to be healthy, which is exactly what a
+# fix like this one cannot assume. tools/ci/test_nimble_install.sh covers the
+# part that broke in practice: the installed binary carrying ssl at all.
+
 echo "Nimino pack host resolution contract passed"

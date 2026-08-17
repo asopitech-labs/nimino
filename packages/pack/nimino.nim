@@ -678,12 +678,18 @@ proc fetchHost(platform: HostPlatform): string =
     stderr.writeLine("nimino pack: unable to create " & workspace)
     return ""
   let archivePath = workspace / archive
-  var client = newHttpClient()
+  ## GitHub answers a release asset request with a 302 to a separate host, so
+  ## a client that does not follow redirects downloads the redirect notice and
+  ## reports success on a file that is not an archive.
+  var client = newHttpClient(maxRedirects = 5)
   defer: client.close()
   try:
     client.downloadFile(url, archivePath)
   except CatchableError:
     stderr.writeLine("nimino pack: unable to download " & url)
+    return ""
+  if not fileExists(archivePath) or getFileSize(archivePath) < 1024:
+    stderr.writeLine("nimino pack: downloaded archive is too small to be " & archive)
     return ""
   let extractRoot = workspace / "unpacked"
   removeDir(extractRoot)
