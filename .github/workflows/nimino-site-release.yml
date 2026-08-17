@@ -19,8 +19,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  macos-host:
+    # Cocoa and WKWebView cannot be cross-compiled from the Linux toolchain,
+    # so the macOS runtime is built here and handed to the release job as a
+    # file. GitHub-hosted macOS runners are Apple Silicon, and Apple sells no
+    # Intel Macs, so arm64 is the only architecture published.
+    name: Build the macOS host
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v4
+
+      - name: Install Nim
+        run: |
+          set -eu
+          brew install nim
+          nim --version | head -1
+
+      - name: Build the generic macOS host
+        run: |
+          set -eu
+          nim c --mm:arc --out:nimino-host \
+            --path:packages/core --path:packages/native --path:packages/wsl \
+            tools/hosts/nimino_host.nim
+          test -x nimino-host
+          file nimino-host | grep -q arm64
+
+      - name: Upload the host for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: nimino-host-macos-arm64
+          path: nimino-host
+          if-no-files-found: error
+          retention-days: 1
+
   build-and-release:
     name: Build and publish site installers
+    needs: macos-host
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -37,14 +73,24 @@ jobs:
       - name: Build pinned Docker toolchain
         run: docker compose build nimino-dev
 
+      - name: Fetch the macOS host built on the macOS runner
+        uses: actions/download-artifact@v4
+        with:
+          name: nimino-host-macos-arm64
+          path: .macos-host
+
       - name: Build site installers and checksums
         run: |
           set -eu
+          # The container reads this path; the archive is staged beside the
+          # Linux and Windows ones by build_component_release.sh.
+          chmod +x .macos-host/nimino-host
           # Rootful Docker on the runner creates workspace output as root.
           # Pre-create .tmp as the runner user so later steps can write
           # their own entries beside the container-owned build output.
           mkdir -p .tmp
-          docker compose run --rm nimino-dev bash -lc 'export PATH=/opt/nim/bin:$PATH; bash tools/ci/run_nimble_task.sh testSiteRelease'
+          docker compose run --rm -e NIMINO_MACOS_HOST=/workspace/.macos-host/nimino-host \
+            nimino-dev bash -lc 'export PATH=/opt/nim/bin:$PATH; bash tools/ci/run_nimble_task.sh testSiteRelease'
           test -s .tmp/site-release/RELEASE-NOTES.txt
           test -s .tmp/site-release/assets/SHA256SUMS
           (cd .tmp/site-release/assets && sha256sum -c SHA256SUMS)

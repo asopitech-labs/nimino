@@ -26,8 +26,23 @@ The packaging CLI installs from the repository URL:
 nimble install https://github.com/asopitech-labs/nimino
 ```
 
-That puts the `nimino` executable in `~/.nimble/bin`. It carries no GUI
-dependency, so it installs on any machine with Nim 2.2 or newer.
+That puts the `nimino` executable in `~/.nimble/bin`, along with the
+`nimino-host` runtime for the machine it ran on. The host is downloaded, not
+compiled, so installing the CLI still needs no GUI toolchain; a machine
+without network access gets the CLI alone and `pack` reports the missing host
+when an operation needs one.
+
+`pack` resolves the host itself, so wrapping a URL takes one command:
+
+```bash
+nimino pack https://example.com --out dist/app
+```
+
+It looks at `NIMINO_HOST`, then its own cache, then `PATH`, then an unpacked
+`nimino-core-*` directory in the working directory. Building for another
+platform fetches that platform's released host and caches it; which one is
+needed comes from `--targets`, so `--targets nsis` gets the Windows host
+without a second option to say so.
 
 The library packages live under `packages/` and are installed with nimble's
 `?subdir=` URL form:
